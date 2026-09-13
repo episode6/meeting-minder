@@ -14,7 +14,9 @@ partner a "here's when I'm busy" text.** During the day it watches the calendar 
 re-send the schedule when meetings appear or move.
 
 - Reads **every calendar on every account** through the Android Calendar Provider (Google
-  Calendar syncs into it). Read-only. No network permission — the app never talks to a server.
+  Calendar syncs into it). The only thing it ever writes back is your **RSVP**: setting alarms
+  marks each chosen meeting "Yes, going" so Google Calendar renders it accepted and the organizer
+  gets a response (§4.6). No network permission — the app never talks to a server itself.
 - Main screen: a Google-Calendar-style **single-day itinerary** (timeline with hour grid,
   proportional event heights, overlapping events side by side) with **horizontal swiping between
   days**.
@@ -33,7 +35,8 @@ Not on Google Play; distributed as APKs from GitHub releases like headache-track
 to use `USE_EXACT_ALARM` and full-screen intents without Play policy review.
 
 ### Non-goals (v1)
-- Writing to the calendar (RSVP, creating events). Long-press opens the event in the calendar app instead.
+- Editing the calendar beyond RSVP (creating/moving events, declining, responding to a whole
+  series). Long-press opens the event in the calendar app for anything else.
 - Multiple *apps* as sources. Calendar Provider only (Google Calendar, Samsung Calendar, Outlook w/ sync all land there).
 - Week/month views, a settings-heavy UI, cloud sync, widgets. (Widget is a plausible v2.)
 - Tablet/foldable-specific layouts beyond "don't look broken."
@@ -42,7 +45,7 @@ to use `USE_EXACT_ALARM` and full-screen intents without Play policy review.
 
 | # | Render | Screen | Notes |
 |---|--------|--------|-------|
-| 1 | ![](docs/renders/1-onboarding.png) | **Onboarding / permissions** | Checklist of grants; rows flip to "Granted" as they come back. Continue enabled once required ones are granted. Reachable later from overflow → "Permissions". |
+| 1 | ![](docs/renders/1-onboarding.png) | **Onboarding / permissions** | Calendar row covers read and RSVP write (one dialog). Checklist of grants; rows flip to "Granted" as they come back. Continue enabled once required ones are granted. Reachable later from overflow → "Permissions". |
 | 2 | ![](docs/renders/2-day-view-selecting.png) | **Day view, selecting** | Top bar: date + subtitle ("3 meetings · 2 selected"), Today button, overflow. All-day row. Timeline. Outlined chip = not selected, filled chip + check = selected, dashed + strikethrough = declined. Red now-line on today. FAB "Set alarms (N)". |
 | 3 | ![](docs/renders/3-alarms-set.png) | **Alarms set** | Selected chips show a bell + the alarm time. Subtitle "3 alarms set · not shared yet". Snackbar confirms. FAB becomes primary-filled "Share schedule". |
 | 4 | ![](docs/renders/4-share-schedule.png) | **Share sheet** | System sharesheet; our text is plain, times only. |
@@ -178,14 +181,15 @@ data class DayPlan(
 sealed interface UpdateStateAction : Action { /* SetPermissions, SetCalendars, SetDayEvents,
     SetDayPlans, SetSettledDate, SetRinging, SetScheduleChanges, ShowMessage, ClearMessage */ }
 sealed interface AsyncAction : Action { /* PermissionsMaybeChanged, LoadDay(date),
-    CalendarContentChanged, ToggleEvent(date, key), SetAlarms(date), ShareDay(date),
+    CalendarContentChanged, ToggleEvent(date, key), SetAlarms(date), RsvpAccepted(key, result),
+    ShareDay(date),
     SharedDay(date), AlarmFired(alarmId), SnoozeAlarm, DismissAlarm, BootCompleted,
     TimeChanged, RunChangeCheck(reason) */ }
 ```
 
 Side effects (one file each under `store/sideeffects/`): `ObserveDayPlans`, `LoadCalendars`,
 `LoadDayEvents` (`transformLatest` on `LoadDay`/`CalendarContentChanged`), `ToggleEvent`,
-`ScheduleAlarms`, `ShareSchedule`, `AlarmRinging`, `ChangeDetection`, `CalendarObserver`
+`ScheduleAlarms`, `RsvpAccept`, `ShareSchedule`, `AlarmRinging`, `ChangeDetection`, `CalendarObserver`
 (registers the `ContentObserver` on `SubscriberStatusChanged(true)`).
 
 ### 3.3 Package map
@@ -237,6 +241,10 @@ data class CalendarEvent(
     val hasAttendeeData: Boolean,         // Instances.HAS_ATTENDEE_DATA; false = self-only data (Exchange, shared cals)
     val humanAttendees: Int,              // Attendees rows excluding TYPE_RESOURCE; 0 when hasAttendeeData is false
     val availability: Availability,       // BUSY / FREE
+    val selfAttendeeId: Long?,            // our own Attendees row (email == calendar OWNER_ACCOUNT), null if none
+    val isRecurringInstance: Boolean,     // RRULE/RDATE set and not already an exception
+    val calendarAccessLevel: Int,         // Calendars.CALENDAR_ACCESS_LEVEL
+    val organizerCanRespond: Boolean,     // Calendars.CAN_ORGANIZER_RESPOND
 ) {
     /** THE definition of "meeting". Every count, share line and change-detection rule uses this. */
     val isMeeting: Boolean
@@ -266,7 +274,10 @@ Room (`MeetingMinderDatabase`, `exportSchema = true` this time so migrations are
 ```
 day_plan            (date TEXT PK, alarms_set_at INTEGER?, shared_at INTEGER?, shared_snapshot TEXT? /*json BusyRange[]*/)
 selected_event      (date TEXT, event_id INTEGER, begin_millis INTEGER, title TEXT, end_millis INTEGER,
-                     alarm_id INTEGER?, alarm_at INTEGER?, PK(date, event_id, begin_millis))
+                     alarm_id INTEGER?, alarm_at INTEGER?,
+                     rsvp_state TEXT /*NOT_APPLICABLE|PENDING|ACCEPTED_LOCALLY|SYNCED|FAILED*/,
+                     rsvp_event_id INTEGER? /*exception event id when we answered one instance*/,
+                     PK(date, event_id, begin_millis))
 scheduled_alarm     (alarm_id INTEGER PK autoincrement, date TEXT, event_id, begin_millis, fire_at INTEGER,
                      title TEXT, end_millis, sound_index INTEGER, state TEXT /*SCHEDULED|FIRED|DISMISSED|SNOOZED|CANCELLED*/)
 change_snapshot     (date TEXT PK, taken_at INTEGER, events_json TEXT /* minimal per-event fingerprint list */)
@@ -357,9 +368,10 @@ is the default M3 ramp with bold titles like podcast-hacker.
 
 ### 4.1 Reading the calendar (all calendars, all accounts)
 
-Only `READ_CALENDAR` is needed (never `WRITE_CALENDAR`). One runtime grant covers every calendar
-from every account on the device: multiple Google accounts, Exchange, Samsung, `LOCAL`. Nothing
-in Android 14–17 changed calendar access.
+`READ_CALENDAR` for everything in this section and `WRITE_CALENDAR` only for the RSVP write in
+§4.6. Both live in the `CALENDAR` permission group, so requesting them together shows **one**
+runtime dialog. One grant covers every calendar from every account on the device: multiple
+Google accounts, Exchange, Samsung, `LOCAL`. Nothing in Android 14–17 changed calendar access.
 
 **Calendars** (`CalendarContract.Calendars.CONTENT_URI`): one row per calendar per account.
 Columns we keep: `_ID`, `ACCOUNT_NAME`, `ACCOUNT_TYPE`, `CALENDAR_DISPLAY_NAME`, `CALENDAR_COLOR`,
@@ -550,6 +562,7 @@ Full manifest permission set (this is what `expected-permissions.txt` will pin):
 
 ```
 android.permission.READ_CALENDAR
+android.permission.WRITE_CALENDAR                (RSVP only, §4.6)
 android.permission.POST_NOTIFICATIONS
 android.permission.USE_EXACT_ALARM
 android.permission.SCHEDULE_EXACT_ALARM        (maxSdkVersion 32)
@@ -576,7 +589,8 @@ temporary allowlist that permits starting a foreground service from the backgrou
   the day view.
 - `scheduled_alarm` is the source of truth. `SetAlarms(date)` reconciles the table against the
   current selection: cancel rows for deselected events, insert+schedule for new ones, keep
-  unchanged ones. `RescheduleReceiver` re-arms every `SCHEDULED` row from Room on
+  unchanged ones. The same action fans out one `RsvpAccept` per newly-armed event (§4.6);
+  alarm scheduling never waits on the RSVP. `RescheduleReceiver` re-arms every `SCHEDULED` row from Room on
   `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`, and on the exact-alarm
   permission-state broadcast. Alarms are cancelled by the OS on shutdown, so the boot path is
   mandatory. No direct-boot handling (the calendar provider isn't readable before first unlock).
@@ -666,7 +680,7 @@ deep links return no result. Required rows block "Continue"; optional rows don't
 
 | # | Row | How we check | How we request | Required |
 |---|-----|--------------|----------------|----------|
-| 1 | Read your calendars | `checkSelfPermission(READ_CALENDAR)` | runtime dialog; after 2 denials → app details settings | yes |
+| 1 | Calendar access | `checkSelfPermission` for `READ_CALENDAR` **and** `WRITE_CALENDAR` | one runtime dialog for both (same group); after 2 denials → app details settings | yes |
 | 2 | Notifications | `NotificationManagerCompat.areNotificationsEnabled()` + `alarms` channel importance ≠ NONE | runtime dialog (33+); fallback `ACTION_APP_NOTIFICATION_SETTINGS` / channel settings | yes |
 | 3 | Alarms & reminders | `canScheduleExactAlarms()` | `ACTION_REQUEST_SCHEDULE_EXACT_ALARM` (only ever needed on 12/12L) | yes |
 | 4 | Full-screen alarms | `canUseFullScreenIntent()` (34+) | `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` | yes |
@@ -677,6 +691,69 @@ deep links return no result. Required rows block "Continue"; optional rows don't
 Onboarding is shown at first launch, whenever a required grant is missing at launch, and from
 the overflow menu. Backup/restore to a new device drops special-access grants, so the launch
 check matters.
+
+### 4.6 RSVP "Yes, going" when alarms are set
+
+Setting alarms is the moment you commit to a meeting, so the same action tells Google Calendar.
+Every event that gets an alarm is marked **accepted** on the calendar, which makes it render as
+accepted in Google Calendar and sends the organizer a response through Google's own sync. Two
+hard rules from the product side: **we only ever answer one event instance at a time** (never a
+whole recurring series, never a bulk "respond to all"), and **we never decline or un-respond on
+your behalf**; deselecting an event just cancels its alarm.
+
+**The write** (verified against AOSP `CalendarProvider2` and the AOSP/Etar calendar app):
+
+- `Events.SELF_ATTENDEE_STATUS` cannot be updated by anyone; the provider throws. The correct
+  write is to **our own row in `CalendarContract.Attendees`** (the row whose `ATTENDEE_EMAIL`
+  equals the calendar's `OWNER_ACCOUNT`), setting `ATTENDEE_STATUS = ATTENDEE_STATUS_ACCEPTED`.
+  The provider then mirrors it into `SELF_ATTENDEE_STATUS`, marks the event `DIRTY`, and Google's
+  sync adapter uploads the response on its next (usually immediate) upload sync. Offline is fine:
+  `DIRTY` persists until it syncs.
+- **One instance of a recurring meeting** is answered by inserting an exception:
+  `insert(Events.CONTENT_EXCEPTION_URI/{masterEventId}, {ORIGINAL_INSTANCE_TIME = Instances.BEGIN,
+  SELF_ATTENDEE_STATUS = ACCEPTED, STATUS = CONFIRMED})`. This is the one place
+  `SELF_ATTENDEE_STATUS` is app-writable; the provider clones the event as an exception (with
+  `ORIGINAL_ID`) and updates the cloned self-attendee row. Google syncs this as a per-instance
+  response (`originalStartTime` + the attendee's `responseStatus`), which is exactly what the
+  built-in Calendar app's "This event" choice does. If the instance is *already* an exception
+  (`ORIGINAL_ID` set, no `RRULE`) it's a plain event: update its own attendee row.
+- We keep the returned exception event id in `selected_event.rsvp_event_id` so the `EventKey`
+  normalisation in §4.1 maps the new exception back to the same selection.
+
+**When we skip** (`rsvp_state = NOT_APPLICABLE`, no write, no error shown):
+
+| Case | Signal |
+|---|---|
+| Solo block, no attendees | `selfAttendeeId == null` (the exception insert would throw "Status update WTF" with no self row, so this check is mandatory) |
+| Self-only attendee data (Exchange, some shared calendars) | `hasAttendeeData == false` |
+| You're the organizer | `isOrganizer` (Google already has you as accepted); also skipped when `organizerCanRespond == false` |
+| Calendar can't respond | `calendarAccessLevel < CAL_ACCESS_RESPOND (300)`; the provider would accept the local write and the server would reject it on sync, leaving a stuck dirty row |
+| Already accepted | `selfStatus == ACCEPTED` |
+| Invite sent to an alias | no attendee row matches `OWNER_ACCOUNT` (case-insensitive); we can't discover aliases from the provider, so this is a no-op with a subtle "couldn't RSVP" hint on the chip |
+
+**Flow**: `SetAlarms(date)` → for each newly-armed event that passes the table above, emit
+`RsvpAccept(key)` → the `RsvpAccept` side effect does the write on IO (each event its own
+transaction; failures are per event) → `RsvpAccepted(key, result)` updates `rsvp_state`. Because
+the write immediately changes `SELF_ATTENDEE_STATUS`, our own `ContentObserver` fires and the
+day reloads with the chip now showing the accepted state. Chips show a small "sent" tick once
+`rsvp_state == ACCEPTED_LOCALLY`; a later background diff (§4.3) that sees `Events.DIRTY == 0`
+promotes it to `SYNCED`. We don't call `ContentResolver.requestSync` (the provider's own change
+notification already nudges Google's sync adapter); it's a one-liner to add if sync proves lazy.
+
+**Reversal**: none, by design. Deselecting cancels the alarm and leaves the RSVP as is. Declining
+is a decision for Google Calendar, not this app. (If we ever add it, `ATTENDEE_STATUS_INVITED`
+is the "un-respond" value locally, but whether Google's sync adapter pushes `needsAction` back to
+the server is unverified; `DECLINED` is the only reversal known to sync.)
+
+**Testing**: Robolectric fake provider asserting the `update` on `Attendees.CONTENT_URI` with the
+`EVENT_ID`/`ATTENDEE_EMAIL` selection for plain events and the `insert` on
+`content://com.android.calendar/exception/{id}` with `ORIGINAL_INSTANCE_TIME` for recurring
+instances; every row of the skip table as a unit test on the pure `rsvpDecision(event)`
+function. Emulator: seed a `LOCAL` calendar (`OWNER_ACCOUNT = me@test.com`), an event with
+`ORGANIZER = boss@test.com`, `HAS_ATTENDEE_DATA = 1`, two attendee rows (me INVITED, boss
+ORGANIZER/ACCEPTED), run the flow, then check `selfAttendeeStatus == 1` and `dirty == 1` via
+`adb shell content query`. Before release, verify on a real Google account that the response
+reaches calendar.google.com for a one-off invite and for one instance of a recurring invite.
 
 ## 5. Work plan (PR-sized chunks)
 
@@ -712,8 +789,9 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   `START_DAY`/`END_DAY` re-filter, batched attendees query, `EventKey` normalisation for exception
   events), `FakeCalendarRepository`. Robolectric tests against a fake `com.android.calendar`
   provider covering: timed event, recurring instance, moved occurrence (ORIGINAL_ID), all-day event
-  near midnight in a negative-offset zone, cancelled, declined, hidden calendar. `READ_CALENDAR`
-  added to the manifest and `expected-permissions.txt`.
+  near midnight in a negative-offset zone, cancelled, declined, hidden calendar. The repository
+  also exposes the self-attendee id, access level and organizer-can-respond flags that §4.6 needs.
+  `READ_CALENDAR` and `WRITE_CALENDAR` added to the manifest and `expected-permissions.txt`.
 - [ ] **PR-4: Calendar permission + minimal onboarding.** `permissions/PermissionState`,
   `PermissionChecker` (refreshed on `ON_RESUME` via `PermissionsMaybeChanged`), Onboarding screen
   with only the calendar row live and the other rows stubbed as "coming soon", routing: launch →
@@ -744,6 +822,12 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   plain high-priority notification. Permissions: exact alarm (see §4.4), `RECEIVE_BOOT_COMPLETED`.
   Onboarding gets the "Alarms & reminders" and "Notifications" rows for real. Unit tests for alarm
   time math and reconciliation; Robolectric `ShadowAlarmManager` test for scheduling/cancelling.
+- [ ] **PR-8b: RSVP on set-alarms.** After PR-8, ∥ with PR-9. `rsvpDecision(event)` (pure, one
+  test per row of the §4.6 skip table), `CalendarRepository.acceptInstance(key)` doing the
+  Attendees update or the exception insert, the `RsvpAccept` side effect fanned out from
+  `SetAlarms`, `rsvp_state`/`rsvp_event_id` columns, the "sent" tick and "couldn't RSVP" hint on
+  chips, Robolectric tests for both write shapes, and the emulator seeding recipe in the `verify`
+  skill. Manual check against a real Google account before this merges.
 - [ ] **PR-9: Share schedule.** ∥ with PR-8. `ScheduleTextFormatter` (pure, tested: merging,
   AM/PM elision, empty day, midnight-spanning), `ShareDay`/`SharedDay` side effects writing
   `shared_at` + `shared_snapshot`, the FAB's `Share` state (unlocked once `alarms_set_at != null`),
@@ -806,3 +890,5 @@ that depends on it):
 7. **Monitoring runs only after a share** and only until local midnight.
 8. **Lead time default 5 minutes**, snooze 2 minutes, auto-timeout 3 minutes.
 9. **Share text format** in §4.2 (merged ranges, no titles, "Free the rest of the day.").
+10. **RSVP is fire-and-forget and never reversed** (§4.6): alarms don't wait on it, deselecting
+    doesn't decline, and organizer/solo/read-only cases are silently skipped.
