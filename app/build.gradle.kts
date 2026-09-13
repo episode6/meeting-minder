@@ -5,8 +5,9 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
     alias(libs.plugins.androidx.room)
     alias(libs.plugins.metro)
-    // screenshot tests: recordRoborazziDebug writes the reference PNGs under
-    // src/test/screenshots, verifyRoborazziDebug (run by CI) compares against them
+    // screenshot tests of every @Preview (see the roborazzi block below):
+    // recordRoborazziDebug writes the reference PNGs under src/test/screenshots,
+    // verifyRoborazziDebug (run by CI) compares against them
     alias(libs.plugins.roborazzi)
     // build-logic convention plugin: pins release dependencies to expected-dependencies.txt
     // and merged-manifest permissions to expected-permissions.txt (both verified by check)
@@ -136,6 +137,22 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
+// Roborazzi generates one Robolectric screenshot test per @Preview found under the app
+// package (the scanner only sees non-private previews, so previews are `internal`), so a
+// new preview is covered without writing a test. References are recorded with
+// recordRoborazziDebug inside the CI image (AGENTS.md → Testing).
+roborazzi {
+    outputDir.set(file("src/test/screenshots"))
+    generateComposePreviewRobolectricTests {
+        enable = true
+        packages = listOf("com.episode6.meetingminder")
+        robolectricConfig = mapOf(
+            "sdk" to "[36]",
+            "qualifiers" to "RobolectricDeviceQualifiers.Pixel7",
+        )
+    }
+}
+
 // LicenseNotices.kt embeds THIRD_PARTY_LICENSES.md so the in-app licenses screen always
 // shows the same document the repo ships
 abstract class GenerateLicenseNoticesTask : DefaultTask() {
@@ -210,6 +227,8 @@ dependencies {
     implementation(libs.redux.store.flow)
     implementation(libs.redux.subscriber.aware)
     testImplementation(platform(libs.androidx.compose.bom))
+    // the generated preview screenshot tests drive each preview through a compose test rule
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.core)
     testImplementation(libs.androidx.junit)
     testImplementation(libs.assertk)
@@ -219,6 +238,8 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.compose.preview.scanner.support)
+    testImplementation(libs.composable.preview.scanner)
     testImplementation(libs.turbine)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

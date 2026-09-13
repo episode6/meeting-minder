@@ -4,6 +4,8 @@ import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
+import assertk.assertions.prop
+import com.episode6.meetingminder.R
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.ShowMessage
 import com.episode6.meetingminder.store.UiMessage
@@ -70,6 +72,18 @@ class DayViewModelTest {
 
             expectNoEvents()
             assertThat(store.state.transientMessage).isNull()
+        }
+    }
+
+    @Test
+    fun onCheckForUpdatesFailed_showsTheNoBrowserMessage() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), emptySet()) },
+    ) { store ->
+        val viewModel = DayViewModel(store)
+        viewModel.messages.test {
+            viewModel.onCheckForUpdatesFailed()
+
+            assertThat(awaitItem()).prop(UiMessage::text).isEqualTo(R.string.check_for_updates_no_browser)
         }
     }
 }

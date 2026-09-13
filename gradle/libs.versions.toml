@@ -23,6 +23,8 @@ navigationCompose = "2.10.1"
 redux = "1.1.8"
 robolectric = "4.17"
 roborazzi = "1.74.0"
+# the version roborazzi-compose-preview-scanner-support 1.74.0 is built against
+composable-preview-scanner = "0.9.1"
 room = "2.8.5"
 testCore = "1.7.0"
 testRunner = "1.7.0"
@@ -75,6 +77,8 @@ redux-test-support = { group = "com.episode6.redux", name = "test-support", vers
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }
+roborazzi-compose-preview-scanner-support = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose-preview-scanner-support", version.ref = "roborazzi" }
+composable-preview-scanner = { group = "io.github.sergio-sastre.ComposablePreviewScanner", name = "android", version.ref = "composable-preview-scanner" }
 roborazzi-junit-rule = { group = "io.github.takahirom.roborazzi", name = "roborazzi-junit-rule", version.ref = "roborazzi" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 

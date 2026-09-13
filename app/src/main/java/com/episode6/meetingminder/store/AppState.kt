@@ -18,7 +18,7 @@ data class AppState(
     val anchorDate: LocalDate,
     /** The day the user is looking at: the pager's settled page. */
     val settledDate: LocalDate = anchorDate,
-    /** One-shot snackbar text; ViewModels turn it into a `SharedFlow` and clear it once shown. */
+    /** One-shot snackbar text; ViewModels expose it as a one-shot `Flow` and clear it by id once shown. */
     val transientMessage: UiMessage? = null,
 )
 

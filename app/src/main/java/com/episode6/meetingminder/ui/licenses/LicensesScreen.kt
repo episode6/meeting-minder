@@ -88,7 +88,7 @@ fun LicensesScreen(onBack: () -> Unit) {
 
 @Preview(showBackground = true)
 @Composable
-private fun LicensesScreenPreview() {
+internal fun LicensesScreenPreview() {
     MeetingMinderTheme {
         LicensesScreen(onBack = {})
     }

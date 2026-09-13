@@ -53,7 +53,15 @@ fun MeetingMinderNavigation() {
                 onPermissionsClick = { navController.navigate(Route.Onboarding) },
                 onSettingsClick = { navController.navigate(Route.Settings) },
                 onLicensesClick = { navController.navigate(Route.Licenses) },
-                onCheckForUpdatesClick = { uriHandler.openUri(checkForUpdatesUrl) },
+                onCheckForUpdatesClick = {
+                    // AndroidUriHandler reports "no activity can open this" as an
+                    // IllegalArgumentException; show a snackbar instead of crashing
+                    try {
+                        uriHandler.openUri(checkForUpdatesUrl)
+                    } catch (_: IllegalArgumentException) {
+                        viewModel.onCheckForUpdatesFailed()
+                    }
+                },
             )
         }
         composable<Route.Onboarding> {

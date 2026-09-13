@@ -59,6 +59,6 @@ fun ComingSoonScreen(title: String, onBack: () -> Unit) {
 
 @Preview(showBackground = true)
 @Composable
-private fun ComingSoonScreenPreview() {
+internal fun ComingSoonScreenPreview() {
     MeetingMinderTheme { ComingSoonScreen(title = "Settings", onBack = {}) }
 }

@@ -4,8 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
+import com.episode6.meetingminder.R
 import com.episode6.meetingminder.store.ClearMessage
 import com.episode6.meetingminder.store.SetSettledDate
+import com.episode6.meetingminder.store.ShowMessage
 import com.episode6.meetingminder.store.UiMessage
 import com.episode6.redux.mapStore
 import dev.zacsweers.metro.AppScope
@@ -44,6 +46,11 @@ class DayViewModel(private val store: AppStore) : ViewModel() {
 
     fun onTodayClick() {
         store.dispatch(SetSettledDate(store.state.anchorDate))
+    }
+
+    /** No app on the device can open the "Check for updates" page. */
+    fun onCheckForUpdatesFailed() {
+        store.dispatch(ShowMessage(UiMessage.next(R.string.check_for_updates_no_browser)))
     }
 
     fun onMessageShown(message: UiMessage) {

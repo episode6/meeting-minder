@@ -45,6 +45,9 @@ data class DayUiState(
 
 private val TitleFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
 
+/** A fixed date so previews (and the screenshots generated from them) never change. */
+internal val PreviewDate: LocalDate = LocalDate.of(2026, 9, 14)
+
 /**
  * The day view shell (render 2): date + subtitle app bar with the Today action and the
  * overflow menu. The timeline itself (PR-5) and the pager (PR-6) replace the empty
@@ -149,11 +152,9 @@ private fun OverflowMenu(
     }
 }
 
-internal val PreviewDate: LocalDate = LocalDate.of(2026, 9, 14)
-
 @Preview(showBackground = true)
 @Composable
-private fun DayScreenEmptyPreview() {
+internal fun DayScreenEmptyPreview() {
     MeetingMinderTheme {
         DayScreen(
             state = DayUiState(date = PreviewDate, isToday = true),
