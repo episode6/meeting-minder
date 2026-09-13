@@ -1,0 +1,7 @@
+# Buildx reads <Dockerfile>.dockerignore for this Dockerfile alone. The image
+# COPYs only the gradle wrapper and the daemon-JVM pin, so nothing else in the
+# checkout (least of all a local app/build) needs to reach the build context.
+*
+!gradlew
+!gradle/wrapper/
+!gradle/gradle-daemon-jvm.properties

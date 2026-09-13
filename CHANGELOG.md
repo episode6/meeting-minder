@@ -2,6 +2,13 @@
 
 ### v1.0.0 - Unreleased
 
+- Internal: the `build-installers.yml` gradle job now runs inside a prebuilt CI image
+  (`.github/docker/ci.Dockerfile`, resolved or built by the reusable `ci-image.yml`
+  workflow and tagged by content hash on GHCR), the same scheme collins uses. The
+  Dockerfile is the single canonical list of build dependencies — JDK, Android SDK
+  components, the pinned gradle distribution — so a toolchain bump that forgets it fails
+  the PR instead of quietly downloading on the runner. The emulator job stays on the bare
+  runner.
 - Repo scaffold from the episode6 app-repo template: gradle wrapper (9.5.1),
   `settings.gradle.kts` + root `build.gradle.kts` with the derived-versionCode /
   snapshot-identity scheme, `self.versions.toml`, a version catalog, the `build-logic`

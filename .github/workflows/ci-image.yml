@@ -1,0 +1,72 @@
+# The gate the container job waits on: resolve the content-addressed tag of
+# .github/docker/ci.Dockerfile (plus the gradle wrapper and daemon-JVM pin it
+# bakes in), and build + push only if GHCR does not have it yet. A PR that
+# edits any of those files therefore builds and uses its own image; one that
+# leaves them alone finds the tag (~15s of job overhead) and builds nothing.
+# Called from build-installers.yml. Same scheme as collins.
+#
+# Known limitation: on a pull_request whose GITHUB_TOKEN is read-only no matter
+# what permissions are requested — a PR from a *fork*, or one opened by
+# Dependabot — a PR that edits any hashed input (the Dockerfile, or a
+# gradle-wrapper bump, which is exactly what Dependabot would send) fails
+# loudly at the push step. A PR that leaves them alone is fine (the tag
+# exists; pulling needs only read). Accepted: this repo has no fork
+# contributors and no dependabot.yml; whoever enables Dependabot for the
+# wrapper has to revisit this (pull_request_target, or a workflow_dispatch
+# rebuild). Claude-bot pushes are fine: they are synchronize events carrying
+# the repo's own token.
+name: CI image
+
+on:
+  workflow_call:
+    outputs:
+      image:
+        description: The CI image (ghcr.io/<org>/meeting-minder-ci:<tag>)
+        value: ${{ jobs.image.outputs.image }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: tag
+        run: |
+          h="${{ hashFiles('.github/docker/ci.Dockerfile', 'gradlew', 'gradle/wrapper/**', 'gradle/gradle-daemon-jvm.properties') }}"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}-ci:${h::12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: exists
+        run: |
+          if docker manifest inspect "${{ steps.tag.outputs.image }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "\`${{ steps.tag.outputs.image }}\` already exists; nothing to build" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Building \`${{ steps.tag.outputs.image }}\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - if: steps.exists.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@v3
+      # provenance: false keeps the tag a plain image manifest rather than an
+      # OCI index with an attestation alongside; nothing here needs one.
+      # The buildx cache rarely helps between rebuilds (they are weeks apart
+      # and Actions evicts unused cache after 7 days); it earns its place
+      # while iterating on a broken Dockerfile inside one PR, where every
+      # push would otherwise redo the SDK download from scratch.
+      - if: steps.exists.outputs.exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .github/docker/ci.Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

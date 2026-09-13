@@ -34,6 +34,8 @@ Every calendar on every account is read through the Android Calendar Provider. *
 - Android SDK platform 37 (`compileSdk`; `targetSdk` is 36)
 - minSdk 31
 
+CI builds inside a prebuilt Docker image (`.github/docker/ci.Dockerfile`) that pins exactly these; see the "CI image" section of [AGENTS.md](AGENTS.md).
+
 ## Build & run
 
 ```bash

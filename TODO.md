@@ -86,6 +86,12 @@ sibling: android-only, Compose, Metro, ViewModels). Concretely:
 - **CI**: `build-installers.yml` (check + assemble, APK artifact + QR comment, GitHub release on
   `v*` tags), `android-device-tests.yml` (API 36 emulator), `verify-docs.yml`,
   `verify-versions.yml`, `no-snapshot-deps.yml` (podcast-hacker's release-branch-scoped variant).
+  Unlike the sibling apps, the gradle job runs inside a prebuilt **CI image** (collins' scheme:
+  `.github/docker/ci.Dockerfile` is the canonical list of build dependencies, `ci-image.yml`
+  resolves/builds the content-addressed GHCR tag). Consequence for every later PR: a bump to
+  `compileSdk`, build-tools, Gradle or the daemon JVM must edit the Dockerfile too, and any new
+  *system* dependency a JVM test needs (a font, a native lib for Robolectric/Roborazzi) goes there,
+  not in a workflow step. The emulator job stays on the bare runner.
 - **Docs**: `AGENTS.md` (+ `CLAUDE.md` symlink), `README.md`, `CHANGELOG.md` (`### v1.0.0 -
   Unreleased` at top; every PR adds a bullet), `RELEASE_CHECKLIST.md`, `THIRD_PARTY_LICENSES.md`
   (embedded into the app via the `GenerateLicenseNoticesTask` + Licenses screen), `project-icon.svg`
@@ -355,7 +361,9 @@ whose opinionated chips would fight our selection styling; Kizitonwose is a mont
 - Screenshot tests: **Roborazzi** (`generateComposePreviewRobolectricTests`) over every `@Preview`
   (states: empty day, busy day, selections, alarms set, declined, dark, 1.5 font scale). Chosen
   over Google's `com.android.compose.screenshot` because that's still `0.0.1-alphaN`. Reference
-  PNGs are committed; CI runs `verifyRoborazziDebug`.
+  PNGs are committed; CI runs `verifyRoborazziDebug` — inside the CI image (§3.1), so the
+  reference PNGs must be generated in that image (`docker run` it locally) rather than on a dev
+  machine, or font rendering differences will fail the verify.
 - Device tests (`android-device-tests.yml`, API 36): onboarding grant flow with
   `GrantPermissionRule`, insert an event via the provider, assert it appears in the day view.
 
@@ -820,7 +828,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 0 — Repo skeleton
 
-- [ ] **PR-1: Repo scaffold from the episode6 app template.** `[Opus 5, effort high]` Copy near-verbatim from
+- [x] **PR-1: Repo scaffold from the episode6 app template.** `[Opus 5, effort high]` Copy near-verbatim from
   headache-tracker: `settings.gradle.kts`, root `build.gradle.kts` (versionCode derivation, snapshot
   app id/name), `self.versions.toml` (`1.0.0`), `gradle.properties`, wrapper (9.5.1),
   `build-logic/` with `release-verification`, `app/build.gradle.kts` skeleton (signing configs,
@@ -858,7 +866,9 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   packing with unit tests (no overlap, chain of overlaps, three-way, back-to-back sharing a
   column, expansion into free columns), `EventChip` with all visual states, `NowLine`, all-day row,
   hour gutter, `DayViewDefaults`. Only previews + Roborazzi screenshots at this point (states listed
-  in §3.6); no data wiring. This is the PR to review the look against `docs/renders/`.
+  in §3.6); no data wiring. This is the PR to review the look against `docs/renders/`. Generate
+  (and regenerate) the Roborazzi reference PNGs inside the CI image so `verifyRoborazziDebug`
+  compares like with like (§3.1, §3.6).
 - [ ] **PR-6: Day pager wired to the store.** `[Opus 5, effort medium]` `LoadCalendars`/`LoadDayEvents` side effects
   (`transformLatest`, window = settled ± 1), `DayViewModel` (`DayUiState` per date from the
   store), `HorizontalPager` with anchor/`settledPage` loading, shared `ScrollState` + initial
