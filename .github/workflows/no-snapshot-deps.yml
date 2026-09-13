@@ -1,0 +1,26 @@
+name: No snapshot dependencies
+
+on:
+  push:
+    branches:
+      - 'release/**'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - 'release/**'
+
+jobs:
+  no-snapshot-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check for -SNAPSHOT in libs.versions.toml
+        run: |
+          if grep -n -- '-SNAPSHOT' gradle/libs.versions.toml; then
+            echo "ERROR: -SNAPSHOT found in gradle/libs.versions.toml (see matches above)."
+            echo "Replace snapshot dependencies with released versions before merging."
+            exit 1
+          fi
+          echo "No -SNAPSHOT references found in gradle/libs.versions.toml."

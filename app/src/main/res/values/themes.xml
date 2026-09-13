@@ -1,0 +1,9 @@
+<resources>
+    <!-- Window theme used before compose takes over (and by the system for the
+         starting window). The compose UI's colours live in ui/theme/ — keep the
+         window background in sync with the light scheme's surface so launches don't
+         flash a different colour. -->
+    <style name="Theme.MeetingMinder" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

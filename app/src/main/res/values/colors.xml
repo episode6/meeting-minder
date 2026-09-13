@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- light surface from the episode6-orange M3 scheme (see ui/theme/Color.kt) -->
+    <color name="window_background">#FFF8F5</color>
+</resources>

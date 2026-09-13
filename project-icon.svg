@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="18 18 72 72" xmlns="http://www.w3.org/2000/svg">
+  <!--
+  SVG rendition of the app's adaptive launcher icon (ic_launcher_background +
+  ic_launcher_foreground), cropped to the icon's visible 72dp region and drawn
+  as a rounded square. Used by Collins as this project's sidebar icon.
+
+  The comment lives inside the svg element on purpose: gdk-pixbuf's SVG
+  loader (what Collins renders with) only recognizes the file if "<svg"
+  appears within the first 256 bytes.
+  -->
+  <!-- background: episode6 orange -->
+  <rect x="18" y="18" width="72" height="72" rx="16" fill="#FF6600"/>
+
+  <!-- foreground: same 0.8x safe-zone transform as ic_launcher_foreground.xml
+       (translateY -2, then scale 0.8 about pivot 54,56) -->
+  <g transform="translate(54,54) scale(0.8) translate(-54,-56)">
+    <!-- binding tabs -->
+    <path fill="#FFFFFF" d="M37,30 A3,3 0 0,1 40,33 L40,42 L34,42 L34,33 A3,3 0 0,1 37,30 Z"/>
+    <path fill="#FFFFFF" d="M71,30 A3,3 0 0,1 74,33 L74,42 L68,42 L68,33 A3,3 0 0,1 71,30 Z"/>
+
+    <!-- day sheet -->
+    <path fill="#FFFFFF" d="M28,36 L80,36 C82.2,36 84,37.8 84,40 L84,80 C84,82.2 82.2,84 80,84 L28,84 C25.8,84 24,82.2 24,80 L24,40 C24,37.8 25.8,36 28,36 Z"/>
+
+    <!-- header band -->
+    <path fill="#E65C00" d="M28,36 L80,36 C82.2,36 84,37.8 84,40 L84,48 L24,48 L24,40 C24,37.8 25.8,36 28,36 Z"/>
+
+    <!-- meeting rows -->
+    <rect x="30" y="54" width="24" height="6" fill="#E0D6CF"/>
+    <rect x="30" y="66" width="16" height="6" fill="#E0D6CF"/>
+
+    <!-- alarm clock -->
+    <circle cx="68" cy="68" r="14" fill="#FFFFFF"/>
+    <circle cx="68" cy="68" r="11" fill="#E65C00"/>
+    <path stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" d="M68,68 L68,61"/>
+    <path stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" d="M68,68 L73,71"/>
+  </g>
+</svg>
