@@ -11,3 +11,8 @@
   charcoal snapshot backgrounds, the episode6-orange Material 3 theme, all five CI
   workflows, the release scripts and the `.agents/` skills. `MainActivity` launches to
   a placeholder screen showing the app name.
+- Internal: hardened the scaffold after review — the licence-notice unit test now
+  compares the generated constant against the whole document instead of spot-checking
+  it, the release signing config fails fast when only some of its keystore env vars are
+  set, and `scripts/verify-docs-updated.sh` prints real newlines instead of literal
+  `\n`.

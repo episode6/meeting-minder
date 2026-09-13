@@ -26,6 +26,7 @@ android {
     compileSdk = 37
 
     buildFeatures {
+        compose = true
         // for the snapshot-aware app_name resValue in defaultConfig
         resValues = true
     }
@@ -80,9 +81,15 @@ android {
             val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
             if (keystorePath != null) {
                 storeFile = file(keystorePath)
-                storePassword = System.getenv("ANDROID_KEYSTORE_ROOT_PASSWORD")
+                // a half-configured keystore would otherwise fail deep inside the
+                // signing task with an opaque error
+                storePassword = requireNotNull(System.getenv("ANDROID_KEYSTORE_ROOT_PASSWORD")) {
+                    "ANDROID_KEYSTORE_PATH is set but ANDROID_KEYSTORE_ROOT_PASSWORD is not"
+                }
                 keyAlias = "episode6"
-                keyPassword = System.getenv("ANDROID_KEYSTORE_KEY_PASSWORD")
+                keyPassword = requireNotNull(System.getenv("ANDROID_KEYSTORE_KEY_PASSWORD")) {
+                    "ANDROID_KEYSTORE_PATH is set but ANDROID_KEYSTORE_KEY_PASSWORD is not"
+                }
             }
         }
     }
@@ -106,9 +113,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
-    buildFeatures {
-        compose = true
     }
     testOptions {
         unitTests.isReturnDefaultValues = true

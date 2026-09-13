@@ -30,7 +30,7 @@ Every calendar on every account is read through the Android Calendar Provider. *
 
 ## Requirements
 
-- JDK 17+ (CI builds on Zulu 23)
+- Any recent JDK to launch gradlew; the Gradle daemon itself is pinned to Azul 21 by `gradle/gradle-daemon-jvm.properties` and provisioned automatically
 - Android SDK platform 37 (`compileSdk`; `targetSdk` is 36)
 - minSdk 31
 

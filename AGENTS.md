@@ -131,6 +131,8 @@ fun SomeScreen(
 
 ## Testing
 
+Like the package map, this is the **target**: the scaffold has only a licence-notice unit test and a launch smoke test, and each convention below arrives with the PR that first needs it (the Roborazzi plugin is catalog-only until then, and the side-effect helper lands with the store).
+
 - Pure logic (overlap packing, share text formatting, change-detection diff, alarm time math, the reducer) — plain JUnit 4 + **assertk**, no Android.
 - Side effects — podcast-hacker's mockk-free `output(vararg actions, state)` helper over `SideEffectContext`; assert emitted actions with `containsExactly`. **Turbine** for flow assertions.
 - Prefer hand-written fakes (`FakeCalendarRepository`) over mockk.

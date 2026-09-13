@@ -24,7 +24,7 @@ if [ -z "$CHANGED_FILES" ]; then
   exit 0
 fi
 
-echo "Changed files:\n$CHANGED_FILES"
+printf "Changed files:\n%s\n" "$CHANGED_FILES"
 
 # Define what constitutes a docs change
 is_doc_change() {
@@ -49,9 +49,9 @@ if has_code_change; then
 fi
 
 if [ "$CODE_CHANGED" = true ] && [ "$DOCS_UPDATED" = false ]; then
-  echo "\nERROR: Code changes detected but no documentation or changelog updates found."
+  printf "\nERROR: Code changes detected but no documentation or changelog updates found.\n"
   echo "Please update CHANGELOG.md or other relevant docs (README.md, *.md) to describe user-facing changes."
-  echo "Changed files were:\n$CHANGED_FILES"
+  printf "Changed files were:\n%s\n" "$CHANGED_FILES"
   exit 1
 fi
 
