@@ -49,6 +49,11 @@ repeatable; drive it by hand only for one-off visual checks.
 
 ## Core flow to exercise
 
+> **Current state:** until the day view lands (TODO.md PR-5/PR-6) the app launches to a
+> placeholder screen showing the app name, so verifying a change today means confirming
+> it builds, installs and launches to that screen. The flow below is the target; exercise
+> whichever parts of it exist when you verify.
+
 Day view (launch screen) → swipe left/right between days → tap meetings to select them
 (chip fills, check appears) → FAB reads "Set alarms (N)" → tap it (chips gain a bell +
 alarm time, the RSVP goes to "Yes, going" in the calendar) → FAB becomes

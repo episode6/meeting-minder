@@ -32,6 +32,8 @@ Convention plugins must stay in the `build-logic` included build, **never buildS
 
 ## Package map
 
+This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (the repo scaffold has only `MainActivity` and `ui/theme/`). New code goes where this map says, not wherever is convenient.
+
 | Package | Responsibility |
 |---------|----------------|
 | `di/` | Metro `AppGraph`, `AppMetroViewModelFactory`, `@ContributesTo` modules |
