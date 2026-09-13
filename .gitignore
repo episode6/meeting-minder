@@ -32,3 +32,7 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Claude Code local state (skills symlinks under .claude/skills/ are committed)
+.claude/*
+!.claude/skills/
