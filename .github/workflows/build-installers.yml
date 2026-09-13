@@ -28,6 +28,12 @@ jobs:
   android-apk:
     needs: image
     runs-on: ubuntu-latest
+    # Least privilege, like the image job: the checkout and the image pull
+    # are all this job asks GitHub for (artifact upload and the gradle cache
+    # use the runtime token, not GITHUB_TOKEN).
+    permissions:
+      contents: read
+      packages: read
     container:
       image: ${{ needs.image.outputs.image }}
       credentials:
@@ -48,8 +54,14 @@ jobs:
           fetch-depth: 0
       # JDK, SDK and the gradle distribution come from the image; this only
       # restores/saves the dependency cache under the image's ~/.gradle.
+      # cache-overwrite-existing is required: the image's warm step already
+      # created /home/runner/.gradle, and without the flag setup-gradle
+      # refuses to touch a pre-existing Gradle User Home ("Caching was
+      # skipped"), so nothing would ever be restored or saved.
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-overwrite-existing: true
       - name: Decode release keystore
         if: env.BUILD_TYPE == 'release'
         env:

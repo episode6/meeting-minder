@@ -38,7 +38,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # or build-tools into ANDROID_HOME, and we want that to fail loudly here
 # (permission denied) rather than silently download a component this file
 # does not list. The cmdline-tools revision is the "_latest" zip's number on
-# https://developer.android.com/studio as of the refreshed date above.
+# https://developer.android.com/studio as of the refreshed date above. This
+# revision already warns that `sdkmanager` is deprecated in favour of the
+# `android sdk` CLI; when bumping the zip, check that sdkmanager still ships
+# and switch the two calls below if it does not.
 ENV ANDROID_HOME=/opt/android-sdk
 ENV ANDROID_SDK_ROOT=$ANDROID_HOME
 ENV PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
@@ -73,10 +76,12 @@ WORKDIR /home/runner
 # lands under ~/.gradle/wrapper/dists and, should the resolver not take the
 # image's own Zulu 21, the daemon JVM under ~/.gradle/jdks — exactly what a CI
 # run would otherwise download first. `help` on an empty project is enough to
-# start (and, with --no-daemon, stop) a daemon.
+# start (and, with --no-daemon, stop) a daemon. Not -q: rendering the
+# "Welcome to Gradle" banner once here writes the marker under
+# ~/.gradle/notifications that keeps it out of every CI log.
 COPY --chown=runner:runner gradlew /tmp/warm/gradlew
 COPY --chown=runner:runner gradle/wrapper /tmp/warm/gradle/wrapper
 COPY --chown=runner:runner gradle/gradle-daemon-jvm.properties /tmp/warm/gradle/gradle-daemon-jvm.properties
 RUN cd /tmp/warm && touch settings.gradle.kts \
-  && ./gradlew --no-daemon -q help \
+  && ./gradlew --no-daemon help \
   && rm -rf /tmp/warm ~/.gradle/daemon ~/.gradle/.tmp
