@@ -2,6 +2,19 @@
 
 ### v1.0.0 - Unreleased
 
+- DI + store + navigation shell (PR-2): the Metro `AppGraph` (app `CoroutineScope`,
+  settings DataStore, the app-wide redux-store-flow `AppStore`) created by the new
+  `MeetingMinderApp` and reachable via `Context.appGraph`; `AppMetroViewModelFactory`;
+  `AppState` with its `UpdateStateAction`/`AsyncAction` split and reducer; the
+  `@IntoSet` side-effect contribution pattern with a no-op action-log side effect;
+  type-safe `Routes` and `Navigation.kt`. The app now launches to an empty day view
+  (date, Today action, overflow menu with Permissions, Settings, Check for updates and
+  the third-party license notices screen); Permissions and Settings are "coming soon"
+  placeholders. Bold-title typography joins the orange theme.
+- Internal: Roborazzi screenshot tests are wired up (Robolectric native graphics,
+  reference PNGs under `app/src/test/screenshots/`) with one test of the empty day
+  screen, and CI now runs `verifyRoborazziDebug`. Unit tests cover the reducer, the store
+  wiring, the side-effect test helper, `DayViewModel` and the markdown renderer.
 - Internal: the `build-installers.yml` gradle job now runs inside a prebuilt CI image
   (`.github/docker/ci.Dockerfile`, resolved or built by the reusable `ci-image.yml`
   workflow and tagged by content hash on GHCR), the same scheme collins uses. The

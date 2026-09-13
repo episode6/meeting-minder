@@ -5,6 +5,9 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
     alias(libs.plugins.androidx.room)
     alias(libs.plugins.metro)
+    // screenshot tests: recordRoborazziDebug writes the reference PNGs under
+    // src/test/screenshots, verifyRoborazziDebug (run by CI) compares against them
+    alias(libs.plugins.roborazzi)
     // build-logic convention plugin: pins release dependencies to expected-dependencies.txt
     // and merged-manifest permissions to expected-permissions.txt (both verified by check)
     id("release-verification")
@@ -116,6 +119,14 @@ android {
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric (screenshot tests) needs merged resources to render real screens
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.maxHeapSize = "2g"
+            // JDK 17+ module encapsulation: Robolectric's FileDescriptor interceptor (hit
+            // while setting up the API 36 application state) calls jdk.internal.access
+            it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+        }
     }
 }
 
@@ -198,12 +209,16 @@ dependencies {
     implementation(libs.redux.side.effects)
     implementation(libs.redux.store.flow)
     implementation(libs.redux.subscriber.aware)
+    testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.core)
     testImplementation(libs.androidx.junit)
     testImplementation(libs.assertk)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.redux.test.support)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
     testImplementation(libs.turbine)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

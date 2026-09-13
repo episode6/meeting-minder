@@ -21,6 +21,7 @@ navigationCompose = "2.10.1"
 # episode6's redux-store-flow: the app's cross-cutting state lives in one StoreFlow
 # (see AGENTS.md); the JVM artifacts work on android
 redux = "1.1.8"
+robolectric = "4.17"
 roborazzi = "1.74.0"
 room = "2.8.5"
 testCore = "1.7.0"
@@ -71,6 +72,7 @@ redux-side-effects = { group = "com.episode6.redux", name = "side-effects", vers
 redux-store-flow = { group = "com.episode6.redux", name = "store-flow", version.ref = "redux" }
 redux-subscriber-aware = { group = "com.episode6.redux", name = "subscriber-aware", version.ref = "redux" }
 redux-test-support = { group = "com.episode6.redux", name = "test-support", version.ref = "redux" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 roborazzi = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { group = "io.github.takahirom.roborazzi", name = "roborazzi-compose", version.ref = "roborazzi" }
 roborazzi-junit-rule = { group = "io.github.takahirom.roborazzi", name = "roborazzi-junit-rule", version.ref = "roborazzi" }

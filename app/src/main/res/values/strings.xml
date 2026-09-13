@@ -1,3 +1,19 @@
-<!-- app_name is generated as a snapshot-aware resValue in app/build.gradle.kts -->
+<!-- app_name and check_for_updates_url are generated as resValues in app/build.gradle.kts -->
 <resources>
+    <string name="navigate_back">Back</string>
+    <string name="more_options">More options</string>
+    <string name="coming_soon">Coming soon</string>
+
+    <string name="day_today">Today</string>
+    <string name="day_subtitle_no_meetings">No meetings</string>
+    <string name="day_empty">Nothing on the calendar for this day</string>
+
+    <string name="menu_permissions">Permissions</string>
+    <string name="menu_settings">Settings</string>
+    <string name="menu_check_for_updates">Check for updates</string>
+    <string name="menu_licenses">Third-party license notices</string>
+
+    <string name="onboarding_title">Permissions</string>
+    <string name="settings_title">Settings</string>
+    <string name="licenses_title">Third-party license notices</string>
 </resources>

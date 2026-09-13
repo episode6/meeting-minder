@@ -73,9 +73,11 @@ jobs:
           fi
           echo "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/keystore.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/keystore.jks" >> "$GITHUB_ENV"
-      # check includes android lint + unit tests for :app
+      # check includes android lint + unit tests for :app; verifyRoborazziDebug runs
+      # the debug unit tests in verify mode, failing on any screenshot that differs
+      # from its committed reference PNG (recorded inside this same image)
       - name: Check and build APK
-        run: ./gradlew check :app:assemble${{ env.BUILD_TYPE == 'release' && 'Release' || 'Debug' }}
+        run: ./gradlew check verifyRoborazziDebug :app:assemble${{ env.BUILD_TYPE == 'release' && 'Release' || 'Debug' }}
         env:
           ANDROID_KEYSTORE_ROOT_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_ROOT_PASSWORD }}
           ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
@@ -84,7 +86,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-results-android-job
-          path: app/build/test-results/
+          path: |
+            app/build/test-results/
+            app/build/outputs/roborazzi/
           if-no-files-found: ignore
       # job-level env isn't reliably available in job outputs, so surface
       # BUILD_TYPE through a step output for the apk-comment job
