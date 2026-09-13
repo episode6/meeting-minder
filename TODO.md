@@ -172,7 +172,7 @@ data class AppState(
 data class DayEvents(val date: LocalDate, val events: List<CalendarEvent>, val loadedAt: Instant)
 data class DayPlan(
     val date: LocalDate,
-    val selected: Map<EventKey, SelectedEvent>,   // EventKey = (eventId, beginMillis)
+    val selected: Map<EventKey, SelectedEvent>,   // EventKey: see §3.4 (survives moves)
     val alarmsSetAt: Instant?,                    // null = "Set alarms" state
     val sharedAt: Instant?,
     val sharedSnapshot: List<BusyRange>?,         // what was in the last share text
@@ -181,7 +181,8 @@ data class DayPlan(
 sealed interface UpdateStateAction : Action { /* SetPermissions, SetCalendars, SetDayEvents,
     SetDayPlans, SetSettledDate, SetRinging, SetScheduleChanges, ShowMessage, ClearMessage */ }
 sealed interface AsyncAction : Action { /* PermissionsMaybeChanged, LoadDay(date),
-    CalendarContentChanged, ToggleEvent(date, key), SetAlarms(date), RsvpAccepted(key, result),
+    CalendarContentChanged, ToggleEvent(date, key), SetAlarms(date), RsvpAccept(key),
+    RsvpAccepted(key, result),
     ShareDay(date),
     SharedDay(date), AlarmFired(alarmId), SnoozeAlarm, DismissAlarm, BootCompleted,
     TimeChanged, RunChangeCheck(reason) */ }
@@ -237,7 +238,10 @@ com.episode6.meetingminder
 data class EventKey(val eventId: Long, val instanceTime: Long)
 
 data class CalendarEvent(
-    val key: EventKey,
+    val key: EventKey,                    // identity that survives moves (§3.4 above)
+    val eventId: Long,                    // Instances.EVENT_ID: this occurrence's own Events._ID. Differs from
+                                          // key.eventId for an exception event (key holds the series id).
+                                          // Every provider WRITE (§4.6) and the DIRTY check use this one.
     val calendarId: Long,
     val title: String,
     val location: String?,
@@ -253,7 +257,6 @@ data class CalendarEvent(
     val selfAttendeeId: Long?,            // our own Attendees row (email == calendar OWNER_ACCOUNT), null if none
     val isRecurringInstance: Boolean,     // RRULE/RDATE set and not already an exception
     val calendarAccessLevel: Int,         // Calendars.CALENDAR_ACCESS_LEVEL
-    val organizerCanRespond: Boolean,     // Calendars.CAN_ORGANIZER_RESPOND
 ) {
     /** THE definition of "meeting". Every count, share line and change-detection rule uses this. */
     val isMeeting: Boolean
@@ -278,7 +281,9 @@ text if selected, but not counted in "3 meetings" and never surfaced as *new* by
 detection. Everything that isn't a meeting still renders (dimmed / dashed) so the day looks like
 the calendar.
 
-Room (`MeetingMinderDatabase`, `exportSchema = true` this time so migrations are reviewable):
+Room (`MeetingMinderDatabase`, `exportSchema = true` this time so migrations are reviewable;
+**pre-1.0 policy**: `fallbackToDestructiveMigration` until the first `v1.0.0` tag, so PR-8b's
+column additions just bump the version; real migrations from the first release onward):
 
 ```
 day_plan            (date TEXT PK, alarms_set_at INTEGER?, shared_at INTEGER?, shared_snapshot TEXT? /*json BusyRange[]*/)
@@ -619,10 +624,17 @@ temporary allowlist that permits starting a foreground service from the backgrou
   current selection: cancel rows for deselected events, insert+schedule for new ones, keep
   unchanged ones, and **re-times** rows whose selected event has moved (`selected_event.begin_millis`
   differs from the fresh instance's `BEGIN`): the alarm is cancelled and re-set at the new time
-  and the stored times updated. That reconcile also runs on `CalendarContentChanged`, so a moved
-  meeting keeps its alarm without the user doing anything (the change banner still tells them).
-  The same action fans out one `RsvpAccept` per newly-armed event (§4.6); alarm scheduling
-  never waits on the RSVP. `RescheduleReceiver` re-arms every `SCHEDULED` row from Room on
+  and the stored times updated. The same action fans out one `RsvpAccept` per newly-armed event
+  (§4.6); alarm scheduling never waits on the RSVP.
+- A **narrower, automatic** reconcile (`MaintainAlarms`) runs on `CalendarContentChanged`, boot
+  and time changes. It only touches rows that already exist in `scheduled_alarm`: it **re-times**
+  a moved event and **cancels** the alarm (state `CANCELLED`, selection row kept so the banner
+  can explain) when the event is now `STATUS_CANCELED` or declined by me. It never arms a newly
+  selected event and never RSVPs; that only happens on the explicit "Set alarms" tap, which is
+  the user's commitment moment (§2). An event that simply **vanishes** from the provider keeps
+  its alarm until the day ends: a stale alarm after a sync hiccup is a cheaper failure than a
+  missed meeting, and the change banner (§4.3) still reports it so the user can cancel by
+  deselecting and re-tapping "Set alarms". `RescheduleReceiver` re-arms every `SCHEDULED` row from Room on
   `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`, and on the exact-alarm
   permission-state broadcast. Alarms are cancelled by the OS on shutdown, so the boot path is
   mandatory. No direct-boot handling (the calendar provider isn't readable before first unlock).
@@ -749,39 +761,53 @@ your behalf**; deselecting an event just cancels its alarm.
   response (`originalStartTime` + the attendee's `responseStatus`), which is exactly what the
   built-in Calendar app's "This event" choice does. If the instance is *already* an exception
   (`ORIGINAL_ID` set, no `RRULE`) it's a plain event: update its own attendee row.
-- We keep the returned exception event id in `selected_event.rsvp_event_id` so the `EventKey`
-  normalisation in §4.1 maps the new exception back to the same selection.
+- Every write is addressed by the occurrence's **own** id, `CalendarEvent.eventId`
+  (`Instances.EVENT_ID`), never by `key.eventId`, which is the series id for recurring
+  occurrences. The plain-event update goes straight to the row:
+  `update(Attendees.CONTENT_URI/{selfAttendeeId}, {ATTENDEE_STATUS = ACCEPTED})`. The exception
+  insert uses `CONTENT_EXCEPTION_URI/{eventId}` with `ORIGINAL_INSTANCE_TIME = begin`. So the
+  repository method is `acceptInstance(event: CalendarEvent)`, not `acceptInstance(key)`.
+- `selected_event.rsvp_event_id` stores the event id we wrote to (the new exception's id, or the
+  plain event's own id). Its job is the later `Events.DIRTY` check on the right row; the
+  `EventKey` mapping of the new exception back to this selection already works through
+  `ORIGINAL_ID`/`ORIGINAL_INSTANCE_TIME` (§3.4).
 
-**When we skip** (`rsvp_state = NOT_APPLICABLE`, no write, no error shown):
+**When we skip.** `rsvpDecision(event)` is a pure function evaluated in this order; the first
+matching row wins. `rsvp_state` values: `NOT_APPLICABLE` (silent skip), `UNRESPONDABLE` (skip,
+chip shows a subtle "couldn't RSVP" hint), `PENDING`, `ACCEPTED_LOCALLY`, `SYNCED`, `FAILED`.
 
-| Case | Signal |
-|---|---|
-| Solo block, no attendees | `selfAttendeeId == null` (the exception insert would throw "Status update WTF" with no self row, so this check is mandatory) |
-| Self-only attendee data (Exchange, some shared calendars) | `hasAttendeeData == false` |
-| You're the organizer | `isOrganizer` (Google already has you as accepted); also skipped when `organizerCanRespond == false` |
-| Calendar can't respond | `calendarAccessLevel < CAL_ACCESS_RESPOND (300)`; the provider would accept the local write and the server would reject it on sync, leaving a stuck dirty row |
-| Already accepted | `selfStatus == ACCEPTED` |
-| Invite sent to an alias | no attendee row matches `OWNER_ACCOUNT` (case-insensitive); we can't discover aliases from the provider, so this is a no-op with a subtle "couldn't RSVP" hint on the chip |
+| Case | Signal | State |
+|---|---|---|
+| Self-only attendee data (Exchange, some shared calendars) | `hasAttendeeData == false` | `NOT_APPLICABLE` |
+| Solo block, no attendees | `hasAttendeeData && humanAttendees == 0` (no rows at all; the exception insert would throw "Status update WTF" without a self row, so this check is mandatory) | `NOT_APPLICABLE` |
+| You're the organizer | `isOrganizer` (Google already has you as accepted) | `NOT_APPLICABLE` |
+| Already accepted | `selfStatus == ACCEPTED` | `NOT_APPLICABLE` |
+| Calendar can't respond | `calendarAccessLevel < CAL_ACCESS_RESPOND (300)`; the provider would accept the local write and the server would reject it on sync, leaving a stuck dirty row | `UNRESPONDABLE` |
+| Invite sent to an alias | `hasAttendeeData && humanAttendees >= 1 && selfAttendeeId == null`: there are attendees but none matches `OWNER_ACCOUNT` (case-insensitive), and aliases aren't discoverable from the provider | `UNRESPONDABLE` |
+
+(`Calendars.CAN_ORGANIZER_RESPOND` isn't read: organizers are skipped unconditionally.)
 
 **Flow**: `SetAlarms(date)` → for each newly-armed event that passes the table above, emit
 `RsvpAccept(key)` → the `RsvpAccept` side effect does the write on IO (each event its own
 transaction; failures are per event) → `RsvpAccepted(key, result)` updates `rsvp_state`. Because
 the write immediately changes `SELF_ATTENDEE_STATUS`, our own `ContentObserver` fires and the
 day reloads with the chip now showing the accepted state. Chips show a small "sent" tick once
-`rsvp_state == ACCEPTED_LOCALLY`; a later background diff (§4.3) that sees `Events.DIRTY == 0`
-promotes it to `SYNCED`. We don't call `ContentResolver.requestSync` (the provider's own change
-notification already nudges Google's sync adapter); it's a one-liner to add if sync proves lazy.
+`rsvp_state == ACCEPTED_LOCALLY`. Promotion to `SYNCED` happens wherever the day is reloaded
+(the foreground `LoadDayEvents` reload and the §4.3 background diff both project `DIRTY`, which
+`Instances` exposes): a row with `rsvp_event_id` whose `DIRTY == 0` is synced, no share
+required. We don't call `ContentResolver.requestSync` (the provider's own change notification
+already nudges Google's sync adapter); it's a one-liner to add if sync proves lazy.
 
 **Reversal**: none, by design. Deselecting cancels the alarm and leaves the RSVP as is. Declining
 is a decision for Google Calendar, not this app. (If we ever add it, `ATTENDEE_STATUS_INVITED`
 is the "un-respond" value locally, but whether Google's sync adapter pushes `needsAction` back to
 the server is unverified; `DECLINED` is the only reversal known to sync.)
 
-**Testing**: Robolectric fake provider asserting the `update` on `Attendees.CONTENT_URI` with the
-`EVENT_ID`/`ATTENDEE_EMAIL` selection for plain events and the `insert` on
-`content://com.android.calendar/exception/{id}` with `ORIGINAL_INSTANCE_TIME` for recurring
-instances; every row of the skip table as a unit test on the pure `rsvpDecision(event)`
-function. Emulator: seed a `LOCAL` calendar (`OWNER_ACCOUNT = me@test.com`), an event with
+**Testing**: Robolectric fake provider asserting the `update` on
+`content://com.android.calendar/attendees/{selfAttendeeId}` for plain events and the `insert` on
+`content://com.android.calendar/exception/{eventId}` with `ORIGINAL_INSTANCE_TIME = begin` for
+recurring occurrences; every row of the skip table as a unit test on the pure
+`rsvpDecision(event)` function, including the solo-vs-alias distinction. Emulator: seed a `LOCAL` calendar (`OWNER_ACCOUNT = me@test.com`), an event with
 `ORGANIZER = boss@test.com`, `HAS_ATTENDEE_DATA = 1`, two attendee rows (me INVITED, boss
 ORGANIZER/ACCEPTED), run the flow, then check `selfAttendeeStatus == 1` and `dirty == 1` via
 `adb shell content query`. Before release, verify on a real Google account that the response
@@ -855,7 +881,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   Onboarding gets the "Alarms & reminders" and "Notifications" rows for real. Unit tests for alarm
   time math and reconciliation; Robolectric `ShadowAlarmManager` test for scheduling/cancelling.
 - [ ] **PR-8b: RSVP on set-alarms.** `[Fable 5.1, effort high]` After PR-8, ∥ with PR-9. `rsvpDecision(event)` (pure, one
-  test per row of the §4.6 skip table), `CalendarRepository.acceptInstance(key)` doing the
+  test per row of the §4.6 skip table), `CalendarRepository.acceptInstance(event)` doing the
   Attendees update or the exception insert, the `RsvpAccept` side effect fanned out from
   `SetAlarms`, `rsvp_state`/`rsvp_event_id` columns, the "sent" tick and "couldn't RSVP" hint on
   chips, Robolectric tests for both write shapes, and the emulator seeding recipe in the `verify`
@@ -961,9 +987,10 @@ session can orchestrate** while each PR is implemented by the model in the table
 that shape the script:
 
 - PRs have merge dependencies (PR-2 needs PR-1 merged, PR-6 needs PR-3 and PR-5, …), and a human
-  merges each PR after review. So the orchestrator runs **one phase at a time** and the human
-  merges between phases; within a phase, the PRs marked ∥ run in parallel, each in its own git
-  worktree branch.
+  merges each PR after review. So the unit of orchestration is a **wave**: a set of PRs whose
+  dependencies are all merged (e.g. PR-8 ∥ PR-9, then PR-8b ∥ PR-10). The human merges a wave,
+  then passes the next wave's ids as `args`; within a wave each PR runs in its own git worktree
+  branch. A phase in §5 is usually two or three waves.
 - An implementing agent's job is: branch from `origin/main`, implement its PR section from
   `TODO.md`, run `./gradlew check` (and the screenshot/device tests the section names), open a
   draft PR with the `open-pr` conventions, and return the PR number.
@@ -1010,6 +1037,6 @@ return results.filter(Boolean)
 ```
 
 The orchestrator (Opus) then reports the open PRs; the human reviews, merges, and starts the
-next phase with the next list of ids. Two practical notes: the Workflow tool needs an explicit
+next wave with the next list of ids. Two practical notes: the Workflow tool needs an explicit
 opt-in per session ("use a workflow"), and implementing agents can't answer questions mid-run,
 so anything ambiguous has to be settled in this spec first, which is exactly why it's this long.
