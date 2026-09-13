@@ -43,7 +43,7 @@ to use `USE_EXACT_ALARM` and full-screen intents without Play policy review.
 | # | Render | Screen | Notes |
 |---|--------|--------|-------|
 | 1 | ![](docs/renders/1-onboarding.png) | **Onboarding / permissions** | Checklist of grants; rows flip to "Granted" as they come back. Continue enabled once required ones are granted. Reachable later from overflow → "Permissions". |
-| 2 | ![](docs/renders/2-day-view-selecting.png) | **Day view, selecting** | Top bar: date + subtitle ("4 meetings · 2 selected"), Today button, overflow. All-day row. Timeline. Outlined chip = not selected, filled chip + check = selected, dashed + strikethrough = declined. Red now-line on today. FAB "Set alarms (N)". |
+| 2 | ![](docs/renders/2-day-view-selecting.png) | **Day view, selecting** | Top bar: date + subtitle ("3 meetings · 2 selected"), Today button, overflow. All-day row. Timeline. Outlined chip = not selected, filled chip + check = selected, dashed + strikethrough = declined. Red now-line on today. FAB "Set alarms (N)". |
 | 3 | ![](docs/renders/3-alarms-set.png) | **Alarms set** | Selected chips show a bell + the alarm time. Subtitle "3 alarms set · not shared yet". Snackbar confirms. FAB becomes primary-filled "Share schedule". |
 | 4 | ![](docs/renders/4-share-schedule.png) | **Share sheet** | System sharesheet; our text is plain, times only. |
 | 5 | ![](docs/renders/5-alarm-ringing.png) | **Alarm ringing** | Full-screen, dark, over lock screen. Big clock, meeting title, time, Dismiss / Snooze. Shows which random sound is playing (debug aid, keep it subtle). |
@@ -234,14 +234,32 @@ data class CalendarEvent(
     val selfStatus: SelfStatus,           // ACCEPTED / TENTATIVE / DECLINED / NEEDS_ACTION / NONE
     val status: EventStatus,              // CONFIRMED / TENTATIVE / CANCELED
     val isOrganizer: Boolean,
-    val attendeeCount: Int,               // 0 or 1 = "solo block", not a meeting
+    val hasAttendeeData: Boolean,         // Instances.HAS_ATTENDEE_DATA; false = self-only data (Exchange, shared cals)
+    val humanAttendees: Int,              // Attendees rows excluding TYPE_RESOURCE; 0 when hasAttendeeData is false
     val availability: Availability,       // BUSY / FREE
-)
+) {
+    /** THE definition of "meeting". Every count, share line and change-detection rule uses this. */
+    val isMeeting: Boolean
+        get() = !allDay &&
+            status != EventStatus.CANCELED &&
+            selfStatus != SelfStatus.DECLINED &&
+            availability == Availability.BUSY &&
+            if (hasAttendeeData) humanAttendees >= 2 else selfStatus != SelfStatus.NONE
+}
 ```
 
-What counts as a **meeting** for the subtitle counts and the share text: not all-day, not
-cancelled, not declined by me, availability BUSY. Everything else still renders (dimmed / dashed)
-so the day looks like the calendar, but isn't counted.
+`isMeeting` is the **single canonical rule**; §4.1 and §4.3 refer back to it rather than
+restating it. Reading it: a meeting is a timed, un-cancelled, busy block that you haven't
+declined **and** that involves someone else. "Someone else" is decided by the attendee table when
+the provider has full attendee data (you plus at least one other human), and by "was I invited at
+all" (`SELF_ATTENDEE_STATUS != NONE`) when the calendar only syncs self-only data. Google doesn't
+create a self-attendee row for events with no guests, so a solo block on a Google calendar has
+`NONE` and no attendee rows either way. Examples from render 2: "Daily standup" and "Design
+review" are meetings; "Dentist" (personal calendar, no guests) and "School pickup" (Family
+calendar, no guests) are **solo blocks**: rendered, selectable, alarm-able, listed in the share
+text if selected, but not counted in "3 meetings" and never surfaced as *new* by change
+detection. Everything that isn't a meeting still renders (dimmed / dashed) so the day looks like
+the calendar.
 
 Room (`MeetingMinderDatabase`, `exportSchema = true` this time so migrations are reviewable):
 
@@ -254,8 +272,10 @@ scheduled_alarm     (alarm_id INTEGER PK autoincrement, date TEXT, event_id, beg
 change_snapshot     (date TEXT PK, taken_at INTEGER, events_json TEXT /* minimal per-event fingerprint list */)
 ```
 
-`selected_event` stores the title/end so the ringing screen and boot-reschedule work without
-re-querying the provider (and so we notice if an instance was moved: same key, different times).
+`selected_event` and `scheduled_alarm` deliberately **duplicate** `title`/`end_millis`
+(denormalised on purpose): the ringing screen and the boot-reschedule path must work without
+touching the provider, and the copies let us notice when an instance was moved (same key,
+different times). `selected_event.alarm_id` is a plain pointer into `scheduled_alarm`.
 
 ### 3.5 Day view UI (Compose)
 
@@ -290,7 +310,7 @@ whose opinionated chips would fight our selection styling; Kizitonwose is a mont
 - FAB: `ExtendedFloatingActionButton` inside `AnimatedVisibility`, label/icon swapped via
   `AnimatedContent` (`FabState.Hidden / SetAlarms(n) / Share`). Timeline content gets 88dp bottom
   padding so the last events clear the FAB.
-- Subtitle in the app bar is the state summary ("4 meetings · 2 selected" / "3 alarms set · not
+- Subtitle in the app bar is the state summary ("3 meetings · 2 selected" / "3 alarms set · not
   shared yet" / "shared 8:12 AM").
 
 ### 3.6 Testing & previews
@@ -378,10 +398,9 @@ with exceptions and EXDATEs applied, every `Events` + `Calendars` column joined 
 - Multi-day / midnight-spanning events: clamp to the day for layout; an event ending exactly at
   00:00 does not belong to the next day.
 - Attendees: one batched query `Attendees.EVENT_ID IN (…)` per day (not per event) to compute
-  `attendeeCount` (excluding `TYPE_RESOURCE` rooms) and whether the user is organizer. This is the
-  "meeting vs solo block" signal: meeting = `HAS_ATTENDEE_DATA = 1` and ≥2 humans, or
-  `SELF_ATTENDEE_STATUS != NONE`. Solo blocks (focus time, personal todos) still render and are
-  selectable, they just aren't counted in "4 meetings".
+  `humanAttendees` (excluding `TYPE_RESOURCE` rooms) and whether the user is organizer. Together
+  with `HAS_ATTENDEE_DATA` and `SELF_ATTENDEE_STATUS` that feeds `CalendarEvent.isMeeting`
+  (§3.4), the one place "meeting vs solo block" is decided.
 
 **Identity**: `Instances._ID` is regenerated whenever the provider re-expands (timezone change,
 window move, some syncs) and must never be persisted. `Events._ID` is stable on-device. Our
@@ -419,6 +438,9 @@ adb shell content insert --uri content://com.android.calendar/events --bind cale
 
 ### 4.2 Share text
 
+A share always covers **exactly one day**: the day being viewed. Sharing a future day produces
+a message specific to that date (same format, that day's date in the header), and each shared
+day is tracked, monitored and re-shared independently. There is never a multi-day message.
 Generated by a pure `ScheduleTextFormatter(date, busyRanges, zone, settings)`:
 
 ```
@@ -472,13 +494,16 @@ Mechanism (layered, cheapest first):
 End-to-end latency for a Google Calendar invite is typically 30–90 s (sync push + the provider's
 30 s sync-write debounce + our 5 s settle).
 
-**Differ** (`ChangeDetector`, pure): input = the `sharedSnapshot` fingerprints stored at share time
-(`EventKey → (begin, end, cancelled, declinedByMe)`) and a fresh `Instances` query for
-`[now, end of local day]`; output = `List<ScheduleChange>`:
+**Differ** (`ChangeDetector`, pure): runs once per **shared day** (every `day_plan` row with
+`shared_at != null` and `date ≥ today`). Input = that day's `sharedSnapshot` fingerprints stored
+at share time (`EventKey → (begin, end, cancelled, declinedByMe)`) and a fresh `Instances` query
+for `[max(now, start of that local day), end of that local day]`; output = `List<ScheduleChange>`
+tagged with the day. For today that window is "the rest of today"; for a future day it's the
+whole day, so a meeting added to tomorrow the evening before is reported right away.
 
 | Case | Rule |
 |---|---|
-| New | key absent from snapshot, begin ≥ now, is a meeting (see 4.1), not declined, not FREE |
+| New | key absent from snapshot, begin ≥ now, `isMeeting` (§3.4) |
 | Moved | same key, begin/end differ, new slot ends after now |
 | Cancelled | key in snapshot but gone / `STATUS_CANCELED`, and it hadn't started yet |
 | Declined by me | key in snapshot, now `SELF_ATTENDEE_STATUS = DECLINED` |
@@ -492,10 +517,14 @@ End-to-end latency for a Google Calendar invite is typically 30–90 s (sync pus
 `PendingIntent.getActivity` (no trampolines). Re-sharing cancels the notification and replaces the
 snapshot. The same changes show as an in-app banner on the day view.
 
-**Lifecycle**: monitoring starts at share time and stops at local midnight (the trigger worker
-doesn't re-arm once `date != today`; a delayed one-time work at midnight cancels the unique work
-and the notification) or when no future meetings remain. New meetings that are *not* meetings by
-our heuristic (solo blocks) are ignored. `day_plan.shared_at == null` → nothing runs.
+**Lifecycle**: monitoring is **per shared day**, not "today only", because §2 lets you set alarms
+and share for any day. It starts when a day is shared and covers that day until its local
+midnight passes. The trigger worker re-arms itself while *any* shared day is still today-or-later;
+a delayed one-time work scheduled for the last shared day's midnight cancels the unique work and
+any lingering notification. A day's notification is cancelled when that day ends or is
+re-shared. The notification title names the day when it isn't today ("Your Tuesday schedule
+changed since you shared it"). Non-meetings (solo blocks, per `isMeeting`) never trigger a
+change. No `day_plan` row with `shared_at != null` and `date ≥ today` → nothing runs.
 
 **Testing**: `ChangeDetector` is plain JVM. Worker tests via `WorkManagerTestInitHelper` +
 `TestDriver.setAllConstraintsMet`. On device: `adb shell content insert/update/delete` on the test
@@ -507,7 +536,11 @@ trigger; `adb shell cmd jobscheduler run -f <pkg> <jobId>` to force it.
 **Permissions.** Not being on Play means we declare `USE_EXACT_ALARM` (API 33+, normal
 permission, auto-granted, not revocable) plus `SCHEDULE_EXACT_ALARM` with `maxSdkVersion="32"`
 for Android 12/12L where it's pre-granted but revocable. Important correction from the research:
-on Android 14+ `setAlarmClock()` **does** require the exact-alarm grant, same as `setExact`. We
+on Android 14+ `setAlarmClock()` **does** require the exact-alarm grant, same as `setExact`
+(Google's own list in [Schedule exact alarms are denied by default](https://developer.android.com/about/versions/14/changes/schedule-exact-alarms)
+names `setExact`, `setExactAndAllowWhileIdle` **and** `setAlarmClock`; the only exact call that
+skips the permission is the `OnAlarmListener` overload, which dies with the process and is
+useless for us). Re-verify that page when bumping `targetSdk`. We
 always gate on `AlarmManager.canScheduleExactAlarms()` (true whenever either permission applies)
 and listen for `ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` to re-arm. Nothing in
 Android 15–17 changed exact alarms except the Android 17 audio hardening below, which actually
@@ -729,8 +762,8 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 - [ ] **PR-11: Change detection + notification.** `ChangeDetector` (pure, tested for each row of
   the §4.3 table), `change_snapshot` handling, `CalendarChangeWorker` (content-URI-triggered
-  one-time work that re-arms itself) + the 30-min periodic safety net, monitoring start/stop
-  lifecycle, `schedule_updates` notification with Review / Share update deep links
+  one-time work that re-arms itself) + the 30-min periodic safety net, per-shared-day monitoring
+  start/stop lifecycle (today and future days), `schedule_updates` notification with Review / Share update deep links
   (`meetingminder://day/{date}`, `meetingminder://share/{date}` handled in `Navigation.kt`),
   in-app "changed since you shared" banner, re-share clears everything. `WorkManagerTestInitHelper`
   tests.
