@@ -1,0 +1,6 @@
+# Permissions allowed in the merged release manifest (our own plus anything merged
+# in from libraries). Verified by :app:verifyReleasePermissions (runs with `check`).
+# Meeting Minder does need permissions (calendar read/write, notifications, exact
+# alarms, boot, vibrate, foreground service) — they get added here alongside the
+# feature that needs them. INTERNET must never appear: the app never talks to a
+# server itself (see AGENTS.md).

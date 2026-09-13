@@ -1,0 +1,153 @@
+name: Build Installers
+on:
+  pull_request:
+    # labeled is included so applying 'build-release' reruns the android job
+    # as a signed release build
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+env:
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dkotlin.incremental=false"
+jobs:
+  android-apk:
+    runs-on: ubuntu-latest
+    # PRs build debug; pushes to main/tags (and manual runs) build a signed
+    # release. A PR authored by ghackett with the 'build-release' label also
+    # builds a signed release.
+    env:
+      BUILD_TYPE: ${{ (github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'build-release') && github.event.pull_request.user.login == 'ghackett')) && 'release' || 'debug' }}
+    outputs:
+      build-type: ${{ steps.build-info.outputs.build-type }}
+      artifact-url: ${{ steps.upload-apk.outputs.artifact-url }}
+    steps:
+      # full history: snapshot versionCodes derive from the git commit count
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 23
+        uses: actions/setup-java@v5
+        with:
+          java-version: '23'
+          distribution: 'zulu'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Decode release keystore
+        if: env.BUILD_TYPE == 'release'
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE" ]; then
+            echo "ANDROID_KEYSTORE secret is not set; refusing to build an unsigned release" >&2
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/keystore.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/keystore.jks" >> "$GITHUB_ENV"
+      # check includes android lint + unit tests for :app
+      - name: Check and build APK
+        run: ./gradlew check :app:assemble${{ env.BUILD_TYPE == 'release' && 'Release' || 'Debug' }}
+        env:
+          ANDROID_KEYSTORE_ROOT_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_ROOT_PASSWORD }}
+          ANDROID_KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_KEY_PASSWORD }}
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-android-job
+          path: app/build/test-results/
+          if-no-files-found: ignore
+      # job-level env isn't reliably available in job outputs, so surface
+      # BUILD_TYPE through a step output for the apk-comment job
+      - name: Record build type
+        id: build-info
+        run: echo "build-type=$BUILD_TYPE" >> "$GITHUB_OUTPUT"
+      # archive: false uploads the APK as-is (not wrapped in a zip).
+      # Only a single file may be uploaded this way and its filename becomes
+      # the artifact name.
+      - name: Upload APK artifact
+        id: upload-apk
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/apk/${{ env.BUILD_TYPE }}/*.apk
+          archive: false
+          if-no-files-found: error
+
+  apk-comment:
+    needs: [android-apk]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # commit comments
+      pull-requests: write   # PR comments
+    env:
+      ARTIFACT_URL: ${{ needs.android-apk.outputs.artifact-url }}
+      BUILD_TYPE: ${{ needs.android-apk.outputs.build-type }}
+      # PAT with contents:write on episode6/qrcodes; QR steps are skipped
+      # (and the comment posts without an image) when it isn't configured
+      QRCODES_TOKEN: ${{ secrets.QRCODES_GITHUB_TOKEN }}
+    steps:
+      - name: Generate QR code and push it to episode6/qrcodes
+        id: qr
+        if: env.QRCODES_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.QRCODES_GITHUB_TOKEN }}
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq qrencode
+          qrencode -o qr.png -s 8 -m 2 "$ARTIFACT_URL"
+          path="meeting-minder/run-${{ github.run_id }}-${{ github.run_attempt }}.png"
+          gh api -X PUT "repos/episode6/qrcodes/contents/$path" \
+            -f message="Add APK QR code for meeting-minder run ${{ github.run_id }} (attempt ${{ github.run_attempt }})" \
+            -f content="$(base64 -w0 qr.png)" > /dev/null
+          echo "image-url=https://raw.githubusercontent.com/episode6/qrcodes/main/$path" >> "$GITHUB_OUTPUT"
+      - name: Comment APK link on the PR or commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QR_IMAGE_URL: ${{ steps.qr.outputs.image-url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # for PRs, use the head sha (github.sha would be the merge commit)
+          BUILD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          SHORT_SHA="${BUILD_SHA:0:7}"
+          {
+            echo "<!-- apk-build-comment -->"
+            echo "### 📦 ${BUILD_TYPE^} APK from this build"
+            echo
+            echo "Built from commit [\`${SHORT_SHA}\`](${{ github.server_url }}/${{ github.repository }}/commit/${BUILD_SHA})"
+            echo
+            echo "**[Download the APK](${ARTIFACT_URL})** (workflow-run artifact; requires a GitHub login and expires with the run's retention window)"
+            if [ -n "$QR_IMAGE_URL" ]; then
+              echo
+              echo "Scan to download on a device:"
+              echo
+              echo "![QR code linking to the APK](${QR_IMAGE_URL})"
+            fi
+          } > comment.md
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # keep one comment per PR: update the marker comment if it exists
+            existing=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" --paginate \
+              --jq '.[] | select(.body | startswith("<!-- apk-build-comment -->")) | .id' | head -n1)
+            if [ -n "$existing" ]; then
+              gh api -X PATCH "repos/${{ github.repository }}/issues/comments/${existing}" -F body=@comment.md > /dev/null
+            else
+              gh api -X POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" -F body=@comment.md > /dev/null
+            fi
+          else
+            gh api -X POST "repos/${{ github.repository }}/commits/${{ github.sha }}/comments" -F body=@comment.md > /dev/null
+          fi
+
+  release:
+    needs: [android-apk]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Attach artifacts to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*

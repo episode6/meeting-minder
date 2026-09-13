@@ -1,0 +1,61 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Placeholder launcher art: a day sheet with an alarm clock on it. Scaled to keep
+         everything inside the 33dp-radius circular safe zone of the adaptive icon
+         (the outermost corners land ~33dp from center at 0.8x). -->
+    <group
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:pivotX="54"
+        android:pivotY="56"
+        android:translateY="-2">
+
+        <!-- binding tabs (drawn first so the header band overlaps their lower half) -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M37,30 A3,3 0 0,1 40,33 L40,42 L34,42 L34,33 A3,3 0 0,1 37,30 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M71,30 A3,3 0 0,1 74,33 L74,42 L68,42 L68,33 A3,3 0 0,1 71,30 Z" />
+
+        <!-- day sheet -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M28,36 L80,36 C82.2,36 84,37.8 84,40 L84,80 C84,82.2 82.2,84 80,84 L28,84 C25.8,84 24,82.2 24,80 L24,40 C24,37.8 25.8,36 28,36 Z" />
+
+        <!-- header band -->
+        <path
+            android:fillColor="#E65C00"
+            android:pathData="M28,36 L80,36 C82.2,36 84,37.8 84,40 L84,48 L24,48 L24,40 C24,37.8 25.8,36 28,36 Z" />
+
+        <!-- meeting rows -->
+        <path
+            android:fillColor="#E0D6CF"
+            android:pathData="M30,54 L54,54 L54,60 L30,60 Z" />
+        <path
+            android:fillColor="#E0D6CF"
+            android:pathData="M30,66 L46,66 L46,72 L30,72 Z" />
+
+        <!-- alarm clock: white knockout ring, orange face, white hands -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,68 A14,14 0 1,1 82,68 A14,14 0 1,1 54,68 Z" />
+        <path
+            android:fillColor="#E65C00"
+            android:pathData="M57,68 A11,11 0 1,1 79,68 A11,11 0 1,1 57,68 Z" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round"
+            android:pathData="M68,68 L68,61" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round"
+            android:pathData="M68,68 L73,71" />
+    </group>
+</vector>
