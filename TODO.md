@@ -28,7 +28,7 @@ re-send the schedule when meetings appear or move.
   plays a **randomized, obnoxious** alert so you don't habituate to it. Onboarding walks the user
   through every permission/special access needed.
 - **Background monitoring**: after you've shared, the app notices new/moved/cancelled meetings
-  for the rest of the day and posts a "your schedule changed since you shared it" notification with
+  for the rest of that day and posts a "your schedule changed since you shared it" notification with
   a one-tap re-share.
 
 Not on Google Play; distributed as APKs from GitHub releases like headache-tracker. That frees us
@@ -224,8 +224,17 @@ com.episode6.meetingminder
 ### 3.4 Data model
 
 ```kotlin
-/** Stable identity of one instance of a (possibly recurring) event. */
-data class EventKey(val eventId: Long, val beginMillis: Long)
+/**
+ * Stable identity of one event occurrence that SURVIVES the occurrence being moved.
+ *  - non-recurring event:            EventKey(eventId, instanceTime = 0)
+ *  - occurrence of a series:         EventKey(seriesId, originalInstanceTime)
+ *      where originalInstanceTime = ORIGINAL_INSTANCE_TIME for an exception event
+ *      (ORIGINAL_ID != null) and Instances.BEGIN for a not-yet-excepted occurrence.
+ * A plain event dragged to a new time keeps its key; a single occurrence edited in Google
+ * (which becomes an exception event with a new Events._ID) maps back to the same key; a whole
+ * series shifted by its organizer changes every occurrence's key and is treated as gone + new.
+ */
+data class EventKey(val eventId: Long, val instanceTime: Long)
 
 data class CalendarEvent(
     val key: EventKey,
@@ -273,20 +282,25 @@ Room (`MeetingMinderDatabase`, `exportSchema = true` this time so migrations are
 
 ```
 day_plan            (date TEXT PK, alarms_set_at INTEGER?, shared_at INTEGER?, shared_snapshot TEXT? /*json BusyRange[]*/)
-selected_event      (date TEXT, event_id INTEGER, begin_millis INTEGER, title TEXT, end_millis INTEGER,
+selected_event      (date TEXT, event_id INTEGER, instance_time INTEGER /*EventKey; 0 for non-recurring*/,
+                     title TEXT, begin_millis INTEGER, end_millis INTEGER /*last seen times*/,
                      alarm_id INTEGER?, alarm_at INTEGER?,
                      rsvp_state TEXT /*NOT_APPLICABLE|PENDING|ACCEPTED_LOCALLY|SYNCED|FAILED*/,
                      rsvp_event_id INTEGER? /*exception event id when we answered one instance*/,
-                     PK(date, event_id, begin_millis))
-scheduled_alarm     (alarm_id INTEGER PK autoincrement, date TEXT, event_id, begin_millis, fire_at INTEGER,
-                     title TEXT, end_millis, sound_index INTEGER, state TEXT /*SCHEDULED|FIRED|DISMISSED|SNOOZED|CANCELLED*/)
-change_snapshot     (date TEXT PK, taken_at INTEGER, events_json TEXT /* minimal per-event fingerprint list */)
+                     PK(date, event_id, instance_time))
+scheduled_alarm     (alarm_id INTEGER PK autoincrement, date TEXT, event_id, instance_time, fire_at INTEGER,
+                     title TEXT, begin_millis, end_millis, sound_index INTEGER,
+                     state TEXT /*SCHEDULED|FIRED|DISMISSED|SNOOZED|CANCELLED*/)
+change_snapshot     (date TEXT PK, taken_at INTEGER, events_json TEXT
+                     /* [{key: EventKey, begin, end, cancelled, declinedByMe, selected, isMeeting}] */)
 ```
 
 `selected_event` and `scheduled_alarm` deliberately **duplicate** `title`/`end_millis`
 (denormalised on purpose): the ringing screen and the boot-reschedule path must work without
-touching the provider, and the copies let us notice when an instance was moved (same key,
-different times). `selected_event.alarm_id` is a plain pointer into `scheduled_alarm`.
+touching the provider, and because the key no longer contains the time, the stored
+`begin_millis` is what lets us notice a selected event was **moved** (same key, different times)
+and reschedule its alarm (§4.4). `selected_event.alarm_id` is a plain pointer into
+`scheduled_alarm`.
 
 ### 3.5 Day view UI (Compose)
 
@@ -416,10 +430,14 @@ with exceptions and EXDATEs applied, every `Events` + `Calendars` column joined 
 
 **Identity**: `Instances._ID` is regenerated whenever the provider re-expands (timezone change,
 window move, some syncs) and must never be persisted. `Events._ID` is stable on-device. Our
-`EventKey` is `(eventId, beginMillis)` normalised so an edited single occurrence of a series
-(which becomes a new exception event with `ORIGINAL_ID = seriesId`, `ORIGINAL_INSTANCE_TIME =
-old begin`) maps back to `(originalId, originalInstanceTime)`. This is what lets us say "moved"
-instead of "one gone, one new".
+`EventKey` (§3.4) deliberately **excludes the current start time** so identity survives a
+move: a non-recurring event is `(eventId, 0)`; an occurrence of a series is `(seriesId,
+originalInstanceTime)`, where a not-yet-excepted occurrence uses `Instances.BEGIN` and an
+exception event (`ORIGINAL_ID = seriesId`, `ORIGINAL_INSTANCE_TIME = old begin`) maps back to the
+same key. So a plain event dragged from 12:00 to 12:30 and a single occurrence edited in Google
+both read as "moved"; only a whole series shifted by its organizer reads as "gone + new", which
+is acceptable (the user re-selects). Recurring occurrences are recognised by a non-null `RRULE`
+or `RDATE` on the instance, or a non-null `ORIGINAL_ID`.
 
 **Open in calendar** (long-press): `ACTION_VIEW` on
 `content://com.android.calendar/events/{eventId}` with `EXTRA_EVENT_BEGIN_TIME`/`END_TIME` set to
@@ -507,18 +525,28 @@ End-to-end latency for a Google Calendar invite is typically 30–90 s (sync pus
 30 s sync-write debounce + our 5 s settle).
 
 **Differ** (`ChangeDetector`, pure): runs once per **shared day** (every `day_plan` row with
-`shared_at != null` and `date ≥ today`). Input = that day's `sharedSnapshot` fingerprints stored
-at share time (`EventKey → (begin, end, cancelled, declinedByMe)`) and a fresh `Instances` query
+`shared_at != null` and `date ≥ today`). Two different things are stored at share time and it
+matters which is which: `day_plan.shared_snapshot` is the **busy ranges** that went into the
+message (used to build the "Update:" text), while the **`change_snapshot`** table is the differ's
+baseline: every event on that day (selected or not, meeting or not) as
+`EventKey → (begin, end, cancelled, declinedByMe, selected, isMeeting)`. PR-9 writes both at
+share time; PR-11 reads `change_snapshot`. Input = that baseline plus a fresh `Instances` query
 for `[max(now, start of that local day), end of that local day]`; output = `List<ScheduleChange>`
 tagged with the day. For today that window is "the rest of today"; for a future day it's the
 whole day, so a meeting added to tomorrow the evening before is reported right away.
 
+Scope rule, so we never nag about things that don't change what was shared: **New** applies to
+any `isMeeting` event, selected or not (you'd want to know about a new invite); **Moved /
+Cancelled / Declined** apply only to keys that were **selected** at share time, whether or not
+they're meetings (a selected solo block that moves changes your busy ranges; an unselected
+meeting that moves doesn't).
+
 | Case | Rule |
 |---|---|
-| New | key absent from snapshot, begin ≥ now, `isMeeting` (§3.4) |
-| Moved | same key, begin/end differ, new slot ends after now |
-| Cancelled | key in snapshot but gone / `STATUS_CANCELED`, and it hadn't started yet |
-| Declined by me | key in snapshot, now `SELF_ATTENDEE_STATUS = DECLINED` |
+| New | key absent from snapshot, begin ≥ now, `isMeeting` (§3.4); selection irrelevant |
+| Moved | selected key, begin/end differ from the snapshot, new slot ends after now |
+| Cancelled | selected key gone / `STATUS_CANCELED`, and it hadn't started yet |
+| Declined by me | selected key, now `SELF_ATTENDEE_STATUS = DECLINED` |
 | Ignored | title/colour/description/reminder/attendee-list edits, sync rewrites with identical values, events already over, all-day events |
 
 **Notification** (channel `schedule_updates`, `IMPORTANCE_DEFAULT`, fixed id, `setOnlyAlertOnce`,
@@ -535,8 +563,8 @@ midnight passes. The trigger worker re-arms itself while *any* shared day is sti
 a delayed one-time work scheduled for the last shared day's midnight cancels the unique work and
 any lingering notification. A day's notification is cancelled when that day ends or is
 re-shared. The notification title names the day when it isn't today ("Your Tuesday schedule
-changed since you shared it"). Non-meetings (solo blocks, per `isMeeting`) never trigger a
-change. No `day_plan` row with `shared_at != null` and `date ≥ today` → nothing runs.
+changed since you shared it"). Unselected non-meetings never trigger a change (see the scope
+rule above). No `day_plan` row with `shared_at != null` and `date ≥ today` → nothing runs.
 
 **Testing**: `ChangeDetector` is plain JVM. Worker tests via `WorkManagerTestInitHelper` +
 `TestDriver.setAllConstraintsMet`. On device: `adb shell content insert/update/delete` on the test
@@ -589,8 +617,12 @@ temporary allowlist that permits starting a foreground service from the backgrou
   the day view.
 - `scheduled_alarm` is the source of truth. `SetAlarms(date)` reconciles the table against the
   current selection: cancel rows for deselected events, insert+schedule for new ones, keep
-  unchanged ones. The same action fans out one `RsvpAccept` per newly-armed event (§4.6);
-  alarm scheduling never waits on the RSVP. `RescheduleReceiver` re-arms every `SCHEDULED` row from Room on
+  unchanged ones, and **re-times** rows whose selected event has moved (`selected_event.begin_millis`
+  differs from the fresh instance's `BEGIN`): the alarm is cancelled and re-set at the new time
+  and the stored times updated. That reconcile also runs on `CalendarContentChanged`, so a moved
+  meeting keeps its alarm without the user doing anything (the change banner still tells them).
+  The same action fans out one `RsvpAccept` per newly-armed event (§4.6); alarm scheduling
+  never waits on the RSVP. `RescheduleReceiver` re-arms every `SCHEDULED` row from Room on
   `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`, and on the exact-alarm
   permission-state broadcast. Alarms are cancelled by the OS on shutdown, so the boot path is
   mandatory. No direct-boot handling (the calendar provider isn't readable before first unlock).
@@ -762,7 +794,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 0 — Repo skeleton
 
-- [ ] **PR-1: Repo scaffold from the episode6 app template.** Copy near-verbatim from
+- [ ] **PR-1: Repo scaffold from the episode6 app template.** `[Opus 5, effort high]` Copy near-verbatim from
   headache-tracker: `settings.gradle.kts`, root `build.gradle.kts` (versionCode derivation, snapshot
   app id/name), `self.versions.toml` (`1.0.0`), `gradle.properties`, wrapper (9.5.1),
   `build-logic/` with `release-verification`, `app/build.gradle.kts` skeleton (signing configs,
@@ -774,7 +806,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   targets in §3.1 plus redux-store-flow 1.1.8, WorkManager, Roborazzi, assertk, Turbine.
   `MainActivity` shows "Meeting Minder" in the theme. `expected-permissions.txt` empty,
   `expected-dependencies.txt` generated. CI must be green on this PR before anything else merges.
-- [ ] **PR-2: DI + store + theme + navigation shell.** Metro `AppGraph` (context, app
+- [ ] **PR-2: DI + store + theme + navigation shell.** `[Opus 5, effort high]` Metro `AppGraph` (context, app
   `CoroutineScope`, Room DB provider, DataStore, `AppStore`), `AppMetroViewModelFactory`,
   `MeetingMinderApp`, `Context.appGraph`, `AppState`/actions/reducer with reducer unit tests,
   `SideEffectMiddleware` wiring with an `@IntoSet` contribution pattern and one no-op side effect
@@ -784,7 +816,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 1 — Read the calendar and show the day
 
-- [ ] **PR-3: Calendar repository.** `model/` types (§3.4), `CalendarRepository` interface,
+- [ ] **PR-3: Calendar repository.** `[Fable 5.1, effort high]` `model/` types (§3.4), `CalendarRepository` interface,
   `ContentResolverCalendarRepository` (calendars query, Instances query with the ±1 day window and
   `START_DAY`/`END_DAY` re-filter, batched attendees query, `EventKey` normalisation for exception
   events), `FakeCalendarRepository`. Robolectric tests against a fake `com.android.calendar`
@@ -792,16 +824,16 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   near midnight in a negative-offset zone, cancelled, declined, hidden calendar. The repository
   also exposes the self-attendee id, access level and organizer-can-respond flags that §4.6 needs.
   `READ_CALENDAR` and `WRITE_CALENDAR` added to the manifest and `expected-permissions.txt`.
-- [ ] **PR-4: Calendar permission + minimal onboarding.** `permissions/PermissionState`,
+- [ ] **PR-4: Calendar permission + minimal onboarding.** `[Sonnet 5, effort medium]` `permissions/PermissionState`,
   `PermissionChecker` (refreshed on `ON_RESUME` via `PermissionsMaybeChanged`), Onboarding screen
   with only the calendar row live and the other rows stubbed as "coming soon", routing: launch →
   onboarding if calendar not granted, else Day. Handles the two-denials → "Open settings" case.
-- [ ] **PR-5: Day timeline UI (static).** `DayTimeline` custom `Layout`, `layoutDay()` overlap
+- [ ] **PR-5: Day timeline UI (static).** `[Opus 5, effort high]` `DayTimeline` custom `Layout`, `layoutDay()` overlap
   packing with unit tests (no overlap, chain of overlaps, three-way, back-to-back sharing a
   column, expansion into free columns), `EventChip` with all visual states, `NowLine`, all-day row,
   hour gutter, `DayViewDefaults`. Only previews + Roborazzi screenshots at this point (states listed
   in §3.6); no data wiring. This is the PR to review the look against `docs/renders/`.
-- [ ] **PR-6: Day pager wired to the store.** `LoadCalendars`/`LoadDayEvents` side effects
+- [ ] **PR-6: Day pager wired to the store.** `[Opus 5, effort medium]` `LoadCalendars`/`LoadDayEvents` side effects
   (`transformLatest`, window = settled ± 1), `DayViewModel` (`DayUiState` per date from the
   store), `HorizontalPager` with anchor/`settledPage` loading, shared `ScrollState` + initial
   scroll, Today action, app-bar subtitle counts, long-press → open in calendar, foreground
@@ -810,11 +842,11 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 2 — Select, alarm, share
 
-- [ ] **PR-7: Selection persistence.** Room `day_plan` + `selected_event` (+ schema export),
+- [ ] **PR-7: Selection persistence.** `[Sonnet 5, effort medium]` Room `day_plan` + `selected_event` (+ schema export),
   `ObserveDayPlans` and `ToggleEvent` side effects, chip toggling with haptics, the FAB in its
   `Hidden`/`SetAlarms(n)` states (tap is a no-op placeholder that shows a snackbar), selection
   survives process death and day paging. Store tests via `runStoreTest`.
-- [ ] **PR-8: Alarm scheduling core.** ∥ with PR-9. `alarm/AlarmScheduler` over `AlarmManager`
+- [ ] **PR-8: Alarm scheduling core.** `[Fable 5.1, effort high]` ∥ with PR-9. `alarm/AlarmScheduler` over `AlarmManager`
   (`setAlarmClock`, unique request codes from `scheduled_alarm.alarm_id`), `scheduled_alarm` table,
   `SetAlarms(date)` side effect that reconciles (cancel deselected, schedule new, skip past with a
   snackbar count), lead time setting (default 5 min) in `SettingsRepository`, `BootReceiver` +
@@ -822,17 +854,18 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   plain high-priority notification. Permissions: exact alarm (see §4.4), `RECEIVE_BOOT_COMPLETED`.
   Onboarding gets the "Alarms & reminders" and "Notifications" rows for real. Unit tests for alarm
   time math and reconciliation; Robolectric `ShadowAlarmManager` test for scheduling/cancelling.
-- [ ] **PR-8b: RSVP on set-alarms.** After PR-8, ∥ with PR-9. `rsvpDecision(event)` (pure, one
+- [ ] **PR-8b: RSVP on set-alarms.** `[Fable 5.1, effort high]` After PR-8, ∥ with PR-9. `rsvpDecision(event)` (pure, one
   test per row of the §4.6 skip table), `CalendarRepository.acceptInstance(key)` doing the
   Attendees update or the exception insert, the `RsvpAccept` side effect fanned out from
   `SetAlarms`, `rsvp_state`/`rsvp_event_id` columns, the "sent" tick and "couldn't RSVP" hint on
   chips, Robolectric tests for both write shapes, and the emulator seeding recipe in the `verify`
   skill. Manual check against a real Google account before this merges.
-- [ ] **PR-9: Share schedule.** ∥ with PR-8. `ScheduleTextFormatter` (pure, tested: merging,
+- [ ] **PR-9: Share schedule.** `[Sonnet 5, effort medium]` ∥ with PR-8. `ScheduleTextFormatter` (pure, tested: merging,
   AM/PM elision, empty day, midnight-spanning), `ShareDay`/`SharedDay` side effects writing
-  `shared_at` + `shared_snapshot`, the FAB's `Share` state (unlocked once `alarms_set_at != null`),
+  `shared_at` + `shared_snapshot` and the `change_snapshot` baseline (§4.3), the FAB's `Share`
+  state (unlocked once `alarms_set_at != null`),
   "Share again"/"Mark as not shared" overflow items, `ShareCompat` launch from `Navigation.kt`.
-- [ ] **PR-10: Alarm ringing experience.** `AlarmRingingService` (foreground service, started by
+- [ ] **PR-10: Alarm ringing experience.** `[Opus 5, effort xhigh]` `AlarmRingingService` (foreground service, started by
   `AlarmReceiver`, plays sound + vibrates, posts the full-screen-intent notification),
   `AlarmActivity` (`showWhenLocked`/`turnScreenOn`, dismiss keyguard, Compose `AlarmRingingScreen`
   from the store's `ringing` state, Dismiss/Snooze, back disabled), `AlarmSoundPlayer` with the
@@ -844,26 +877,26 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 3 — Watch the day
 
-- [ ] **PR-11: Change detection + notification.** `ChangeDetector` (pure, tested for each row of
+- [ ] **PR-11: Change detection + notification.** `[Opus 5, effort high]` `ChangeDetector` (pure, tested for each row of
   the §4.3 table), `change_snapshot` handling, `CalendarChangeWorker` (content-URI-triggered
   one-time work that re-arms itself) + the 30-min periodic safety net, per-shared-day monitoring
   start/stop lifecycle (today and future days), `schedule_updates` notification with Review / Share update deep links
   (`meetingminder://day/{date}`, `meetingminder://share/{date}` handled in `Navigation.kt`),
   in-app "changed since you shared" banner, re-share clears everything. `WorkManagerTestInitHelper`
   tests.
-- [ ] **PR-12: Settings screen.** Lead time, snooze length, auto-timeout, calendars list with
+- [ ] **PR-12: Settings screen.** `[Sonnet 5, effort medium]` Lead time, snooze length, auto-timeout, calendars list with
   per-calendar include toggles (and "not syncing" hints), show-declined toggle, sound pack choice
   ("all", "bundled only", "system only"), test-alarm button, permissions status re-entry to
   onboarding, licences link. DataStore-backed `SettingsRepository`.
 
 ### Phase 4 — Polish and ship
 
-- [ ] **PR-13: Robustness.** `PROVIDER_CHANGED` accelerator receiver, battery-optimisation
+- [ ] **PR-13: Robustness.** `[Opus 5, effort high]` `PROVIDER_CHANGED` accelerator receiver, battery-optimisation
   onboarding row (optional, only shown if `isIgnoringBatteryOptimizations` is false), midnight
   rollover while the app is open (anchor date refresh), timezone change handling for stored
   alarms, "restricted" standby bucket warning, dark theme pass over every screen, large font
   scale pass, TalkBack pass (chip `stateDescription`, gutter labels cleared from semantics).
-- [ ] **PR-14: Release prep.** Real launcher icon + `project-icon.svg`, `README` screenshots via
+- [ ] **PR-14: Release prep.** `[Sonnet 5, effort medium]` Real launcher icon + `project-icon.svg`, `README` screenshots via
   the `publish-screenshots` skill, `verify` skill rewritten for this app's core flow (including
   the adb calendar-seeding recipe), `THIRD_PARTY_LICENSES.md` reconciled with
   `expected-dependencies.txt`, first `release/v1.0.0` branch per `RELEASE_CHECKLIST.md`.
@@ -887,8 +920,96 @@ that depends on it):
    in Settings.
 6. **"Shared" is recorded when the chooser opens**, since Android can't tell us whether a message
    was sent.
-7. **Monitoring runs only after a share** and only until local midnight.
+7. **Monitoring runs only after a share**, per shared day, until that day's local midnight.
 8. **Lead time default 5 minutes**, snooze 2 minutes, auto-timeout 3 minutes.
 9. **Share text format** in §4.2 (merged ranges, no titles, "Free the rest of the day.").
 10. **RSVP is fire-and-forget and never reversed** (§4.6): alarms don't wait on it, deselecting
     doesn't decline, and organizer/solo/read-only cases are silently skipped.
+
+## 7. Which model implements which PR
+
+Floor is **Sonnet 5**; nothing goes below it. Each PR bullet in §5 carries its tag; this table is
+the rationale. "Effort" is the reasoning-effort hint for the implementing agent.
+
+| PR | Model | Effort | Why |
+|---|---|---|---|
+| PR-1 | Opus 5 | high | Mostly copying files, but the build-system traps (Metro codegen dies in buildSrc, AGP 9 / Gradle 9.5 quirks, signing) need real debugging when CI goes red. |
+| PR-2 | Opus 5 | high | Metro graph + redux store wiring sets the pattern every later PR copies; worth getting right once. |
+| PR-3 | Fable 5.1 | high | Calendar Provider correctness: window math, all-day UTC gotcha, EventKey normalisation, a fake provider under Robolectric. Subtle, load-bearing for everything after. |
+| PR-4 | Sonnet 5 | medium | Straightforward permission plumbing against a spec that already lists every branch. |
+| PR-5 | Opus 5 | high | Custom Layout + the overlap-packing algorithm + screenshot tests. Algorithmic, well specified. |
+| PR-6 | Opus 5 | medium | Pager/store wiring and ContentObserver lifecycle; moderate complexity, clear spec. |
+| PR-7 | Sonnet 5 | medium | Room tables and a toggle side effect; mechanical once PR-2/PR-3 exist. |
+| PR-8 | Fable 5.1 | high | Alarm reliability is the product. PendingIntent equality, boot/time-change rescheduling, reconciliation on moves, ShadowAlarmManager tests. |
+| PR-8b | Fable 5.1 | high | Writes to the user's real calendar; the exception-insert path can crash the provider if the skip table is wrong. |
+| PR-9 | Sonnet 5 | medium | Pure text formatting with tests plus a ShareCompat launch. |
+| PR-10 | Opus 5 | xhigh | Foreground service, full-screen intent, Android 17 audio hardening, randomised sound engine. Many platform rules but all written down in §4.4; escalate to Fable if the device tests won't go green. |
+| PR-11 | Opus 5 | high | WorkManager content-trigger re-arming and the differ; the scope rules in §4.3 are precise but easy to get subtly wrong. |
+| PR-12 | Sonnet 5 | medium | Settings screen over DataStore; UI plumbing. |
+| PR-13 | Opus 5 | high | A grab-bag of edge cases (midnight rollover, timezone changes, TalkBack) that needs judgement about what to test. |
+| PR-14 | Sonnet 5 | medium | Icons, README, licence reconciliation, release branch per the checklist. |
+
+Reviewers should be a **different** model than the implementer where practical (Fable reviews
+Opus/Sonnet work; Opus reviews Fable work). Escalate one tier when a PR's CI or device tests
+fail twice in a row on the same problem.
+
+### Orchestrating this with a Workflow
+
+Yes, this is possible today. Claude Code's `Workflow` tool runs a JavaScript script that spawns
+subagents with `agent(prompt, {model, effort, isolation: 'worktree', schema})`, so an **Opus 5
+session can orchestrate** while each PR is implemented by the model in the table. Constraints
+that shape the script:
+
+- PRs have merge dependencies (PR-2 needs PR-1 merged, PR-6 needs PR-3 and PR-5, …), and a human
+  merges each PR after review. So the orchestrator runs **one phase at a time** and the human
+  merges between phases; within a phase, the PRs marked ∥ run in parallel, each in its own git
+  worktree branch.
+- An implementing agent's job is: branch from `origin/main`, implement its PR section from
+  `TODO.md`, run `./gradlew check` (and the screenshot/device tests the section names), open a
+  draft PR with the `open-pr` conventions, and return the PR number.
+- A second agent, on a different model, reviews the diff against the spec section and the
+  episode6 conventions; the orchestrator feeds its findings back to the implementer (one repair
+  loop, then it stops and reports to the human).
+
+Sketch (the real script lives with the session that runs it; `args` = the list of PR ids to run
+this round):
+
+```js
+export const meta = {
+  name: 'meeting-minder-phase',
+  description: 'Implement one phase of TODO.md: one agent per PR on its assigned model, cross-model review',
+  phases: [{ title: 'Implement' }, { title: 'Review' }, { title: 'Repair' }],
+}
+const PLAN = {
+  'PR-4': { model: 'sonnet', effort: 'medium' },
+  'PR-5': { model: 'opus',   effort: 'high' },
+  'PR-8': { model: 'fable',  effort: 'high' },
+  // ... the §7 table
+}
+const REVIEWER = { opus: 'fable', sonnet: 'fable', fable: 'opus' }
+const RESULT = { type: 'object', properties: { pr: { type: 'integer' }, branch: { type: 'string' },
+                 notes: { type: 'string' } }, required: ['pr', 'branch'] }
+const REVIEW = { type: 'object', properties: { blocking: { type: 'array', items: { type: 'string' } },
+                 summary: { type: 'string' } }, required: ['blocking', 'summary'] }
+
+const results = await pipeline(
+  args,                                                    // e.g. ['PR-4', 'PR-5']
+  id => agent(`Implement ${id} exactly as specified in TODO.md §5 (read the whole spec first).
+    Branch from origin/main, follow AGENTS.md, run ./gradlew check, open a DRAFT PR per the open-pr
+    skill, add the CHANGELOG bullet. Return the PR number and branch.`,
+    { label: `impl:${id}`, phase: 'Implement', schema: RESULT, isolation: 'worktree', ...PLAN[id] }),
+  (r, id) => r && agent(`Review PR #${r.pr} against TODO.md's ${id} section and AGENTS.md. List only
+    blocking problems (spec deviations, missing tests, convention breaks).`,
+    { label: `review:${id}`, phase: 'Review', schema: REVIEW, model: REVIEWER[PLAN[id].model], effort: 'high' })
+    .then(rv => ({ ...r, id, review: rv })),
+  r => r && (r.review.blocking.length === 0 ? r : agent(`Fix these blocking review items on branch
+    ${r.branch} (PR #${r.pr}), push, and summarise: ${r.review.blocking.join('; ')}`,
+    { label: `repair:${r.id}`, phase: 'Repair', ...PLAN[r.id] }).then(n => ({ ...r, repaired: n }))),
+)
+return results.filter(Boolean)
+```
+
+The orchestrator (Opus) then reports the open PRs; the human reviews, merges, and starts the
+next phase with the next list of ids. Two practical notes: the Workflow tool needs an explicit
+opt-in per session ("use a workflow"), and implementing agents can't answer questions mid-run,
+so anything ambiguous has to be settled in this spec first, which is exactly why it's this long.
