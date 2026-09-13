@@ -16,3 +16,7 @@
   it, the release signing config fails fast when only some of its keystore env vars are
   set, and `scripts/verify-docs-updated.sh` prints real newlines instead of literal
   `\n`.
+- Internal: the pre-compose window theme now uses a platform `android:Theme.Material`
+  parent instead of `Theme.Material3` from `com.google.android.material`, dropping that
+  library and the View-system stack behind it (appcompat, fragment, recyclerview,
+  constraintlayout, …) from the release dependency set.

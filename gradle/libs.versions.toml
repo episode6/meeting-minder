@@ -14,7 +14,6 @@ kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.11.0"
 ksp = "2.3.12"
 lifecycle = "2.11.0"
-material = "1.14.0"
 # material3 is pinned by the compose BOM (2026.08.00 -> 1.4.0); the version here only
 # documents what the BOM resolves to
 metro = "1.3.0"
@@ -64,7 +63,6 @@ kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 kotlinx-serialization-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-core", version.ref = "kotlinxSerialization" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
-material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 metro-runtime = { group = "dev.zacsweers.metro", name = "runtime", version.ref = "metro" }
 metrox-viewmodel = { group = "dev.zacsweers.metro", name = "metrox-viewmodel", version.ref = "metro" }
 metrox-viewmodel-compose = { group = "dev.zacsweers.metro", name = "metrox-viewmodel-compose", version.ref = "metro" }
