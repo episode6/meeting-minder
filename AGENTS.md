@@ -156,6 +156,15 @@ Like the package map, this is the **target**: the scaffold has only a licence-no
 - **Compose BOM** pins Compose library versions; the version catalog is `gradle/libs.versions.toml`, and `self.versions.toml` holds the app's own version (single source of truth).
 - Gradle is pinned at **9.5.1**, which caps AGP at **9.3.x** — AGP 9.4+ requires Gradle 9.6. Bump both together or neither.
 
+### CI image
+
+The gradle job in `build-installers.yml` runs inside a prebuilt Docker image, the same scheme as collins. `.github/docker/ci.Dockerfile` is the **single canonical list of build dependencies** (Zulu 21 JDK, which is also the pinned daemon JVM; Android command-line tools, `platforms;android-37.0`, `build-tools;36.0.0`, `platform-tools`; the gradle distribution the wrapper pins, pre-downloaded). The reusable `ci-image.yml` workflow tags the image `ghcr.io/episode6/meeting-minder-ci:<hash>` where the hash covers the Dockerfile, `gradlew`, `gradle/wrapper/**` and `gradle/gradle-daemon-jvm.properties`, and only builds when GHCR lacks that tag — a PR that edits any of those files builds and uses its own image; every other PR finds the tag in seconds.
+
+- **Bumping `compileSdk`, AGP's default build-tools, the Gradle version or the daemon JVM means editing the Dockerfile in the same PR.** The SDK is root-owned inside the image on purpose, so AGP's auto-install of a missing component fails loudly instead of quietly downloading something the Dockerfile doesn't list.
+- Nothing rebuilds on its own: bump the `refreshed:` date comment in the Dockerfile to pick up base-image or package updates.
+- `android-device-tests.yml` stays on the bare runner (the emulator needs `/dev/kvm` and the host's udev rule); the tiny verification workflows do too.
+- To try the image locally: `docker buildx build -f .github/docker/ci.Dockerfile -t meeting-minder-ci:local .`, then run `./gradlew check` inside it as the `runner` user.
+
 ### Versioning & releases
 
 This repo follows the episode6 app-repo shape (see `RELEASE_CHECKLIST.md`, the source of truth):
@@ -181,6 +190,7 @@ This repo follows the episode6 app-repo shape (see `RELEASE_CHECKLIST.md`, the s
 | `EventKey` vs `eventId` | The key survives moves and identifies a *plan*; `eventId` is what provider writes and dirty checks use. They differ for exception events. |
 | Alarms in the past | Skipped, with a snackbar — never silently dropped. |
 | Shallow clones | Snapshot versionCodes come from the git commit count; every gradle-running CI checkout needs `fetch-depth: 0`. |
+| Toolchain bump without the CI image | `compileSdk`, build-tools, Gradle or the daemon JVM changed but `.github/docker/ci.Dockerfile` didn't: the gradle job fails inside the image. Edit the Dockerfile in the same PR. |
 
 ---
 
