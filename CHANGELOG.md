@@ -18,6 +18,17 @@
   `release/v1.0.0` branch is deliberately **not** part of this PR — see the PR body — and
   happens from `main` once the whole PR-1..PR-14 stack has merged, per
   `RELEASE_CHECKLIST.md`.
+- Release prep (PR-14) review fixes: corrected three `verify` skill adb recipes that didn't
+  actually work (`PROVIDER_CHANGED`'s enabled-receiver check now uses `dumpsys package`
+  instead of the nonexistent `pm list receivers`, plus a note that the broadcast needs
+  `adb root` on user builds; the midnight-rollover and timezone bullets now give working
+  `adb shell settings put`/`date` commands instead of a fictitious `adb emu geo` clock
+  control and a `content update` settings write that isn't how Settings is written), fixed
+  the Settings-screen walkthrough's button label and wording ("Test alarm" rings ~10 seconds
+  later, per the actual snackbar text, not "Send test alarm" rings immediately), dropped the
+  stale "Placeholder launcher art" comment from `ic_launcher_foreground.xml` now that the
+  icon is finished work, and reworded TODO.md's PR-14 bullet so it no longer lists cutting
+  `release/v1.0.0` as part of this PR.
 - Robustness (PR-13):
   - **Change monitoring accelerator:** the calendar provider's `PROVIDER_CHANGED` broadcast now triggers a change check a few seconds after a sync (`monitor/CalendarProviderChangedReceiver`, a new `calendar-change-broadcast` unique work). The receiver is enabled only while some day is shared.
   - **Battery optimisation onboarding row:** the "Ignore battery optimization" row is live. It is optional and shown only while the app isn't exempt (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` added to the manifest and `expected-permissions.txt`).

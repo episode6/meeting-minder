@@ -141,8 +141,9 @@ notification and in-app banner arrive.
 
 Settings (overflow → Settings): change the lead time, snooze length, auto-timeout and
 sound pack, toggle a calendar's include switch (the day view should stop/start showing
-that calendar's events), toggle "show declined", and tap "Send test alarm" (rings
-immediately without touching real calendar data — the test event is excluded from
+that calendar's events), toggle the "Show declined events" switch, and tap the
+"Test alarm" button (snackbar reads "Test alarm rings in 10 seconds"; it fires about
+10 seconds later without touching real calendar data — the test event is excluded from
 "N meetings" counts and alarm armed-counts). The permissions row reflects onboarding
 state and re-enters onboarding when tapped.
 
@@ -188,16 +189,25 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
 
 - `adb shell am broadcast -a android.intent.action.PROVIDER_CHANGED -d content://com.android.calendar -p $PKG`
   fires the accelerator receiver directly (it's manifest-disabled and only enabled while a
-  day is shared — check `adb shell pm list receivers $PKG` shows it enabled first).
-- Midnight rollover / anchor date: `adb shell date` can't set time on a non-rooted device,
-  so instead leave the app open and past a real midnight, or use
-  `adb emu geo`-style emulator time controls to jump the clock forward; the viewed day and
-  "Today" target should follow.
-- Timezone change: `adb shell "content update --uri content://settings/global --bind name:s:auto_time_zone --bind value:s:0"`
-  then `adb shell service call alarm ...` is fiddly on a real device — easiest on an
-  emulator via Extended Controls → Settings → Time, or `Settings > System > Date & time`
-  by hand; scheduled alarms for the day should still fire at the right local time
-  afterwards.
+  day is shared — check first with
+  `adb shell dumpsys package $PKG | grep -B1 -A3 CalendarProviderChangedReceiver`, which
+  shows the component under `enabledComponents`/`disabledComponents` once
+  `CalendarProviderChangedReceiver.kt`'s `setComponentEnabledSetting` has run; `pm list
+  receivers` isn't a real `pm` subcommand). `PROVIDER_CHANGED` is a protected broadcast, so
+  from the shell uid `am broadcast` throws a `SecurityException` on a user build — run
+  `adb root` first (emulator only), the same thing the `BOOT_COMPLETED` broadcast above
+  silently relies on.
+- Midnight rollover / anchor date: on an emulator, `adb root && adb shell settings put
+  global auto_time 0 && adb shell date MMDDhhmmYYYY.ss` (or `adb shell date @<epoch>`) sets
+  the clock directly; Extended Controls also has a clock control. On a real device there's
+  no rooted `date`, so leave the app open and past a real midnight instead. Either way, the
+  viewed day and "Today" target should follow.
+- Timezone change: `adb shell settings put global auto_time_zone 0` (not `content
+  update` — that's not how settings are written), then either
+  `adb shell setprop persist.sys.timezone Europe/London` (emulator only, root, and the
+  property name is version-dependent) or the friendlier route: Extended Controls →
+  Settings → Time, or `Settings > System > Date & time` by hand. Scheduled alarms for the
+  day should still fire at the right local time afterwards.
 - Battery optimisation / restricted standby: `adb shell dumpsys deviceidle whitelist -$PKG`
   removes the app from the allowlist so onboarding's battery row shows "Allow"; `adb shell
   am set-standby-bucket $PKG restricted` simulates the "restricted" bucket warning.
