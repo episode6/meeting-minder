@@ -850,7 +850,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 1 — Read the calendar and show the day
 
-- [ ] **PR-3: Calendar repository.** `[Fable 5.1, effort high]` `model/` types (§3.4), `CalendarRepository` interface,
+- [x] **PR-3: Calendar repository.** `[Fable 5.1, effort high]` `model/` types (§3.4), `CalendarRepository` interface,
   `ContentResolverCalendarRepository` (calendars query, Instances query with the ±1 day window and
   `START_DAY`/`END_DAY` re-filter, batched attendees query, `EventKey` normalisation for exception
   events), `FakeCalendarRepository`. Robolectric tests against a fake `com.android.calendar`

@@ -2,6 +2,24 @@
 
 ### v1.0.0 - Unreleased
 
+- Calendar repository (PR-3): the `model/` types (`EventKey`, `CalendarEvent` with the
+  canonical `isMeeting` rule, `CalendarInfo`), the `CalendarRepository` interface and its
+  `ContentResolverCalendarRepository` over the Calendar Provider — every calendar on every
+  account, a day's events from `Instances` with the ±1-day window re-filtered on
+  `START_DAY`/`END_DAY` (so an all-day event never leaks into the evening before in a
+  negative-offset zone), one batched `Attendees` query per day for human counts, the
+  self-attendee row and organizer detection, and `EventKey` normalisation that maps an
+  exception event back to the occurrence it replaced. Hidden calendars are skipped by
+  default (`CalendarFilter.Visible`) with `CalendarFilter.Only(ids)` as the seam for the
+  Settings override. `READ_CALENDAR` and `WRITE_CALENDAR` are now declared (and pinned in
+  `expected-permissions.txt`); nothing requests them yet — that is PR-4.
+- Internal: Robolectric tests drive the repository against a `FakeCalendarProvider`
+  (in-memory SQLite behind `com.android.calendar`, so real projections and selections are
+  honoured) covering timed, recurring, moved (`ORIGINAL_ID`), all-day-near-midnight,
+  ends-at-midnight, cancelled/deleted, declined and hidden-calendar cases; plain unit tests
+  cover `isMeeting` and `EventKey`; a `FakeCalendarRepository` is ready for store tests; and
+  one instrumented test inserts a `LOCAL` calendar + event into the real provider on the
+  emulator and reads it back.
 - DI + store + navigation shell (PR-2): the Metro `AppGraph` (app `CoroutineScope`,
   settings DataStore, the app-wide redux-store-flow `AppStore`) created by the new
   `MeetingMinderApp` and reachable via `Context.appGraph`; `AppMetroViewModelFactory`;
