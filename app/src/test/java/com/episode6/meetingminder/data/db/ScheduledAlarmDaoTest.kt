@@ -6,6 +6,7 @@ import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -62,6 +63,19 @@ class ScheduledAlarmDaoTest {
         assertThat(dao.scheduledOn(today)).containsExactly(row(today, 1).copy(alarmId = 1))
         assertThat(dao.allScheduled()).containsExactly(row(today, 1).copy(alarmId = 1), row(tomorrow, 3).copy(alarmId = 3))
         assertThat(dao.byId(cancelledId)?.state).isEqualTo(AlarmState.CANCELLED)
+    }
+
+    @Test
+    fun observeScheduled_streamsTheArmedRows_acrossEveryDay() = runTest {
+        dao.insert(row(today, 1))
+        val cancelledId = dao.insert(row(tomorrow, 2))
+        dao.setState(cancelledId, AlarmState.CANCELLED)
+
+        assertThat(dao.observeScheduled().first()).containsExactly(row(today, 1).copy(alarmId = 1))
+
+        dao.insert(row(tomorrow, 3))
+
+        assertThat(dao.observeScheduled().first()).containsExactly(row(today, 1).copy(alarmId = 1), row(tomorrow, 3).copy(alarmId = 3))
     }
 
     @Test

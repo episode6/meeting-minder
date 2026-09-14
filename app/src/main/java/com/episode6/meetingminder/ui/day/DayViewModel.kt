@@ -84,8 +84,9 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
     }
 
     /**
-     * The FAB was tapped: "Set alarms (N)" reconciles the settled day's alarms against its
-     * selection ([SetAlarms]); "Share schedule" is a placeholder snackbar until PR-9.
+     * The FAB was tapped: "Set alarms (N)" (or "Clear alarms", the same state with nothing
+     * selected) reconciles the settled day's alarms against its selection ([SetAlarms]);
+     * "Share schedule" is a placeholder snackbar until PR-9.
      */
     fun onFabClick() {
         val state = store.state
@@ -137,12 +138,15 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId) = DayUiStat
  * selection and no alarms yet, "Share schedule" once alarms are set. [DayPlan.alarmsSetAt]
  * is cleared by any later change of selection (`DayPlanDao.toggleSelectedEvent`), which is
  * what puts the day back into "Set alarms" until the next reconcile (§2 interaction rules).
+ * That reconcile is also the only thing that cancels a deselected event's alarm, so while
+ * [DayPlan.armedKeys] is non-empty the FAB stays even with nothing selected — as
+ * `SetAlarms(0)`, which [DayScreen] labels "Clear alarms".
  */
 internal fun DayPlan?.toFabState(): FabState {
     val selected = this?.selected.orEmpty()
     return when {
         this?.alarmsSetAt != null -> FabState.Share
-        selected.isEmpty() -> FabState.Hidden
+        selected.isEmpty() && this?.armedKeys.orEmpty().isEmpty() -> FabState.Hidden
         else -> FabState.SetAlarms(selected.size)
     }
 }

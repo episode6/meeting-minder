@@ -16,6 +16,8 @@
     <string name="day_subtitle_with_selected_count">%1$s · %2$d selected</string>
     <!-- FAB label while at least one event is selected -->
     <string name="day_fab_set_alarms">Set alarms (%d)</string>
+    <!-- FAB label when every selection was removed but the day still has armed alarms: the tap cancels them -->
+    <string name="day_fab_clear_alarms">Clear alarms</string>
     <!-- FAB label once alarms are set; the share itself arrives with PR-9 -->
     <string name="day_fab_share">Share schedule</string>
     <string name="day_fab_share_coming_soon">Sharing isn\'t set up yet</string>
@@ -40,6 +42,11 @@
         <item quantity="other">%d alarms skipped, already started</item>
     </plurals>
     <string name="day_alarms_set_some_skipped">%1$d set, %2$d skipped (already started)</string>
+    <!-- after "Clear alarms": every selection had been removed, the tap only cancelled -->
+    <plurals name="day_alarms_cleared">
+        <item quantity="one">%d alarm cleared</item>
+        <item quantity="other">%d alarms cleared</item>
+    </plurals>
     <string name="alarms_exact_permission_missing">Allow alarms &amp; reminders in Permissions to set alarms</string>
     <string name="day_all_day">all-day</string>
     <!-- chip time range, e.g. "9:00 – 9:30" -->

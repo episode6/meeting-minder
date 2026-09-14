@@ -6,6 +6,7 @@ import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
 import assertk.assertions.isNull
 import com.episode6.meetingminder.data.db.FakeDayPlanDao
+import com.episode6.meetingminder.data.db.FakeScheduledAlarmDao
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.testCalendarEvent
 import com.episode6.meetingminder.store.ToggleEvent
@@ -35,7 +36,7 @@ class SelectionPersistenceStoreTest {
     fun toggleEvent_selectsThenUnselects_viaTheRealStoreWiring() {
         val dao = FakeDayPlanDao()
         val sideEffects = setOf(
-            object : ObserveDayPlansSideEffects {}.observeDayPlans(dao),
+            object : ObserveDayPlansSideEffects {}.observeDayPlans(dao, FakeScheduledAlarmDao()),
             object : ToggleEventSideEffects {}.toggleEvent(dao),
         )
         val initial = com.episode6.meetingminder.store.AppState(

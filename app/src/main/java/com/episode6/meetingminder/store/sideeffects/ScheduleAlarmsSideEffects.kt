@@ -37,12 +37,16 @@ import kotlin.random.Random
  * re-timed), and the lead time from settings; then cancels, inserts, re-times and arms
  * through [AlarmScheduler], points each selection at its alarm, and records
  * `alarms_set_at`. `ObserveDayPlansSideEffects` streams the result back into the store;
- * this effect only emits the snackbar ("3 alarms set for today", or how many were skipped
- * because their alarm time had passed — never silently dropped).
+ * this effect only emits the snackbar ("3 alarms set for today", how many were skipped
+ * because their alarm time had passed — never silently dropped — or "3 alarms cleared"
+ * when the selection had been emptied and the tap only cancelled).
  *
  * Without the exact-alarm grant nothing is written: the snackbar says so and a permission
- * re-check is requested. `flatMapMerge` keeps the relay path non-suspending; the mutex
- * serialises reconciles so a double tap can't interleave two of them.
+ * re-check is requested. If the OS refuses an individual `setAlarmClock` (the grant was
+ * revoked between the check and the call), `alarms_set_at` is left clear so the FAB
+ * keeps reading "Set alarms (N)" and the tap can be retried once the grant is back.
+ * `flatMapMerge` keeps the relay path non-suspending; the mutex serialises reconciles so
+ * a double tap can't interleave two of them.
  */
 @ContributesTo(AppScope::class)
 interface ScheduleAlarmsSideEffects {
@@ -125,10 +129,22 @@ internal class AlarmReconcileWriter(
         // a kept row's selection may have been deleted and re-inserted (toggled off and on
         // again) since it was armed, which drops its alarm pointer: point it back
         for (row in plan.keep) pointSelectionAt(row)
-        dayPlanDao.markAlarmsSet(date, now.toEpochMilli())
+        // "alarms set" (the Share FAB) only once every selection is armed or skipped: a
+        // refused arm, or an emptied selection that only cancelled, leaves the day in
+        // "Set alarms" so it can be re-tapped, or hidden with nothing armed or selected
+        if (failed == 0 && !plan.clearsTheDay) {
+            dayPlanDao.markAlarmsSet(date, now.toEpochMilli())
+        } else {
+            dayPlanDao.setAlarmsSetAt(date, null)
+        }
         return AppliedReconciliation(plan, failed)
     }
 
+    /**
+     * A refused row is marked `CANCELLED` (it isn't armed, so it must not be reported as
+     * such or re-armed after boot); the next reconcile finds no `SCHEDULED` row for the key
+     * and inserts a fresh one, which is the retry.
+     */
     private suspend fun arm(row: ScheduledAlarmEntity): Boolean {
         if (!scheduler.schedule(row)) {
             alarmDao.setState(row.alarmId, AlarmState.CANCELLED)
@@ -149,11 +165,15 @@ internal class AlarmReconcileWriter(
 
 private val DayLabelFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
 
-/** The snackbar after "Set alarms": how many are armed for the day, and how many were skipped as already past. */
+/**
+ * The snackbar after "Set alarms": how many are armed for the day, how many were skipped as
+ * already past, or how many were cleared when nothing was selected any more.
+ */
 internal fun alarmsSetMessage(plan: AlarmReconciliation, date: LocalDate, today: LocalDate): UiMessage {
     val armed = plan.armedCount
     val skipped = plan.skipped.size
     return when {
+        plan.clearsTheDay -> UiMessage.nextPlural(R.plurals.day_alarms_cleared, plan.cancel.size, plan.cancel.size)
         skipped == 0 && date == today -> UiMessage.nextPlural(R.plurals.day_alarms_set_today, armed, armed)
         skipped == 0 -> UiMessage.nextPlural(R.plurals.day_alarms_set_on_day, armed, armed, date.format(DayLabelFormatter))
         armed == 0 -> UiMessage.nextPlural(R.plurals.day_alarms_skipped, skipped, skipped)

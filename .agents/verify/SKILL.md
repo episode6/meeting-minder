@@ -55,8 +55,11 @@ repeatable; drive it by hand only for one-off visual checks.
 > the settled page), Today scrolls back, long-press a chip to open it in the calendar app,
 > and an event inserted with `content insert` (see "Seeding calendar data") appears within
 > a second or two while the day is on screen. Tap chips to select them, tap "Set alarms (N)"
-> (chips gain a bell + alarm time, the subtitle reads "N alarms set · not shared yet", the
-> FAB flips to "Share schedule" — a placeholder snackbar until PR-9). A fired alarm posts
+> (chips gain a bell + alarm time, the subtitle reads "N alarms set · not shared yet" in
+> orange with a bell, the FAB flips to a solid orange "Share schedule" — a placeholder
+> snackbar until PR-9). Deselecting an armed chip reverts the FAB to "Set alarms (N)"
+> without cancelling anything; deselecting every armed chip leaves it as "Clear alarms",
+> and the tap cancels them (`dumpsys alarm` should then show none). A fired alarm posts
 > a plain high-priority notification for now (the full-screen ringing screen is PR-10);
 > RSVP is PR-8b. Onboarding needs calendar, notifications and exact alarms granted before
 > the day view shows. The chip states are also reviewed through the Roborazzi previews

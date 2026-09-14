@@ -14,7 +14,11 @@ enum class AlarmState {
     DISMISSED,
     SNOOZED,
 
-    /** Cancelled by a reconcile (deselected, or moved into the past); never re-armed. */
+    /**
+     * Cancelled by a reconcile (deselected, moved into the past, or the OS refused to arm
+     * it); never re-armed. A refused row is retried by the next "Set alarms" tap, which
+     * sees no `SCHEDULED` row for the key and inserts a fresh one.
+     */
     CANCELLED,
 }
 

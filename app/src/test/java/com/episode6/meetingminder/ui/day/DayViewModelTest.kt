@@ -306,6 +306,35 @@ class DayViewModelTest {
     }
 
     @Test
+    fun toFabState_staysAsClearAlarms_whenEverySelectionIsRemovedButAlarmsAreStillArmed() {
+        // the toggle that emptied the selection cleared alarmsSetAt; the scheduled_alarm row is still SCHEDULED
+        val deselected = DayPlan(today, selected = emptyMap(), armedKeys = setOf(standup.key), alarmsSetAt = null)
+        assertThat(deselected.toFabState()).isEqualTo(FabState.SetAlarms(0))
+
+        // once the reconcile has cancelled it (or it fired) nothing is armed: back to hidden
+        assertThat(deselected.copy(armedKeys = emptySet()).toFabState()).isEqualTo(FabState.Hidden)
+    }
+
+    @Test
+    fun onFabClick_inClearAlarmsState_dispatchesSetAlarmsForTheSettledDay() {
+        val dispatched = MutableSharedFlow<Action>(replay = 10)
+        val record = SideEffect<AppState> {
+            actions.onEach { if (it is SetAlarms) dispatched.emit(it) }.filter { false }
+        }
+        val deselected = DayPlan(today, armedKeys = setOf(standup.key))
+        runStoreTest(
+            { createAppStore(this, AppState(anchorDate = today, dayPlans = mapOf(today to deselected)), setOf(record)) },
+        ) { store ->
+            val viewModel = DayViewModel(store, clock)
+            assertThat(viewModel.state.value.fabState).isEqualTo(FabState.SetAlarms(0))
+
+            viewModel.onFabClick()
+
+            assertThat(dispatched.first()).isEqualTo(SetAlarms(today))
+        }
+    }
+
+    @Test
     fun toDayUiState_marksSelectedEventsAndTheirAlarmTime() {
         val state = AppState(
             anchorDate = today,

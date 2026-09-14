@@ -32,6 +32,14 @@ data class AlarmReconciliation(
 ) {
     /** How many alarms are armed for the day once this is applied. */
     val armedCount: Int get() = schedule.size + retime.size + keep.size
+
+    /**
+     * Nothing on the day is selected any more, so applying this only cancels: every
+     * selection lands in exactly one of [schedule]/[retime]/[keep]/[skipped], so all four
+     * empty means an empty selection. The day then goes back to "nothing picked" rather
+     * than "alarms set".
+     */
+    val clearsTheDay: Boolean get() = armedCount == 0 && skipped.isEmpty()
 }
 
 /**

@@ -199,7 +199,7 @@ class ScheduleAlarmsSideEffectsTest {
     }
 
     @Test
-    fun whenTheOsRefusesToArm_theRowIsCancelled_andThePermissionMessageShown() = runTest {
+    fun whenTheOsRefusesToArm_theRowIsCancelled_theDayStaysInSetAlarms_andThePermissionMessageShown() = runTest {
         scheduler.refuse = true
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
 
@@ -207,7 +207,60 @@ class ScheduleAlarmsSideEffectsTest {
 
         assertThat(alarmDao.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
         assertThat(dayPlanDao.selectedEventsOn(today).single().alarmId).isNull()
-        assertThat((output.first() as ShowMessage).message.text).isEqualTo(R.string.alarms_exact_permission_missing)
+        // not "alarms set": the FAB must keep reading "Set alarms (1)" so the tap can be retried
+        assertThat(dayPlanDao.plansFlow.value.mapNotNull { it.alarmsSetAt }).isEmpty()
+        assertThat(output.map { (it as? ShowMessage)?.message?.text ?: it }).containsExactly(
+            R.string.alarms_exact_permission_missing,
+            PermissionsMaybeChanged,
+        )
+    }
+
+    @Test
+    fun aRefusedArm_isRetriedByTheNextSetAlarms_withAFreshRow() = runTest {
+        scheduler.refuse = true
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
+        sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+
+        scheduler.refuse = false
+        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+
+        assertThat(alarmDao.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
+        assertThat(alarmDao.rows.getValue(2).state).isEqualTo(AlarmState.SCHEDULED)
+        assertThat(scheduler.armed.keys.toList()).containsExactly(2L)
+        assertThat(dayPlanDao.selectedEventsOn(today).single().alarmId).isEqualTo(2)
+        assertThat(dayPlanDao.plansFlow.value.single().alarmsSetAt).isEqualTo(now.toEpochMilli())
+        assertThat((output.single() as ShowMessage).message.text).isEqualTo(R.plurals.day_alarms_set_today)
+    }
+
+    @Test
+    fun setAlarms_withEverySelectionRemoved_cancelsTheArmedRows_andLeavesTheDayUnset() = runTest {
+        // "Set alarms" armed two events, then the user deselected both: the toggles cleared
+        // alarms_set_at and deleted the selection rows, the scheduled_alarm rows stayed armed
+        val armedStandup = ScheduledAlarmEntity(
+            alarmId = 1, date = today, eventId = standup.eventId, instanceTime = 0, fireAt = at(8, 55).toEpochMilli(),
+            title = standup.title, beginMillis = standup.begin.toEpochMilli(), endMillis = standup.end.toEpochMilli(), soundIndex = 5,
+        )
+        val armedReview = armedStandup.copy(
+            alarmId = 2, eventId = designReview.eventId, fireAt = at(9, 55).toEpochMilli(), title = designReview.title,
+            beginMillis = designReview.begin.toEpochMilli(), endMillis = designReview.end.toEpochMilli(),
+        )
+        alarmDao.rows[1] = armedStandup
+        alarmDao.rows[2] = armedReview
+        scheduler.schedule(armedStandup)
+        scheduler.schedule(armedReview)
+        val dayPlanDao = FakeDayPlanDao(plans = listOf(DayPlanEntity(today)), selections = emptyList())
+
+        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+
+        assertThat(alarmDao.rows.values.map { it.state }).containsExactly(AlarmState.CANCELLED, AlarmState.CANCELLED)
+        assertThat(scheduler.cancelled).containsExactly(1L, 2L)
+        assertThat(scheduler.armed).isEmpty()
+        // nothing selected and nothing armed is "nothing picked", not "alarms set": the FAB hides
+        assertThat(dayPlanDao.plansFlow.value.single().alarmsSetAt).isNull()
+        val message = (output.single() as ShowMessage).message
+        assertThat(message.text).isEqualTo(R.plurals.day_alarms_cleared)
+        assertThat(message.quantity).isEqualTo(2)
+        assertThat(message.formatArgs).isEqualTo(listOf<Any>(2))
     }
 
     @Test
@@ -220,5 +273,6 @@ class ScheduleAlarmsSideEffectsTest {
         assertThat(alarmsSetMessage(AlarmReconciliation(skipped = listOf(skipped)), today, today).text).isEqualTo(R.plurals.day_alarms_skipped)
         assertThat(alarmsSetMessage(AlarmReconciliation(schedule = listOf(row), skipped = listOf(skipped)), today, today).text)
             .isEqualTo(R.string.day_alarms_set_some_skipped)
+        assertThat(alarmsSetMessage(AlarmReconciliation(cancel = listOf(row)), today, today).text).isEqualTo(R.plurals.day_alarms_cleared)
     }
 }

@@ -33,6 +33,24 @@
   `DayPlanDaoTest`, `PermissionCheckerTest`, `DayViewModelTest`, `OnboardingViewModelTest` and
   `NavigationViewModelTest`. New Roborazzi previews: `DayScreenAlarmsSetPreview` (render 3)
   and `OnboardingScreenPartlyGrantedPreview`.
+- Fix (PR-8 review): deselecting every armed event no longer strands its alarms. The toggle
+  clears `alarms_set_at` and an empty selection hid the FAB, so the still-`SCHEDULED` rows
+  could never be cancelled (and rang, and were re-armed after boot). `DayPlan` now carries
+  `armedKeys` (the day's `SCHEDULED` `scheduled_alarm` rows, streamed by
+  `ObserveDayPlansSideEffects` via the new `ScheduledAlarmDao.observeScheduled()`), the FAB
+  stays as "Clear alarms" (`FabState.SetAlarms(0)`) while any are armed, and a reconcile
+  that only cancels leaves `alarms_set_at` null (snackbar "2 alarms cleared") so the day goes
+  back to nothing-picked rather than "0 alarms set". A `setAlarmClock` call the OS refuses
+  likewise no longer records `alarms_set_at`: the FAB keeps reading "Set alarms (N)" and the
+  next tap inserts a fresh row for the `CANCELLED` one. The "Share schedule" FAB is
+  primary-filled and the alarms-set subtitle is an orange bell accent, as in render 3.
+  TODO.md §3.2/§4.4 gain NBs recording that `BootCompleted`/`TimeChanged` are not store
+  actions (`BootReceiver` calls `AlarmRescheduler` directly under `goAsync()`), the
+  `RescheduleReceiver` → `BootReceiver` name, and `DayPlan.armedKeys`. New tests:
+  `ScheduleAlarmsSideEffectsTest` (refused arm leaves `alarms_set_at` null and is retried
+  by the next tap; deselect-all cancels and clears), `DayViewModelTest` (clear-alarms FAB
+  state and tap), `DayPlanMappingTest`/`ObserveDayPlansSideEffectsTest`/`ScheduledAlarmDaoTest`
+  (`armedKeys`/`observeScheduled`), and a `DayScreenClearAlarmsPreview` screenshot.
 - Fix: `ToggleEventSideEffects`' read-then-write across two DAO calls could let a fast
   double tap on the same chip leave it selected instead of unselected, since `flatMapMerge`
   runs concurrent toggles and both could read "not selected" before either wrote.

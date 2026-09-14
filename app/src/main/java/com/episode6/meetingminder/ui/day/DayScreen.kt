@@ -3,13 +3,18 @@ package com.episode6.meetingminder.ui.day
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Alarm
+import androidx.compose.material.icons.outlined.AlarmOff
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material3.DropdownMenu
@@ -36,6 +41,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
@@ -112,11 +118,7 @@ fun DayScreen(
                 title = {
                     Column {
                         Text(state.date.format(TitleFormatter), style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            subtitle(state.meetingCount, state.fabState, state.armedCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Subtitle(state.meetingCount, state.fabState, state.armedCount)
                     }
                 },
                 actions = {
@@ -154,12 +156,38 @@ fun DayScreen(
 }
 
 /**
+ * The app bar's state summary line: [subtitleText] in `onSurfaceVariant`, except once
+ * alarms are set, when it becomes an orange app-bar accent (TODO.md §3.7) with a bell in
+ * front, as in render 3.
+ */
+@Composable
+private fun Subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int) {
+    val armed = fabState == FabState.Share
+    val color = if (armed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DayViewDefaults.SubtitleIconSpacing)) {
+        if (armed) {
+            Icon(
+                Icons.Outlined.Notifications,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(DayViewDefaults.SubtitleIconSize),
+            )
+        }
+        Text(
+            subtitleText(meetingCount, fabState, armedCount),
+            style = MaterialTheme.typography.bodySmall,
+            color = color,
+        )
+    }
+}
+
+/**
  * "3 meetings" / "1 meeting" / "No meetings", with " · N selected" appended while the FAB
  * reads "Set alarms" (render 2); "3 alarms set · not shared yet" once alarms are set
  * (render 3; "shared 8:12 AM" is PR-9); blank (but still a line tall) while the day loads.
  */
 @Composable
-private fun subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int): String {
+private fun subtitleText(meetingCount: Int?, fabState: FabState, armedCount: Int): String {
     if (meetingCount == null) return ""
     val meetings = when (meetingCount) {
         0 -> stringResource(R.string.day_subtitle_no_meetings)
@@ -177,7 +205,9 @@ private fun subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int): S
 
 /**
  * [ExtendedFloatingActionButton] for [state], animated between the icon/label of
- * [FabState.SetAlarms] and [FabState.Share], hidden entirely while [FabState.Hidden].
+ * [FabState.SetAlarms] ("Set alarms (N)", or "Clear alarms" when N is 0 — see
+ * [FabState.SetAlarms]) and the primary-filled [FabState.Share] (render 3), hidden entirely
+ * while [FabState.Hidden].
  */
 @Composable
 private fun DayFab(state: FabState, onClick: () -> Unit) {
@@ -194,15 +224,25 @@ private fun DayFab(state: FabState, onClick: () -> Unit) {
         AnimatedContent(targetState = lastVisibleState, contentKey = { it::class }, label = "dayFabState") { target ->
             when (target) {
                 FabState.Hidden -> Unit
-                is FabState.SetAlarms -> ExtendedFloatingActionButton(
-                    onClick = onClick,
-                    icon = { Icon(Icons.Outlined.Alarm, contentDescription = null) },
-                    text = { Text(stringResource(R.string.day_fab_set_alarms, target.count)) },
-                )
+                is FabState.SetAlarms -> if (target.count == 0) {
+                    ExtendedFloatingActionButton(
+                        onClick = onClick,
+                        icon = { Icon(Icons.Outlined.AlarmOff, contentDescription = null) },
+                        text = { Text(stringResource(R.string.day_fab_clear_alarms)) },
+                    )
+                } else {
+                    ExtendedFloatingActionButton(
+                        onClick = onClick,
+                        icon = { Icon(Icons.Outlined.Alarm, contentDescription = null) },
+                        text = { Text(stringResource(R.string.day_fab_set_alarms, target.count)) },
+                    )
+                }
                 FabState.Share -> ExtendedFloatingActionButton(
                     onClick = onClick,
                     icon = { Icon(Icons.Outlined.Share, contentDescription = null) },
                     text = { Text(stringResource(R.string.day_fab_share)) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
                 )
             }
         }
@@ -307,7 +347,21 @@ internal fun DayScreenSelectingPreview() {
     )
 }
 
-/** Render 3: alarms set for three selected events, "3 alarms set · not shared yet" and the "Share schedule" FAB. */
+/** Every selection removed after alarms were set: "3 meetings · 0 selected", chips back to outlined, and the "Clear alarms" FAB. */
+@Preview(showBackground = true)
+@Composable
+internal fun DayScreenClearAlarmsPreview() {
+    DayScreenPreviewFrame(
+        DayUiState(
+            anchorDate = PreviewDate,
+            meetingCount = 3,
+            fabState = FabState.SetAlarms(0),
+            days = mapOf(PreviewDate to PreviewEvents.busyDay),
+        ),
+    )
+}
+
+/** Render 3: alarms set for three selected events, the orange bell subtitle "3 alarms set · not shared yet" and the primary-filled "Share schedule" FAB. */
 @Preview(showBackground = true)
 @Composable
 internal fun DayScreenAlarmsSetPreview() {

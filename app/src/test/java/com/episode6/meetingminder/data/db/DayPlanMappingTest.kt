@@ -65,6 +65,31 @@ class DayPlanMappingTest {
     }
 
     @Test
+    fun buildDayPlans_keysTheArmedRowsByDay_ignoringOnesNoLongerScheduled() {
+        fun alarm(date: LocalDate, eventId: Long, state: AlarmState = AlarmState.SCHEDULED) = ScheduledAlarmEntity(
+            alarmId = eventId, date = date, eventId = eventId, instanceTime = 0, fireAt = 700, title = "Event $eventId",
+            beginMillis = 1_000, endMillis = 2_000, soundIndex = 0, state = state,
+        )
+        val standup = selectedEventEntity(eventId = 1, alarmId = 1, alarmAt = 700)
+
+        // event 2's selection was removed after it was armed; event 3 fired; tomorrow has only an armed row
+        val result = buildDayPlans(
+            plans = emptyList(),
+            selections = listOf(standup),
+            scheduled = listOf(alarm(today, 1), alarm(today, 2), alarm(today, 3, AlarmState.FIRED), alarm(tomorrow, 4)),
+        )
+
+        assertThat(result.getValue(today)).isEqualTo(
+            DayPlan(
+                date = today,
+                selected = mapOf(EventKey(1, 0) to standup.toSelectedEventForTest()),
+                armedKeys = setOf(EventKey(1, 0), EventKey(2, 0)),
+            ),
+        )
+        assertThat(result.getValue(tomorrow)).isEqualTo(DayPlan(date = tomorrow, armedKeys = setOf(EventKey(4, 0))))
+    }
+
+    @Test
     fun buildDayPlans_aDayPlanRowWithNoSelections_stillAppears() {
         val plan = DayPlanEntity(date = today, alarmsSetAt = null, sharedAt = 9_000)
 
