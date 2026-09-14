@@ -123,4 +123,22 @@ class DayPlanDaoTest {
         assertThat(database.query("SELECT rsvp_state FROM selected_event", null).use { it.moveToFirst(); it.getString(0) })
             .isEqualTo("ACCEPTED_LOCALLY")
     }
+
+    @Test
+    fun recordRsvpDecision_overwritesAnUnansweredRow_butLeavesAnAnsweredOneAlone() = runTest {
+        dao.upsertSelectedEvent(standup.copy(alarmId = 9, alarmAt = 700, rsvpState = RsvpState.UNRESPONDABLE))
+
+        assertThat(dao.recordRsvpDecision(today, standup.eventId, standup.instanceTime, RsvpState.PENDING)).isEqualTo(1)
+        assertThat(dao.selectedEventsOn(today).single())
+            .isEqualTo(standup.copy(alarmId = 9, alarmAt = 700, rsvpState = RsvpState.PENDING))
+
+        dao.setRsvp(today, standup.eventId, standup.instanceTime, RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 1_000)
+        assertThat(dao.recordRsvpDecision(today, standup.eventId, standup.instanceTime, RsvpState.NOT_APPLICABLE)).isEqualTo(0)
+        assertThat(dao.selectedEventsOn(today).single())
+            .isEqualTo(standup.copy(alarmId = 9, alarmAt = 700, rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 1_000))
+
+        dao.setRsvp(today, standup.eventId, standup.instanceTime, RsvpState.SYNCED, rsvpEventId = 1_000)
+        assertThat(dao.recordRsvpDecision(today, standup.eventId, standup.instanceTime, RsvpState.PENDING)).isEqualTo(0)
+        assertThat(dao.selectedEventsOn(today).single().rsvpState).isEqualTo(RsvpState.SYNCED)
+    }
 }

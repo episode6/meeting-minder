@@ -52,6 +52,17 @@ class RsvpDecisionTest {
     }
 
     @Test
+    fun alreadyDeclined_isNotApplicable() {
+        // selected, then declined in Google Calendar: "Set alarms" must never turn the decline back into "Yes, going"
+        assertThat(rsvpDecision(invite.copy(selfStatus = SelfStatus.DECLINED))).isEqualTo(RsvpState.NOT_APPLICABLE)
+    }
+
+    @Test
+    fun aCancelledOccurrence_isNotApplicable() {
+        assertThat(rsvpDecision(invite.copy(status = EventStatus.CANCELED))).isEqualTo(RsvpState.NOT_APPLICABLE)
+    }
+
+    @Test
     fun aCalendarBelowRespondAccess_isUnrespondable() {
         assertThat(rsvpDecision(invite.copy(calendarAccessLevel = CALENDAR_ACCESS_RESPOND - 1))).isEqualTo(RsvpState.UNRESPONDABLE)
         assertThat(rsvpDecision(invite.copy(calendarAccessLevel = CALENDAR_ACCESS_RESPOND))).isEqualTo(RsvpState.PENDING)
@@ -70,5 +81,8 @@ class RsvpDecisionTest {
             .isEqualTo(RsvpState.NOT_APPLICABLE)
         // organizer with no self row: still silent
         assertThat(rsvpDecision(invite.copy(isOrganizer = true, selfAttendeeId = null))).isEqualTo(RsvpState.NOT_APPLICABLE)
+        // declined on a read-only calendar: we chose not to answer, so no "couldn't RSVP" hint either
+        assertThat(rsvpDecision(invite.copy(selfStatus = SelfStatus.DECLINED, calendarAccessLevel = 200)))
+            .isEqualTo(RsvpState.NOT_APPLICABLE)
     }
 }

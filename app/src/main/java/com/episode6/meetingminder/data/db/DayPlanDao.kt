@@ -103,9 +103,9 @@ interface DayPlanDao {
     )
 
     /**
-     * Records where a selection's RSVP stands (TODO.md §4.6): the `rsvpDecision` outcome
-     * when the event is armed, then `ACCEPTED_LOCALLY`/`FAILED` (with the id the write went
-     * to) once the provider write returns, and `SYNCED` when a reload sees that row clean.
+     * Records where a selection's RSVP stands (TODO.md §4.6): `ACCEPTED_LOCALLY`/`FAILED`
+     * (with the id the write went to) once the provider write returns, and `SYNCED` when a
+     * reload sees that row clean. The initial decision goes through [recordRsvpDecision].
      * A targeted update so the alarm pointer survives, like [armSelectedEvent].
      */
     @Query(
@@ -113,4 +113,19 @@ interface DayPlanDao {
             "WHERE date = :date AND event_id = :eventId AND instance_time = :instanceTime",
     )
     suspend fun setRsvp(date: LocalDate, eventId: Long, instanceTime: Long, state: RsvpState, rsvpEventId: Long?)
+
+    /**
+     * Records a fresh `rsvpDecision` on a selection the reconcile just armed, unless the row
+     * was already answered (`ACCEPTED_LOCALLY`/`SYNCED`): a row that leaves `keep` and gets
+     * re-armed (its event moved into the past and back, say) would otherwise lose its "sent"
+     * tick, since by then the fresh event reads `ACCEPTED` from our own write and the
+     * decision is `NOT_APPLICABLE`. Returns the number of rows updated (0 or 1); 0 means
+     * the answer stands and nothing is to be written.
+     */
+    @Query(
+        "UPDATE selected_event SET rsvp_state = :state, rsvp_event_id = NULL " +
+            "WHERE date = :date AND event_id = :eventId AND instance_time = :instanceTime " +
+            "AND rsvp_state NOT IN ('ACCEPTED_LOCALLY', 'SYNCED')",
+    )
+    suspend fun recordRsvpDecision(date: LocalDate, eventId: Long, instanceTime: Long, state: RsvpState): Int
 }

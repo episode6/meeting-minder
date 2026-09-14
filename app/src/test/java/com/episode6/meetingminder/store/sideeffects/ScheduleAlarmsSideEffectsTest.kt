@@ -18,6 +18,7 @@ import com.episode6.meetingminder.data.db.toSelectedEventEntity
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.EventStatus
 import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.SelfStatus
 import com.episode6.meetingminder.model.testCalendarEvent
@@ -121,6 +122,51 @@ class ScheduleAlarmsSideEffectsTest {
         )
         // every one of them still got its alarm: the RSVP never gates scheduling
         assertThat(scheduler.armed.values.map { it.eventId }.sorted()).isEqualTo(listOf(1L, 4L, 5L, 6L))
+    }
+
+    @Test
+    fun setAlarms_stillArmsADeclinedOrCancelledSelection_butNeverRsvpsForIt() = runTest {
+        // selected earlier, then declined by the user (or cancelled by the organizer) in Google
+        // Calendar while the selection row stayed stored: the alarm is still theirs to keep, but
+        // "Set alarms" must not turn the decline back into "Yes, going" (TODO.md §4.6)
+        val declined = testCalendarEvent(4, at(12), at(13), title = "Declined later").copy(selfStatus = SelfStatus.DECLINED)
+        val cancelled = testCalendarEvent(5, at(14), at(15), title = "Cancelled later").copy(status = EventStatus.CANCELED)
+        val state = TestAppState.copy(
+            eventsByDay = mapOf(today to DayEvents(today, listOf(standup, declined, cancelled), Instant.EPOCH)),
+        )
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup), selection(declined), selection(cancelled)))
+
+        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = state).toList()
+
+        assertThat(output.filterIsInstance<RsvpAccept>()).containsExactly(RsvpAccept(today, standup.key))
+        assertThat(dayPlanDao.selectedEventsOn(today).associate { it.eventId to it.rsvpState }).isEqualTo(
+            mapOf(
+                standup.eventId to RsvpState.PENDING,
+                declined.eventId to RsvpState.NOT_APPLICABLE,
+                cancelled.eventId to RsvpState.NOT_APPLICABLE,
+            ),
+        )
+        assertThat(scheduler.armed.values.map { it.eventId }.sorted()).isEqualTo(listOf(1L, 4L, 5L))
+    }
+
+    @Test
+    fun setAlarms_reArmingAnAlreadyAnsweredSelection_keepsItsAnswerAndSendsNoRsvp() = runTest {
+        // answered on an earlier tap, then the event moved into the past (alarm cancelled,
+        // selection skipped) and back again: the fresh event now reads ACCEPTED from our own
+        // write, so a fresh decision would be NOT_APPLICABLE and would erase the "sent" tick
+        val accepted = standup.copy(selfStatus = SelfStatus.ACCEPTED)
+        val state = TestAppState.copy(eventsByDay = mapOf(today to DayEvents(today, listOf(accepted), Instant.EPOCH)))
+        val dayPlanDao = FakeDayPlanDao(
+            selections = listOf(selection(standup).copy(rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 100)),
+        )
+
+        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = state).toList()
+
+        assertThat(output.filterIsInstance<RsvpAccept>()).isEmpty()
+        assertThat(scheduler.armed.keys.toList()).containsExactly(1L)
+        assertThat(dayPlanDao.selectedEventsOn(today).single()).isEqualTo(
+            selection(standup).copy(alarmId = 1, alarmAt = at(8, 55).toEpochMilli(), rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 100),
+        )
     }
 
     @Test

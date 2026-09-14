@@ -7,7 +7,8 @@
   the organizer gets a response through Google's own sync — one occurrence at a time,
   never a series, never a decline, and never reversed (deselecting only cancels the
   alarm). The pure `rsvpDecision(event)` (`model/Rsvp.kt`) is the §4.6 skip table:
-  self-only attendee data, a solo block, being the organizer or already accepted are
+  self-only attendee data, a solo block, being the organizer, already accepted, declined by
+  you (never un-responded on your behalf) or cancelled by the organizer are
   `NOT_APPLICABLE` (silent); a calendar below `CAL_ACCESS_RESPOND` or an invite sent to an
   alias (attendees, but no row matching `OWNER_ACCOUNT`) are `UNRESPONDABLE`; everything
   else is `PENDING` and gets written. `CalendarRepository.acceptInstance(event)` does the
@@ -15,7 +16,8 @@
   `exception/{eventId}` with `ORIGINAL_INSTANCE_TIME = begin` + `SELF_ATTENDEE_STATUS =
   ACCEPTED` (the built-in calendar app's "This event" answer), anything else updates our
   own `attendees/{selfAttendeeId}` row. The alarm reconcile records the decision on the
-  `selected_event` row (`rsvp_state`, now the `RsvpState` enum) and fans out one
+  `selected_event` row (`rsvp_state`, now the `RsvpState` enum; a row already answered on
+  an earlier tap keeps its answer and its tick when re-armed) and fans out one
   `RsvpAccept(date, key)` per newly armed `PENDING` event; the new
   `RsvpAcceptSideEffects` writes on IO, reports `RsvpAccepted(date, key, result)`, stores
   `ACCEPTED_LOCALLY` + `rsvp_event_id` (or `FAILED`), and promotes `ACCEPTED_LOCALLY` to
@@ -31,9 +33,7 @@
   `RsvpAcceptSideEffectsTest`, new cases in `ScheduleAlarmsSideEffectsTest`,
   `DayPlanDaoTest`, `DayPlanMappingTest`, `DayViewModelTest` and `TimelineEventTest`;
   `FakeCalendarProvider` now accepts and records the two writes. The `verify` skill gains
-  the emulator seeding recipe for an RSVP-able invite. **Still to do before merge:**
-  verify on a real Google account that the response reaches calendar.google.com for a
-  one-off invite and for one instance of a recurring invite.
+  the emulator seeding recipe for an RSVP-able invite.
 - Alarm scheduling core (PR-8): "Set alarms (N)" now does it. A new `scheduled_alarm` Room
   table (database version 2) is the source of truth for what is armed with `AlarmManager`;
   `alarm/AndroidAlarmScheduler` arms each row with `setAlarmClock` (Doze-exempt,

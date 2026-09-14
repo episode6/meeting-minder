@@ -16,6 +16,7 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesTo
 import dev.zacsweers.metro.IntoSet
 import dev.zacsweers.metro.Provides
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterIsInstance
@@ -71,8 +72,11 @@ interface RsvpAcceptSideEffects {
     }
 }
 
+/** Catches what the provider throws, never a cancellation of our own scope. */
 private suspend fun CalendarRepository.accept(event: CalendarEvent): RsvpResult = try {
     RsvpResult.Accepted(acceptInstance(event))
+} catch (e: CancellationException) {
+    throw e
 } catch (e: Exception) {
     Log.w(TAG, "RSVP for event ${event.eventId} failed", e)
     RsvpResult.Failed
@@ -90,6 +94,8 @@ private suspend fun DayPlanDao.promoteSyncedRsvps(date: LocalDate, repository: C
     if (awaitingSync.isEmpty()) return
     val synced = try {
         repository.syncedEventIds(awaitingSync.mapNotNull { it.rsvpEventId })
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         Log.w(TAG, "could not check RSVP sync state", e)
         return

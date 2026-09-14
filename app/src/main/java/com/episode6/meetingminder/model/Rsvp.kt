@@ -12,7 +12,10 @@ const val CALENDAR_ACCESS_RESPOND = 300
  * write itself and by later reloads of the day.
  */
 enum class RsvpState {
-    /** Nothing to answer: no attendee data, a solo block, you organised it, or you already accepted. Silent. */
+    /**
+     * Nothing to answer: no attendee data, a solo block, you organised it, you already
+     * accepted or declined, or the organizer cancelled it. Silent.
+     */
     NOT_APPLICABLE,
 
     /** There is an invite but we can't answer it (read-only calendar, or it went to an alias); the chip says so. */
@@ -46,6 +49,12 @@ fun rsvpDecision(event: CalendarEvent): RsvpState = when {
     // Google already has the organizer as accepted
     event.isOrganizer -> RsvpState.NOT_APPLICABLE
     event.selfStatus == SelfStatus.ACCEPTED -> RsvpState.NOT_APPLICABLE
+    // a decline is the user's answer, given in Google Calendar; we never un-respond on their
+    // behalf (§4.6), so a selection they declined after selecting it keeps its alarm and nothing else
+    event.selfStatus == SelfStatus.DECLINED -> RsvpState.NOT_APPLICABLE
+    // the repository filters cancelled occurrences out, but a cancelled one must never be
+    // answered (the exception insert would also write STATUS = CONFIRMED for it)
+    event.status == EventStatus.CANCELED -> RsvpState.NOT_APPLICABLE
     // the provider would take the local write and the server would reject it on sync, leaving a stuck dirty row
     event.calendarAccessLevel < CALENDAR_ACCESS_RESPOND -> RsvpState.UNRESPONDABLE
     // invited through an alias: there are attendees but none matches OWNER_ACCOUNT, and aliases

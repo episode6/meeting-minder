@@ -145,9 +145,11 @@ internal class AlarmReconcileWriter(
             }
             // only an event that actually got an alarm is answered, and only a newly armed
             // one: a kept row was decided when it was first armed. An event the provider no
-            // longer returns can't be answered at all (its row stays NOT_APPLICABLE)
+            // longer returns can't be answered at all (its row stays NOT_APPLICABLE), and a
+            // row already answered on an earlier tap (re-armed after its event moved into the
+            // past and back) keeps that answer and its tick
             val decision = fresh[row.key]?.let(::rsvpDecision) ?: continue
-            dayPlanDao.setRsvp(date, row.eventId, row.instanceTime, decision, rsvpEventId = null)
+            if (dayPlanDao.recordRsvpDecision(date, row.eventId, row.instanceTime, decision) == 0) continue
             if (decision == RsvpState.PENDING) rsvp += row.key
         }
         for (row in plan.retime) {

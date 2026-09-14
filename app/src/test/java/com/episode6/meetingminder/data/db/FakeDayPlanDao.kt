@@ -69,4 +69,19 @@ internal class FakeDayPlanDao(
             }
         }
     }
+
+    override suspend fun recordRsvpDecision(date: LocalDate, eventId: Long, instanceTime: Long, state: RsvpState): Int {
+        var updated = 0
+        selectionsFlow.value = selectionsFlow.value.map {
+            if (it.date == date && it.eventId == eventId && it.instanceTime == instanceTime &&
+                it.rsvpState != RsvpState.ACCEPTED_LOCALLY && it.rsvpState != RsvpState.SYNCED
+            ) {
+                updated++
+                it.copy(rsvpState = state, rsvpEventId = null)
+            } else {
+                it
+            }
+        }
+        return updated
+    }
 }
