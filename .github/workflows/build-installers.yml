@@ -20,6 +20,10 @@ env:
 # needs packages: write.
 jobs:
   image:
+    # labeled only matters for 'build-release'; any other label (e.g.
+    # 'record-screenshots', which has its own workflow) skips the whole run
+    # instead of rebuilding an unchanged head
+    if: github.event.action != 'labeled' || github.event.label.name == 'build-release'
     uses: ./.github/workflows/ci-image.yml
     permissions:
       contents: read

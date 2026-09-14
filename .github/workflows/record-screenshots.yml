@@ -1,0 +1,194 @@
+name: Record Screenshots
+# Records the Roborazzi reference PNGs inside the CI image — the same image
+# build-installers.yml runs verifyRoborazziDebug in, so recordings compare
+# like with like — and opens a PR with whatever changed against the branch of
+# the PR that asked for them. Nobody records on a dev machine (host font
+# rendering differs, and running the CI image under local Docker is heavy
+# enough to take a laptop down), and nothing is pushed to the PR's own branch
+# behind its author's back: the new PNGs arrive as a reviewable PR whose images
+# must be looked at before it is merged into the PR branch.
+#
+# Trigger: apply the 'record-screenshots' label to a PR (the label is removed
+# when the run starts, so re-applying it records again), or, once this file
+# is on main, run it by hand with the PR number.
+#
+# The screenshots branch (screenshots/<pr-branch>) belongs to this workflow and
+# is rebuilt from the PR head on every run. Pushes and PRs made with
+# GITHUB_TOKEN start no workflows, so the screenshots PR runs no CI of its
+# own; merging it into the PR branch (with a user token) is what reruns the
+# PR's CI against the new references.
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Number of the open PR whose branch should get freshly recorded reference PNGs
+        required: true
+concurrency:
+  group: record-screenshots-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+env:
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false -Dkotlin.incremental=false"
+jobs:
+  target:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'record-screenshots'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write          # removing the trigger label
+      pull-requests: write
+    outputs:
+      pr: ${{ steps.pr.outputs.pr }}
+      head-ref: ${{ steps.pr.outputs.head-ref }}
+    steps:
+      - name: Resolve the PR branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+        run: |
+          read -r head_ref head_repo state < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" \
+            --jq '"\(.head.ref) \(.head.repo.full_name) \(.state)"')
+          if [ "$head_repo" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::PR #$PR comes from $head_repo; only branches in this repo can receive a screenshots PR"
+            exit 1
+          fi
+          if [ "$state" != open ]; then
+            echo "::error::PR #$PR is $state"
+            exit 1
+          fi
+          case "$head_ref" in
+            screenshots/*) echo "::error::refusing to record onto a screenshots PR"; exit 1 ;;
+          esac
+          echo "pr=$PR" >> "$GITHUB_OUTPUT"
+          echo "head-ref=$head_ref" >> "$GITHUB_OUTPUT"
+          gh pr edit "$PR" -R "$GITHUB_REPOSITORY" --remove-label record-screenshots || true
+
+  image:
+    needs: target
+    uses: ./.github/workflows/ci-image.yml
+    permissions:
+      contents: read
+      packages: write
+
+  record:
+    needs: [target, image]
+    runs-on: ubuntu-latest
+    # Runs the PR's own gradle build, so it gets no write access; the
+    # open-pr job that pushes never executes PR code.
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ${{ needs.image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      # full history: snapshot versionCodes derive from the git commit count
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.target.outputs.head-ref }}
+          fetch-depth: 0
+      # see build-installers.yml for why cache-overwrite-existing is required
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-overwrite-existing: true
+      # start from an empty directory so PNGs of deleted or renamed previews
+      # disappear instead of lingering as stale references
+      - name: Record reference PNGs
+        run: |
+          rm -rf app/src/test/screenshots
+          ./gradlew :app:recordRoborazziDebug
+      - name: Hand the PNGs to the open-pr job
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: app/src/test/screenshots/
+          if-no-files-found: error
+          retention-days: 1
+
+  open-pr:
+    needs: [target, record]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # pushing the screenshots branch
+      pull-requests: write
+      issues: write          # PR comments
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ needs.target.outputs.pr }}
+      HEAD_REF: ${{ needs.target.outputs.head-ref }}
+      SHOTS_BRANCH: screenshots/${{ needs.target.outputs.head-ref }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.target.outputs.head-ref }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/screenshots
+      - name: Open, update or close the screenshots PR
+        run: |
+          rm -rf app/src/test/screenshots
+          mkdir -p app/src/test/screenshots
+          cp -R "$RUNNER_TEMP/screenshots/." app/src/test/screenshots/
+          git add -A app/src/test/screenshots
+          existing=$(gh pr list --head "$SHOTS_BRANCH" --base "$HEAD_REF" --state open \
+            --json number --jq '.[0].number // empty')
+
+          if git diff --cached --quiet; then
+            if [ -n "$existing" ]; then
+              gh pr close "$existing" --delete-branch \
+                --comment "Superseded: a fresh recording of \`$HEAD_REF\` matches its committed PNGs ($RUN_URL)."
+            fi
+            gh pr comment "$PR" --body "📸 Recorded the reference screenshots for \`$HEAD_REF\` in the CI image: they match the committed PNGs, nothing to merge. ([run]($RUN_URL))"
+            exit 0
+          fi
+
+          changes=$(git diff --cached --name-status | awk -F'\t' '{
+            s = $1 == "A" ? "added" : $1 == "D" ? "deleted" : "changed"
+            printf "- %s `%s`\n", s, $2
+          }')
+          head_sha=$(git rev-parse --short HEAD)
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898599+github-actions[bot]@users.noreply.github.com'
+          git switch -q -c "$SHOTS_BRANCH"
+          git commit -q -m "Record reference screenshots for $HEAD_REF" \
+            -m "Recorded in the CI image from $head_sha by the Record Screenshots workflow: $RUN_URL"
+          git push -q --force origin "HEAD:refs/heads/$SHOTS_BRANCH"
+
+          {
+            echo "Reference PNGs for #$PR, recorded in the CI image from \`$HEAD_REF\` at \`$head_sha\` ([run]($RUN_URL))."
+            echo
+            echo "**Look at every image below before merging.** A recording is only a correct reference if the render is: nothing clipped, overlapping or cut off, text legible, the right theme and colours, no blank or error renders. If one is wrong, close this PR, fix the code on \`$HEAD_REF\` and re-apply the \`record-screenshots\` label. If they are all right, merge this into \`$HEAD_REF\`; that push reruns the PR's CI against the new references."
+            echo
+            echo "$changes"
+          } > "$RUNNER_TEMP/body.md"
+
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --body-file "$RUNNER_TEMP/body.md"
+            url=$(gh pr view "$existing" --json url --jq .url)
+          else
+            url=$(gh pr create --base "$HEAD_REF" --head "$SHOTS_BRANCH" \
+              --title "📸 Reference screenshots for #$PR" --body-file "$RUNNER_TEMP/body.md")
+          fi
+          gh pr comment "$PR" --body "📸 Recorded the reference screenshots for \`$HEAD_REF\` in the CI image: $(echo "$changes" | wc -l) PNG(s) differ, see $url — validate every image before merging it into this branch."
+
+  report-failure:
+    needs: [target, record, open-pr]
+    if: failure() && needs.target.outputs.pr != ''
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Comment the failure on the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ needs.target.outputs.pr }}" -R "$GITHUB_REPOSITORY" \
+            --body "📸 Recording reference screenshots failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

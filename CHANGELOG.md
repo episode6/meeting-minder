@@ -2,6 +2,12 @@
 
 ### v1.0.0 - Unreleased
 
+- Screenshot references are now recorded in CI: applying the `record-screenshots` label to a PR
+  runs the new `record-screenshots.yml`, which records the Roborazzi reference PNGs inside the
+  CI image and opens a PR with any changes against that PR's branch, to be reviewed image by
+  image and merged into it. Nobody records locally any more (running the CI image under local
+  Docker was heavy enough to crash a laptop). Adding any label other than `build-release` no
+  longer reruns Build Installers.
 - Day timeline UI, static (PR-5): the day view now renders a Google-Calendar-style timeline
   instead of the empty placeholder — an all-day row, a scrolled hour gutter and grid, event
   chips laid out by the new custom `DayEventsLayout`, and the red now-line. Overlapping events

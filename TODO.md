@@ -362,8 +362,11 @@ whose opinionated chips would fight our selection styling; Kizitonwose is a mont
   (states: empty day, busy day, selections, alarms set, declined, dark, 1.5 font scale). Chosen
   over Google's `com.android.compose.screenshot` because that's still `0.0.1-alphaN`. Reference
   PNGs are committed; CI runs `verifyRoborazziDebug` — inside the CI image (§3.1), so the
-  reference PNGs must be generated in that image (`docker run` it locally) rather than on a dev
-  machine, or font rendering differences will fail the verify.
+  reference PNGs must be generated in that image rather than on a dev machine, or font rendering
+  differences will fail the verify. They are recorded **in CI, never locally** (running the image
+  under local Docker crashed a laptop): the `record-screenshots` label runs
+  `record-screenshots.yml`, which opens a PR with the new PNGs against the labelled PR's branch.
+  Every image in that PR is looked at before it is merged into the branch.
 - Device tests (`android-device-tests.yml`, API 36): onboarding grant flow with
   `GrantPermissionRule`, insert an event via the provider, assert it appears in the day view.
 
