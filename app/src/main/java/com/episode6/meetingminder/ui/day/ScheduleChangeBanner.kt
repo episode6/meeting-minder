@@ -48,8 +48,6 @@ fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () ->
     val resources = LocalResources.current
     Surface(
         modifier = modifier
-            // TalkBack announces the banner as it appears, without moving focus to it
-            .semantics { liveRegion = LiveRegionMode.Polite }
             .fillMaxWidth()
             .padding(horizontal = DayViewDefaults.BannerOuterHorizontalPadding, vertical = DayViewDefaults.BannerOuterVerticalPadding),
         shape = RoundedCornerShape(DayViewDefaults.BannerCornerRadius),
@@ -67,7 +65,11 @@ fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () ->
             horizontalArrangement = Arrangement.spacedBy(DayViewDefaults.BannerContentSpacing),
         ) {
             Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-            Column(modifier = Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
+            // TalkBack announces the banner as it appears, without moving focus to it. The
+            // live region sits on the node that merges the text, not on the Surface: the
+            // content-change event is sent for the node carrying liveRegion, and only the
+            // merged node has text of its own to speak.
+            Column(modifier = Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }) {
                 Text(
                     text = if (state.lines.isEmpty()) {
                         stringResource(R.string.day_banner_selection_changed)

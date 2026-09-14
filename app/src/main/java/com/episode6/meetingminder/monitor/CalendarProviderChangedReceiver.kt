@@ -29,12 +29,17 @@ class CalendarProviderChangedReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        /** Enables or disables the receiver in the package manager; a no-op when it is already in that state. */
+        /**
+         * Enables or disables the receiver in the package manager; a no-op when it is already
+         * in that state, counting a fresh install's `DEFAULT` as disabled (the manifest's
+         * `android:enabled="false"`), so the first disarm doesn't write for nothing.
+         */
         fun setEnabled(context: Context, enabled: Boolean) {
             val component = ComponentName(context, CalendarProviderChangedReceiver::class.java)
-            val state = if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
             val packageManager = context.packageManager
-            if (packageManager.getComponentEnabledSetting(component) == state) return
+            val currentlyEnabled = packageManager.getComponentEnabledSetting(component) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            if (currentlyEnabled == enabled) return
+            val state = if (enabled) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
             packageManager.setComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP)
         }
     }

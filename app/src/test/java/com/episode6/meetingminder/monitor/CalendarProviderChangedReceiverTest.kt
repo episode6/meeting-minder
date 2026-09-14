@@ -97,6 +97,14 @@ class CalendarProviderChangedReceiverTest {
     }
 
     @Test
+    fun disablingAFreshInstall_writesNothing_becauseTheManifestAlreadySaysDisabled() {
+        CalendarProviderChangedReceiver.setEnabled(context, enabled = false)
+
+        assertThat(context.packageManager.getComponentEnabledSetting(component))
+            .isEqualTo(PackageManager.COMPONENT_ENABLED_STATE_DEFAULT)
+    }
+
+    @Test
     fun disarming_cancelsAWaitingAcceleratorCheck_exceptFromThatCheckItself() {
         val scheduler = WorkManagerChangeWorkScheduler(context, clock)
         CalendarProviderChangedReceiver().onReceive(context, providerChanged())
