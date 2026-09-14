@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
@@ -36,38 +38,48 @@ import androidx.compose.ui.unit.dp
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 
-/** What [OnboardingScreen] renders; the rest of [PermissionState][com.episode6.meetingminder.permissions.PermissionState] stubs as "coming soon" until PR-8/8b/10/13. */
+/**
+ * What [OnboardingScreen] renders: the three required rows (TODO.md §4.5). The
+ * full-screen-intent and battery-optimisation rows stub as "coming soon" until PR-10/13.
+ */
 data class OnboardingUiState(
     val calendarGranted: Boolean,
+    val notificationsGranted: Boolean = false,
+    val exactAlarmsGranted: Boolean = false,
 ) {
-    /** Only the calendar row is wired up yet, so it's also the only thing gating Continue. */
-    val canContinue: Boolean get() = calendarGranted
+    /** Every required row is granted; the optional rows never gate Continue. */
+    val canContinue: Boolean get() = calendarGranted && notificationsGranted && exactAlarmsGranted
+}
+
+/** The live rows of the checklist, each with its own request flow in `Navigation.kt`. */
+enum class OnboardingRow(@param:StringRes internal val title: Int, @param:StringRes internal val description: Int) {
+    Calendar(R.string.onboarding_calendar_title, R.string.onboarding_calendar_description),
+    Notifications(R.string.onboarding_notifications_title, R.string.onboarding_notifications_description),
+    ExactAlarms(R.string.onboarding_alarms_title, R.string.onboarding_alarms_description),
 }
 
 private data class StubRow(@StringRes val title: Int, @StringRes val description: Int)
 
 private val StubRows = listOf(
-    StubRow(R.string.onboarding_notifications_title, R.string.onboarding_notifications_description),
-    StubRow(R.string.onboarding_alarms_title, R.string.onboarding_alarms_description),
     StubRow(R.string.onboarding_full_screen_title, R.string.onboarding_full_screen_description),
     StubRow(R.string.onboarding_battery_title, R.string.onboarding_battery_description),
 )
 
 /**
- * The permissions checklist (render 1). Only the calendar row is live in PR-4: it drives
- * the actual runtime-permission request (launched from `Navigation.kt`, the wiring
- * layer) and switches to "Open settings" once Android stops showing the dialog after two
- * denials. The remaining rows are stubbed "coming soon" until the PRs that add their
- * permissions (PR-8, PR-8b, PR-10, PR-13) make them live too.
+ * The permissions checklist (render 1). Each live row's button is "Allow" (a runtime
+ * dialog, or the special-access page for exact alarms), or "Open settings" for the rows
+ * in [settingsOnlyRows]: those Android will no longer show a dialog for (two denials),
+ * or that only system Settings can change on this OS version (notifications on 12/12L, a
+ * silenced channel). Requests are launched from `Navigation.kt`, the wiring layer.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingScreen(
     state: OnboardingUiState,
-    calendarPermanentlyDenied: Boolean,
+    settingsOnlyRows: Set<OnboardingRow>,
     canNavigateBack: Boolean,
-    onAllowCalendarClick: () -> Unit,
-    onOpenSettingsClick: () -> Unit,
+    onAllowClick: (OnboardingRow) -> Unit,
+    onOpenSettingsClick: (OnboardingRow) -> Unit,
     onContinueClick: () -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -93,43 +105,48 @@ fun OnboardingScreen(
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 24.dp)) {
-            if (!canNavigateBack) Spacer(Modifier.height(24.dp))
-            Text(stringResource(R.string.onboarding_heading), style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(R.string.onboarding_description),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(16.dp))
-            HorizontalDivider()
-            PermissionRow(
-                title = stringResource(R.string.onboarding_calendar_title),
-                description = stringResource(R.string.onboarding_calendar_description),
-                granted = state.calendarGranted,
-                actionLabel = when {
-                    state.calendarGranted -> null
-                    calendarPermanentlyDenied -> stringResource(R.string.onboarding_open_settings)
-                    else -> stringResource(R.string.onboarding_allow)
-                },
-                onAction = when {
-                    state.calendarGranted -> null
-                    calendarPermanentlyDenied -> onOpenSettingsClick
-                    else -> onAllowCalendarClick
-                },
-            )
-            HorizontalDivider()
-            StubRows.forEach { row ->
-                PermissionRow(
-                    title = stringResource(row.title),
-                    description = stringResource(row.description),
-                    granted = false,
-                    actionLabel = stringResource(R.string.onboarding_coming_soon),
-                    onAction = null,
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                if (!canNavigateBack) Spacer(Modifier.height(24.dp))
+                Text(stringResource(R.string.onboarding_heading), style = MaterialTheme.typography.headlineMedium)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.onboarding_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.height(16.dp))
                 HorizontalDivider()
+                OnboardingRow.entries.forEach { row ->
+                    val granted = state.granted(row)
+                    val settingsOnly = row in settingsOnlyRows
+                    PermissionRow(
+                        title = stringResource(row.title),
+                        description = stringResource(row.description),
+                        granted = granted,
+                        actionLabel = when {
+                            granted -> null
+                            settingsOnly -> stringResource(R.string.onboarding_open_settings)
+                            else -> stringResource(R.string.onboarding_allow)
+                        },
+                        onAction = when {
+                            granted -> null
+                            settingsOnly -> ({ onOpenSettingsClick(row) })
+                            else -> ({ onAllowClick(row) })
+                        },
+                    )
+                    HorizontalDivider()
+                }
+                StubRows.forEach { row ->
+                    PermissionRow(
+                        title = stringResource(row.title),
+                        description = stringResource(row.description),
+                        granted = false,
+                        actionLabel = stringResource(R.string.onboarding_coming_soon),
+                        onAction = null,
+                    )
+                    HorizontalDivider()
+                }
             }
-            Spacer(Modifier.weight(1f))
             Button(
                 onClick = onContinueClick,
                 enabled = state.canContinue,
@@ -139,6 +156,12 @@ fun OnboardingScreen(
             }
         }
     }
+}
+
+private fun OnboardingUiState.granted(row: OnboardingRow): Boolean = when (row) {
+    OnboardingRow.Calendar -> calendarGranted
+    OnboardingRow.Notifications -> notificationsGranted
+    OnboardingRow.ExactAlarms -> exactAlarmsGranted
 }
 
 @Composable
@@ -188,15 +211,16 @@ private fun PermissionStatusIcon(granted: Boolean) {
     }
 }
 
+/** First launch: nothing granted, every live row offers "Allow". */
 @Preview(showBackground = true)
 @Composable
 internal fun OnboardingScreenStartPreview() {
     MeetingMinderTheme {
         OnboardingScreen(
             state = OnboardingUiState(calendarGranted = false),
-            calendarPermanentlyDenied = false,
+            settingsOnlyRows = emptySet(),
             canNavigateBack = false,
-            onAllowCalendarClick = {},
+            onAllowClick = {},
             onOpenSettingsClick = {},
             onContinueClick = {},
             onBackClick = {},
@@ -204,15 +228,16 @@ internal fun OnboardingScreenStartPreview() {
     }
 }
 
+/** Reached from the overflow menu with every required row granted: Continue enabled. */
 @Preview(showBackground = true)
 @Composable
 internal fun OnboardingScreenGrantedPreview() {
     MeetingMinderTheme {
         OnboardingScreen(
-            state = OnboardingUiState(calendarGranted = true),
-            calendarPermanentlyDenied = false,
+            state = OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true),
+            settingsOnlyRows = emptySet(),
             canNavigateBack = true,
-            onAllowCalendarClick = {},
+            onAllowClick = {},
             onOpenSettingsClick = {},
             onContinueClick = {},
             onBackClick = {},
@@ -220,15 +245,33 @@ internal fun OnboardingScreenGrantedPreview() {
     }
 }
 
+/** Render 1's mid-way state: calendar and notifications granted, exact alarms still to allow. */
+@Preview(showBackground = true)
+@Composable
+internal fun OnboardingScreenPartlyGrantedPreview() {
+    MeetingMinderTheme {
+        OnboardingScreen(
+            state = OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = false),
+            settingsOnlyRows = emptySet(),
+            canNavigateBack = false,
+            onAllowClick = {},
+            onOpenSettingsClick = {},
+            onContinueClick = {},
+            onBackClick = {},
+        )
+    }
+}
+
+/** Calendar denied twice: its button is "Open settings"; notifications on 12/12L is settings-only too. */
 @Preview(showBackground = true)
 @Composable
 internal fun OnboardingScreenPermanentlyDeniedPreview() {
     MeetingMinderTheme {
         OnboardingScreen(
             state = OnboardingUiState(calendarGranted = false),
-            calendarPermanentlyDenied = true,
+            settingsOnlyRows = setOf(OnboardingRow.Calendar, OnboardingRow.Notifications),
             canNavigateBack = false,
-            onAllowCalendarClick = {},
+            onAllowClick = {},
             onOpenSettingsClick = {},
             onContinueClick = {},
             onBackClick = {},

@@ -6,3 +6,7 @@
 # server itself (see AGENTS.md).
 android.permission.READ_CALENDAR
 android.permission.WRITE_CALENDAR
+android.permission.USE_EXACT_ALARM
+android.permission.SCHEDULE_EXACT_ALARM
+android.permission.POST_NOTIFICATIONS
+android.permission.RECEIVE_BOOT_COMPLETED

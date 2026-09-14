@@ -888,7 +888,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   `ObserveDayPlans` and `ToggleEvent` side effects, chip toggling with haptics, the FAB in its
   `Hidden`/`SetAlarms(n)` states (tap is a no-op placeholder that shows a snackbar), selection
   survives process death and day paging. Store tests via `runStoreTest`.
-- [ ] **PR-8: Alarm scheduling core.** `[Fable 5.1, effort high]` ∥ with PR-9. `alarm/AlarmScheduler` over `AlarmManager`
+- [x] **PR-8: Alarm scheduling core.** `[Fable 5.1, effort high]` ∥ with PR-9. `alarm/AlarmScheduler` over `AlarmManager`
   (`setAlarmClock`, unique request codes from `scheduled_alarm.alarm_id`), `scheduled_alarm` table,
   `SetAlarms(date)` side effect that reconciles (cancel deselected, schedule new, skip past with a
   snackbar count), lead time setting (default 5 min) in `SettingsRepository`, `BootReceiver` +

@@ -16,6 +16,7 @@ import com.episode6.meetingminder.model.SelectedEvent
 import com.episode6.meetingminder.model.testCalendarEvent
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.LoadDay
+import com.episode6.meetingminder.store.SetAlarms
 import com.episode6.meetingminder.store.ShowMessage
 import com.episode6.meetingminder.store.ToggleEvent
 import com.episode6.meetingminder.store.UiMessage
@@ -227,15 +228,68 @@ class DayViewModelTest {
     }
 
     @Test
-    fun onFabClick_showsTheComingSoonMessage() = runStoreTest(
+    fun onFabClick_inSetAlarmsState_dispatchesSetAlarmsForTheSettledDay() {
+        val dispatched = MutableSharedFlow<Action>(replay = 10)
+        val record = SideEffect<AppState> {
+            actions.onEach { if (it is SetAlarms) dispatched.emit(it) }.filter { false }
+        }
+        val selected = DayPlan(tomorrow, selected = mapOf(standup.key to standup.toSelectedEventForTest()))
+        runStoreTest(
+            { createAppStore(this, AppState(anchorDate = today, settledDate = tomorrow, dayPlans = mapOf(tomorrow to selected)), setOf(record)) },
+        ) { store ->
+            val viewModel = DayViewModel(store, clock)
+
+            viewModel.onFabClick()
+
+            assertThat(dispatched.first()).isEqualTo(SetAlarms(tomorrow))
+        }
+    }
+
+    @Test
+    fun onFabClick_inShareState_showsTheSharingComingSoonMessage() = runStoreTest(
+        {
+            val armed = DayPlan(today, selected = mapOf(standup.key to standup.toSelectedEventForTest()), alarmsSetAt = Instant.EPOCH)
+            createAppStore(this, AppState(anchorDate = today, dayPlans = mapOf(today to armed)), emptySet())
+        },
+    ) { store ->
+        val viewModel = DayViewModel(store, clock)
+        viewModel.messages.test {
+            viewModel.onFabClick()
+
+            assertThat(awaitItem()).prop(UiMessage::text).isEqualTo(R.string.day_fab_share_coming_soon)
+        }
+    }
+
+    @Test
+    fun onFabClick_withNothingSelected_doesNothing() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today), emptySet()) },
     ) { store ->
         val viewModel = DayViewModel(store, clock)
         viewModel.messages.test {
             viewModel.onFabClick()
 
-            assertThat(awaitItem()).prop(UiMessage::text).isEqualTo(R.string.day_fab_coming_soon)
+            expectNoEvents()
         }
+    }
+
+    @Test
+    fun toDayUiState_countsArmedSelectionsOnTheSettledDay() {
+        val armedStandup = standup.toSelectedEventForTest().copy(alarmId = 1, alarmAt = standup.begin.minusSeconds(300))
+        val state = AppState(
+            anchorDate = today,
+            dayPlans = mapOf(
+                today to DayPlan(
+                    today,
+                    selected = mapOf(standup.key to armedStandup, dentist.key to dentist.toSelectedEventForTest()),
+                    alarmsSetAt = Instant.EPOCH,
+                ),
+            ),
+        )
+
+        val ui = state.toDayUiState(now, zone)
+
+        assertThat(ui.fabState).isEqualTo(FabState.Share)
+        assertThat(ui.armedCount).isEqualTo(1)
     }
 
     @Test

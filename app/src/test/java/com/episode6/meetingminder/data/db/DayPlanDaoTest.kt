@@ -5,6 +5,8 @@ import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
+import assertk.assertions.isEqualTo
+import assertk.assertions.isNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -74,5 +76,37 @@ class DayPlanDaoTest {
         dao.upsertDayPlan(plan)
 
         assertThat(dao.observeDayPlans().first()).containsExactly(plan)
+    }
+
+    @Test
+    fun markAlarmsSet_createsThePlanRowIfMissing_andKeepsOtherColumnsIfNot() = runTest {
+        dao.markAlarmsSet(today, 5_000)
+        assertThat(dao.observeDayPlans().first()).containsExactly(DayPlanEntity(date = today, alarmsSetAt = 5_000))
+
+        dao.upsertDayPlan(DayPlanEntity(date = today, alarmsSetAt = 5_000, sharedAt = 6_000))
+        dao.markAlarmsSet(today, 7_000)
+
+        assertThat(dao.observeDayPlans().first()).containsExactly(DayPlanEntity(date = today, alarmsSetAt = 7_000, sharedAt = 6_000))
+    }
+
+    @Test
+    fun toggle_clearsTheDaysAlarmsSetAt_soTheFabRevertsToSetAlarms() = runTest {
+        dao.markAlarmsSet(today, 5_000)
+
+        dao.toggleSelectedEvent(standup)
+
+        assertThat(dao.observeDayPlans().first().single().alarmsSetAt).isNull()
+        assertThat(dao.selectedEventsOn(today)).containsExactly(standup)
+    }
+
+    @Test
+    fun armSelectedEvent_pointsTheRowAtItsAlarm_withoutTouchingRsvpColumns() = runTest {
+        dao.upsertSelectedEvent(standup.copy(rsvpState = "PENDING", rsvpEventId = 42))
+
+        dao.armSelectedEvent(today, standup.eventId, standup.instanceTime, alarmId = 9, alarmAt = 700, title = "Standup (moved)", beginMillis = 1_500, endMillis = 2_500)
+
+        assertThat(dao.selectedEventsOn(today).single()).isEqualTo(
+            standup.copy(alarmId = 9, alarmAt = 700, title = "Standup (moved)", beginMillis = 1_500, endMillis = 2_500, rsvpState = "PENDING", rsvpEventId = 42),
+        )
     }
 }

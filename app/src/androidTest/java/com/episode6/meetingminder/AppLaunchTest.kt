@@ -19,16 +19,23 @@ import org.junit.runner.RunWith
  * Smoke test: the app launches through the DI graph and navigation to the day view. Release, snapshot and debug builds each
  * carry their own applicationId (`com.episode6.meetingminder[.snapshot][.debug]`), so
  * the package assertion checks the shared prefix rather than one exact id. Calendar
- * access is pre-granted (PR-4 routes to Onboarding instead of Day without it); the
- * Onboarding routing itself is exercised by
- * [com.episode6.meetingminder.ui.navigation.NavigationViewModelTest] (the `calendarGranted`
- * the routing decision reads) and the Roborazzi previews rather than a second device test.
+ * access and notifications are pre-granted (the app routes to Onboarding instead of Day
+ * without every required grant); the Onboarding routing itself is exercised by
+ * [com.episode6.meetingminder.ui.navigation.NavigationViewModelTest] (the
+ * `requiredPermissionsGranted` the routing decision reads) and the Roborazzi previews
+ * rather than a second device test.
  */
 @RunWith(AndroidJUnit4::class)
 class AppLaunchTest {
 
     private val permissionRule: GrantPermissionRule =
-        GrantPermissionRule.grant(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+        GrantPermissionRule.grant(
+            Manifest.permission.READ_CALENDAR,
+            Manifest.permission.WRITE_CALENDAR,
+            // PR-8 routes to Onboarding unless every required grant is held; exact alarms
+            // are auto-granted on the API 36 emulator through USE_EXACT_ALARM
+            Manifest.permission.POST_NOTIFICATIONS,
+        )
     private val composeRule = createAndroidComposeRule<MainActivity>()
 
     @get:Rule

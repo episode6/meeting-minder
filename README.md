@@ -2,7 +2,7 @@
 
 An android-only episode6 app for one job: **every morning, look at today, decide which meetings you're actually attending, get loud alarms for those, and text your partner when you're busy.** During the day it watches the calendar and nags you to re-send the schedule when meetings appear or move.
 
-> **Status: early development.** The build system, CI, release tooling, the DI/store/navigation shell, the Calendar Provider repository, the calendar permission onboarding and the day view (a swipeable pager of timelines loaded from every visible calendar, refreshed live while on screen) are in place; selecting meetings, alarms and sharing come next. `TODO.md` is the source of truth for what gets built and in what order.
+> **Status: early development.** The build system, CI, release tooling, the DI/store/navigation shell, the Calendar Provider repository, the permissions onboarding (calendar, notifications, exact alarms), the day view (a swipeable pager of timelines loaded from every visible calendar, refreshed live while on screen), per-day selection and exact alarm scheduling (with boot/time-change re-arming; a plain notification when one fires until the ringing screen lands) are in place; the ringing experience, RSVP and sharing come next. `TODO.md` is the source of truth for what gets built and in what order.
 
 ## Planned features
 

@@ -28,13 +28,15 @@ private const val STOP_TIMEOUT_MILLIS = 5_000L
 class NavigationViewModel(private val store: AppStore) : ViewModel() {
 
     /**
+     * Whether every required onboarding row (calendar, notifications, exact alarms; TODO.md
+     * §4.5) is granted — the routing decision between Day and Onboarding.
      * [com.episode6.meetingminder.di.AppGraph] seeds `AppState.permissions` synchronously,
      * so the initial value here is already correct and the very first composition never
      * flashes the wrong screen.
      */
-    val calendarGranted: StateFlow<Boolean> = store
-        .mapStore { it.permissions.calendarGranted }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), store.state.permissions.calendarGranted)
+    val requiredPermissionsGranted: StateFlow<Boolean> = store
+        .mapStore { it.permissions.allRequiredGranted }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), store.state.permissions.allRequiredGranted)
 
     /**
      * Auto-revoke/hibernation and a trip to system Settings can change grants without any

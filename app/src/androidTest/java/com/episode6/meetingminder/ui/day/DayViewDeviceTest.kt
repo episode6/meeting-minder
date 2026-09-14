@@ -48,7 +48,13 @@ private const val LOG_TAG = "DayViewDeviceTest"
 class DayViewDeviceTest {
 
     private val permissionRule: GrantPermissionRule =
-        GrantPermissionRule.grant(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+        GrantPermissionRule.grant(
+            Manifest.permission.READ_CALENDAR,
+            Manifest.permission.WRITE_CALENDAR,
+            // PR-8 routes to Onboarding unless every required grant is held; exact alarms
+            // are auto-granted on the API 36 emulator through USE_EXACT_ALARM
+            Manifest.permission.POST_NOTIFICATIONS,
+        )
     private val composeRule = createEmptyComposeRule()
 
     @get:Rule

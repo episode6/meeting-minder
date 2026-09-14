@@ -79,3 +79,12 @@ data object CalendarContentChanged : AsyncAction
  * days' timelines (an event crossing midnight) with its own selection on each.
  */
 data class ToggleEvent(val date: LocalDate, val key: EventKey) : AsyncAction
+
+/**
+ * The user tapped "Set alarms (N)" on [date]: make `scheduled_alarm` match the day's
+ * selection (`ScheduleAlarmsSideEffects`, TODO.md §4.4) — cancel alarms for deselected
+ * events, arm new ones, re-time moved ones, skip (and count in the snackbar) any whose
+ * alarm time has already passed — and record `alarms_set_at`. PR-8b fans out one
+ * `RsvpAccept` per newly-armed event from the same reconcile.
+ */
+data class SetAlarms(val date: LocalDate) : AsyncAction

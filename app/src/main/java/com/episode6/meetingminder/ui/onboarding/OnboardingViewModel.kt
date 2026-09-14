@@ -38,4 +38,6 @@ class OnboardingViewModel(private val store: AppStore) : ViewModel() {
 
 internal fun AppState.toOnboardingUiState() = OnboardingUiState(
     calendarGranted = permissions.calendarGranted,
+    notificationsGranted = permissions.notificationsGranted,
+    exactAlarmsGranted = permissions.exactAlarmsGranted,
 )

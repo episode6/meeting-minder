@@ -37,15 +37,19 @@ class OnboardingViewModelTest {
     @Test
     fun state_followsPermissions() {
         assertThat(AppState(anchorDate = today).toOnboardingUiState())
-            .isEqualTo(OnboardingUiState(calendarGranted = false))
-        assertThat(AppState(anchorDate = today, permissions = PermissionState(calendarGranted = true)).toOnboardingUiState())
-            .isEqualTo(OnboardingUiState(calendarGranted = true))
+            .isEqualTo(OnboardingUiState(calendarGranted = false, notificationsGranted = false, exactAlarmsGranted = false))
+        val granted = PermissionState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = false)
+        assertThat(AppState(anchorDate = today, permissions = granted).toOnboardingUiState())
+            .isEqualTo(OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = false))
     }
 
     @Test
-    fun canContinue_onlyOnceCalendarIsGranted() {
+    fun canContinue_onlyOnceEveryRequiredRowIsGranted() {
         assertThat(OnboardingUiState(calendarGranted = false).canContinue).isEqualTo(false)
-        assertThat(OnboardingUiState(calendarGranted = true).canContinue).isEqualTo(true)
+        assertThat(OnboardingUiState(calendarGranted = true).canContinue).isEqualTo(false)
+        assertThat(OnboardingUiState(calendarGranted = true, notificationsGranted = true).canContinue).isEqualTo(false)
+        assertThat(OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true).canContinue)
+            .isEqualTo(true)
     }
 
     @Test
@@ -64,7 +68,7 @@ class OnboardingViewModelTest {
 
             viewModel.onPermissionsMaybeChanged()
 
-            assertThat(awaitItem()).isEqualTo(OnboardingUiState(calendarGranted = true))
+            assertThat(awaitItem()).isEqualTo(OnboardingUiState(calendarGranted = true, notificationsGranted = false, exactAlarmsGranted = false))
         }
     }
 }

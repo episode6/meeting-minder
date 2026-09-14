@@ -2,6 +2,37 @@
 
 ### v1.0.0 - Unreleased
 
+- Alarm scheduling core (PR-8): "Set alarms (N)" now does it. A new `scheduled_alarm` Room
+  table (database version 2) is the source of truth for what is armed with `AlarmManager`;
+  `alarm/AndroidAlarmScheduler` arms each row with `setAlarmClock` (Doze-exempt,
+  alarm-clock class) through one `PendingIntent` per alarm identified by its
+  `meetingminder://alarm/{alarmId}` data + request code. `ScheduleAlarmsSideEffects` handles
+  the new `SetAlarms(date)` action with the pure `reconcileAlarms` (`alarm/AlarmReconciler.kt`):
+  arms newly selected events at begin − lead time, cancels rows for deselected ones, re-times
+  a moved event in place, skips (and counts in the snackbar, "2 alarms skipped, already
+  started") any whose alarm time has passed, then records `day_plan.alarms_set_at` so the FAB
+  flips to "Share schedule" and the subtitle reads "3 alarms set · not shared yet". Any later
+  change of selection clears `alarms_set_at` (in `DayPlanDao.toggleSelectedEvent`'s
+  transaction) so the FAB reverts to "Set alarms" until the next reconcile, per the §2
+  interaction rules. The lead time (default 5 min) comes from the new DataStore-backed
+  `data/settings/SettingsRepository`. `alarm/BootReceiver` re-arms every `SCHEDULED` row from
+  Room on `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED` and the
+  exact-alarm permission-state broadcast, under `goAsync()` so the broadcast stays open until
+  every alarm is re-set; `alarm/AlarmReceiver` marks a fired row `FIRED` and, until PR-10's
+  ringing service, posts a plain high-priority notification on the new `alarms` channel.
+  Permissions added (manifest + `expected-permissions.txt`): `USE_EXACT_ALARM`,
+  `SCHEDULE_EXACT_ALARM` (maxSdkVersion 32), `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`.
+  Onboarding's "Notifications" and "Alarms & reminders" rows are live (`PermissionState`
+  gains `notificationsGranted`/`exactAlarmsGranted`; both are required, so launch routes to
+  Onboarding unless all three required grants are held, and Continue waits for them).
+  `UiMessage` can now carry a plurals quantity. New tests: `AlarmReconcilerTest` (alarm time
+  math + every reconcile case), `AndroidAlarmSchedulerTest` (Robolectric `ShadowAlarmManager`:
+  `setAlarmClock` used, PendingIntent identity, replace/cancel, denied path, manifest
+  receivers), `AlarmReschedulerTest`, `FiredAlarmHandlerTest`, `ScheduledAlarmDaoTest`,
+  `ScheduleAlarmsSideEffectsTest`, `DataStoreSettingsRepositoryTest`, plus new cases in
+  `DayPlanDaoTest`, `PermissionCheckerTest`, `DayViewModelTest`, `OnboardingViewModelTest` and
+  `NavigationViewModelTest`. New Roborazzi previews: `DayScreenAlarmsSetPreview` (render 3)
+  and `OnboardingScreenPartlyGrantedPreview`.
 - Fix: `ToggleEventSideEffects`' read-then-write across two DAO calls could let a fast
   double tap on the same chip leave it selected instead of unselected, since `flatMapMerge`
   runs concurrent toggles and both could read "not selected" before either wrote.

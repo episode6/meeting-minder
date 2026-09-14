@@ -60,8 +60,10 @@ data class DayUiState(
     val isToday: Boolean = date == anchorDate,
     /** [com.episode6.meetingminder.model.CalendarEvent.isMeeting] count on [date]; null until it has loaded. */
     val meetingCount: Int? = null,
-    /** The FAB for [date]: hidden, "Set alarms (N)", or (PR-8/9) "Share schedule". */
+    /** The FAB for [date]: hidden, "Set alarms (N)", or "Share schedule". */
     val fabState: FabState = FabState.Hidden,
+    /** How many of [date]'s selected events have an alarm armed; the subtitle once alarms are set. */
+    val armedCount: Int = 0,
     /** Every loaded day's timeline; days not in here haven't loaded yet. */
     val days: Map<LocalDate, DayTimelineState> = emptyMap(),
     /** Where the timeline should first open, once today's events have loaded; see [initialFirstVisibleHour]. */
@@ -111,7 +113,7 @@ fun DayScreen(
                     Column {
                         Text(state.date.format(TitleFormatter), style = MaterialTheme.typography.titleLarge)
                         Text(
-                            subtitle(state.meetingCount, state.fabState),
+                            subtitle(state.meetingCount, state.fabState, state.armedCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -153,25 +155,29 @@ fun DayScreen(
 
 /**
  * "3 meetings" / "1 meeting" / "No meetings", with " · N selected" appended while the FAB
- * reads "Set alarms" (render 2); blank (but still a line tall) while the day loads.
+ * reads "Set alarms" (render 2); "3 alarms set · not shared yet" once alarms are set
+ * (render 3; "shared 8:12 AM" is PR-9); blank (but still a line tall) while the day loads.
  */
 @Composable
-private fun subtitle(meetingCount: Int?, fabState: FabState): String {
+private fun subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int): String {
     if (meetingCount == null) return ""
     val meetings = when (meetingCount) {
         0 -> stringResource(R.string.day_subtitle_no_meetings)
         else -> pluralStringResource(R.plurals.day_subtitle_meetings, meetingCount, meetingCount)
     }
-    return if (fabState is FabState.SetAlarms) {
-        stringResource(R.string.day_subtitle_with_selected_count, meetings, fabState.count)
-    } else {
-        meetings
+    return when (fabState) {
+        is FabState.SetAlarms -> stringResource(R.string.day_subtitle_with_selected_count, meetings, fabState.count)
+        FabState.Share -> stringResource(
+            R.string.day_subtitle_not_shared_yet,
+            pluralStringResource(R.plurals.day_subtitle_alarms_set, armedCount, armedCount),
+        )
+        FabState.Hidden -> meetings
     }
 }
 
 /**
  * [ExtendedFloatingActionButton] for [state], animated between the icon/label of
- * [FabState.SetAlarms] and (PR-8/9) [FabState.Share], hidden entirely while [FabState.Hidden].
+ * [FabState.SetAlarms] and [FabState.Share], hidden entirely while [FabState.Hidden].
  */
 @Composable
 private fun DayFab(state: FabState, onClick: () -> Unit) {
@@ -297,6 +303,21 @@ internal fun DayScreenSelectingPreview() {
             meetingCount = 3,
             fabState = FabState.SetAlarms(2),
             days = mapOf(PreviewDate to PreviewEvents.selectingDay),
+        ),
+    )
+}
+
+/** Render 3: alarms set for three selected events, "3 alarms set · not shared yet" and the "Share schedule" FAB. */
+@Preview(showBackground = true)
+@Composable
+internal fun DayScreenAlarmsSetPreview() {
+    DayScreenPreviewFrame(
+        DayUiState(
+            anchorDate = PreviewDate,
+            meetingCount = 3,
+            fabState = FabState.Share,
+            armedCount = 3,
+            days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
         ),
     )
 }

@@ -1,6 +1,9 @@
 package com.episode6.meetingminder.ui.navigation
 
 import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.SnackbarHostState
@@ -17,6 +20,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -32,10 +36,12 @@ import com.episode6.meetingminder.permissions.PermissionRequester
 import com.episode6.meetingminder.ui.day.DayScreen
 import com.episode6.meetingminder.ui.day.DayViewModel
 import com.episode6.meetingminder.ui.licenses.LicensesScreen
+import com.episode6.meetingminder.ui.onboarding.OnboardingRow
 import com.episode6.meetingminder.ui.onboarding.OnboardingScreen
 import com.episode6.meetingminder.ui.onboarding.OnboardingViewModel
 import com.episode6.meetingminder.ui.util.ComingSoonScreen
 import com.episode6.meetingminder.ui.util.findActivity
+import com.episode6.meetingminder.ui.util.resolve
 import dev.zacsweers.metrox.viewmodel.metroViewModel
 
 /**
@@ -47,11 +53,11 @@ import dev.zacsweers.metrox.viewmodel.metroViewModel
 fun MeetingMinderNavigation() {
     val navController = rememberNavController()
     val navigationViewModel: NavigationViewModel = metroViewModel()
-    val calendarGranted by navigationViewModel.calendarGranted.collectAsStateWithLifecycle()
+    val requiredPermissionsGranted by navigationViewModel.requiredPermissionsGranted.collectAsStateWithLifecycle()
 
     // Computed once: AppGraph already seeded AppState.permissions synchronously, so this
     // never flashes Day before redirecting to Onboarding (or vice versa).
-    val startDestination = remember { if (calendarGranted) Route.Day else Route.Onboarding }
+    val startDestination = remember { if (requiredPermissionsGranted) Route.Day else Route.Onboarding }
 
     // Auto-revoke/hibernation and a trip to system Settings can change grants without any
     // action of ours, so re-check on every resume, app-wide (not just while Onboarding is shown).
@@ -68,10 +74,10 @@ fun MeetingMinderNavigation() {
     // synchronous seed above only covers the very first frame. Revoking calendar access in
     // system Settings kills the process; relaunching from recents must still land on
     // Onboarding (TODO.md §4.5: shown whenever a required grant is missing at launch), so
-    // also react whenever the grant turns false and we are not already there.
+    // also react whenever a required grant turns false and we are not already there.
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
-    LaunchedEffect(calendarGranted, currentBackStackEntry) {
-        if (!calendarGranted && currentBackStackEntry?.destination?.hasRoute<Route.Onboarding>() != true) {
+    LaunchedEffect(requiredPermissionsGranted, currentBackStackEntry) {
+        if (!requiredPermissionsGranted && currentBackStackEntry?.destination?.hasRoute<Route.Onboarding>() != true) {
             navController.navigate(Route.Onboarding) {
                 popUpTo(navController.graph.id) { inclusive = true }
                 launchSingleTop = true
@@ -97,9 +103,7 @@ fun MeetingMinderNavigation() {
                 entryLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     viewModel.messages.collect { message ->
                         viewModel.onMessageShown(message)
-                        snackbarHostState.showSnackbar(
-                            resources.getString(message.text, *message.formatArgs.toTypedArray()),
-                        )
+                        snackbarHostState.showSnackbar(message.resolve(resources))
                     }
                 }
             }
@@ -133,28 +137,25 @@ fun MeetingMinderNavigation() {
             val viewModel: OnboardingViewModel = metroViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
             val screenContext = LocalContext.current
-            var calendarPermanentlyDenied by rememberSaveable { mutableStateOf(false) }
-            // Rationale is also false before the user has ever made a choice, so a bare
-            // "not shown after" check would flip to "permanently denied" on a first-ever
-            // Back-dismissal. Snapshotting it right before launch() lets us tell that case
-            // apart from a real two-denials rationale->false transition.
-            var rationaleShownBeforeRequest by rememberSaveable { mutableStateOf(false) }
-            val calendarPermissionLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestMultiplePermissions(),
-            ) { results ->
-                viewModel.onPermissionsMaybeChanged()
-                calendarPermanentlyDenied = if (results.values.all { it }) {
-                    false
-                } else {
-                    val activity = screenContext.findActivity()
-                    val rationaleStillShown = activity != null &&
-                        ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.READ_CALENDAR)
-                    rationaleShownBeforeRequest && !rationaleStillShown
-                }
-            }
-            // Reached from system Settings (or a fresh grant) without the launcher firing.
-            LaunchedEffect(state.calendarGranted) {
-                if (state.calendarGranted) calendarPermanentlyDenied = false
+            val calendarRequest = rememberRuntimePermissionRequest(
+                permissions = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR),
+                granted = state.calendarGranted,
+                onResult = viewModel::onPermissionsMaybeChanged,
+            )
+            val notificationsRequest = rememberRuntimePermissionRequest(
+                permissions = arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                granted = state.notificationsGranted,
+                onResult = viewModel::onPermissionsMaybeChanged,
+            )
+            // Notifications have no runtime dialog on 12/12L, and none that helps once the
+            // POST_NOTIFICATIONS grant is held but the user has silenced the alarms channel:
+            // only system Settings can fix either.
+            val notificationsSettingsOnly = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                notificationsRequest.permanentlyDenied ||
+                screenContext.holdsPostNotifications()
+            val settingsOnlyRows = buildSet {
+                if (calendarRequest.permanentlyDenied) add(OnboardingRow.Calendar)
+                if (notificationsSettingsOnly) add(OnboardingRow.Notifications)
             }
 
             // Onboarding is either the launch destination (nothing to pop back to) or was
@@ -162,17 +163,25 @@ fun MeetingMinderNavigation() {
             val canNavigateBack = navController.previousBackStackEntry != null
             OnboardingScreen(
                 state = state,
-                calendarPermanentlyDenied = calendarPermanentlyDenied,
+                settingsOnlyRows = settingsOnlyRows,
                 canNavigateBack = canNavigateBack,
-                onAllowCalendarClick = {
-                    val activity = screenContext.findActivity()
-                    rationaleShownBeforeRequest = activity != null &&
-                        ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.READ_CALENDAR)
-                    calendarPermissionLauncher.launch(
-                        arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR),
-                    )
+                onAllowClick = { row ->
+                    when (row) {
+                        OnboardingRow.Calendar -> calendarRequest.launch()
+                        OnboardingRow.Notifications -> notificationsRequest.launch()
+                        // special access, never a dialog: the Settings page is the request
+                        OnboardingRow.ExactAlarms ->
+                            screenContext.startActivity(PermissionRequester.exactAlarmSettingsIntent(screenContext))
+                    }
                 },
-                onOpenSettingsClick = { screenContext.startActivity(PermissionRequester.appSettingsIntent(screenContext)) },
+                onOpenSettingsClick = { row ->
+                    val intent = when (row) {
+                        OnboardingRow.Calendar -> PermissionRequester.appSettingsIntent(screenContext)
+                        OnboardingRow.Notifications -> PermissionRequester.appNotificationSettingsIntent(screenContext)
+                        OnboardingRow.ExactAlarms -> PermissionRequester.exactAlarmSettingsIntent(screenContext)
+                    }
+                    screenContext.startActivity(intent)
+                },
                 onContinueClick = {
                     if (canNavigateBack) {
                         navController.popBackStack()
@@ -194,3 +203,50 @@ fun MeetingMinderNavigation() {
         }
     }
 }
+
+/** One runtime-permission request flow: [launch] shows the dialog, [permanentlyDenied] says when it no longer will. */
+private class RuntimePermissionRequest(val permanentlyDenied: Boolean, val launch: () -> Unit)
+
+/**
+ * Wraps `RequestMultiplePermissions` for [permissions] with the "two denials → Open
+ * settings" detection (TODO.md §4.1). Rationale is also false before the user has ever
+ * made a choice, so a bare "not shown after" check would flip to "permanently denied" on
+ * a first-ever Back-dismissal; snapshotting it right before `launch()` tells that apart
+ * from a real two-denials rationale→false transition. [granted] turning true (a fresh
+ * grant, or one made in system Settings) resets the flag.
+ */
+@Composable
+private fun rememberRuntimePermissionRequest(
+    permissions: Array<String>,
+    granted: Boolean,
+    onResult: () -> Unit,
+): RuntimePermissionRequest {
+    val context = LocalContext.current
+    val key = permissions.first()
+    var permanentlyDenied by rememberSaveable(key) { mutableStateOf(false) }
+    var rationaleShownBeforeRequest by rememberSaveable(key) { mutableStateOf(false) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        onResult()
+        permanentlyDenied = if (results.values.all { it }) {
+            false
+        } else {
+            rationaleShownBeforeRequest && !context.rationaleShownFor(key)
+        }
+    }
+    LaunchedEffect(granted) {
+        if (granted) permanentlyDenied = false
+    }
+    return RuntimePermissionRequest(permanentlyDenied) {
+        rationaleShownBeforeRequest = context.rationaleShownFor(key)
+        launcher.launch(permissions)
+    }
+}
+
+private fun Context.rationaleShownFor(permission: String): Boolean {
+    val activity = findActivity() ?: return false
+    return ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
+}
+
+private fun Context.holdsPostNotifications(): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
