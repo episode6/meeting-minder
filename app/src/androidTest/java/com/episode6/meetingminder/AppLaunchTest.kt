@@ -19,8 +19,9 @@ import org.junit.runner.RunWith
  * carry their own applicationId (`com.episode6.meetingminder[.snapshot][.debug]`), so
  * the package assertion checks the shared prefix rather than one exact id. Calendar
  * access is pre-granted (PR-4 routes to Onboarding instead of Day without it); the
- * Onboarding routing itself is exercised by [com.episode6.meetingminder.ui.onboarding.OnboardingViewModelTest]
- * and the Roborazzi previews rather than a second device test.
+ * Onboarding routing itself is exercised by
+ * [com.episode6.meetingminder.ui.navigation.NavigationViewModelTest] (the `calendarGranted`
+ * the routing decision reads) and the Roborazzi previews rather than a second device test.
  */
 @RunWith(AndroidJUnit4::class)
 class AppLaunchTest {

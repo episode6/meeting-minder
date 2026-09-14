@@ -21,13 +21,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.episode6.meetingminder.R
-import com.episode6.meetingminder.appGraph
 import com.episode6.meetingminder.permissions.PermissionRequester
-import com.episode6.meetingminder.store.PermissionsMaybeChanged
 import com.episode6.meetingminder.ui.day.DayScreen
 import com.episode6.meetingminder.ui.day.DayViewModel
 import com.episode6.meetingminder.ui.licenses.LicensesScreen
@@ -45,22 +45,37 @@ import dev.zacsweers.metrox.viewmodel.metroViewModel
 @Composable
 fun MeetingMinderNavigation() {
     val navController = rememberNavController()
-    val context = LocalContext.current
-    val appStore = remember(context) { context.appGraph.appStore }
+    val navigationViewModel: NavigationViewModel = metroViewModel()
+    val calendarGranted by navigationViewModel.calendarGranted.collectAsStateWithLifecycle()
 
     // Computed once: AppGraph already seeded AppState.permissions synchronously, so this
     // never flashes Day before redirecting to Onboarding (or vice versa).
-    val startDestination = remember { if (appStore.state.permissions.calendarGranted) Route.Day else Route.Onboarding }
+    val startDestination = remember { if (calendarGranted) Route.Day else Route.Onboarding }
 
     // Auto-revoke/hibernation and a trip to system Settings can change grants without any
     // action of ours, so re-check on every resume, app-wide (not just while Onboarding is shown).
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, appStore) {
+    DisposableEffect(lifecycleOwner, navigationViewModel) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) appStore.dispatch(PermissionsMaybeChanged)
+            if (event == Lifecycle.Event.ON_RESUME) navigationViewModel.onResumed()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // rememberNavController restores the saved back stack on activity recreation, so the
+    // synchronous seed above only covers the very first frame. Revoking calendar access in
+    // system Settings kills the process; relaunching from recents must still land on
+    // Onboarding (TODO.md §4.5: shown whenever a required grant is missing at launch), so
+    // also react whenever the grant turns false and we are not already there.
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    LaunchedEffect(calendarGranted, currentBackStackEntry) {
+        if (!calendarGranted && currentBackStackEntry?.destination?.hasRoute<Route.Onboarding>() != true) {
+            navController.navigate(Route.Onboarding) {
+                popUpTo(navController.graph.id) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
     }
 
     NavHost(navController = navController, startDestination = startDestination) {
@@ -104,6 +119,11 @@ fun MeetingMinderNavigation() {
             val state by viewModel.state.collectAsStateWithLifecycle()
             val screenContext = LocalContext.current
             var calendarPermanentlyDenied by rememberSaveable { mutableStateOf(false) }
+            // Rationale is also false before the user has ever made a choice, so a bare
+            // "not shown after" check would flip to "permanently denied" on a first-ever
+            // Back-dismissal. Snapshotting it right before launch() lets us tell that case
+            // apart from a real two-denials rationale->false transition.
+            var rationaleShownBeforeRequest by rememberSaveable { mutableStateOf(false) }
             val calendarPermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions(),
             ) { results ->
@@ -112,8 +132,9 @@ fun MeetingMinderNavigation() {
                     false
                 } else {
                     val activity = screenContext.findActivity()
-                    activity != null &&
-                        !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.READ_CALENDAR)
+                    val rationaleStillShown = activity != null &&
+                        ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.READ_CALENDAR)
+                    rationaleShownBeforeRequest && !rationaleStillShown
                 }
             }
             // Reached from system Settings (or a fresh grant) without the launcher firing.
@@ -129,6 +150,9 @@ fun MeetingMinderNavigation() {
                 calendarPermanentlyDenied = calendarPermanentlyDenied,
                 canNavigateBack = canNavigateBack,
                 onAllowCalendarClick = {
+                    val activity = screenContext.findActivity()
+                    rationaleShownBeforeRequest = activity != null &&
+                        ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.READ_CALENDAR)
                     calendarPermissionLauncher.launch(
                         arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR),
                     )
