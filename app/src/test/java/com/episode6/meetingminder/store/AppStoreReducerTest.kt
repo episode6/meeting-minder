@@ -4,6 +4,7 @@ import assertk.assertThat
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
 import assertk.assertions.isSameInstanceAs
+import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.redux.Action
 import com.episode6.redux.subscriberaware.SubscriberStatusChanged
 import org.junit.Test
@@ -26,6 +27,15 @@ class AppStoreReducerTest {
         val result = state.reduce(SetSettledDate(today.plusDays(2)))
 
         assertThat(result).isEqualTo(state.copy(settledDate = today.plusDays(2)))
+    }
+
+    @Test
+    fun setPermissions_replacesTheWholePermissionState() {
+        val granted = PermissionState(calendarGranted = true)
+
+        val result = state.reduce(SetPermissions(granted))
+
+        assertThat(result).isEqualTo(state.copy(permissions = granted))
     }
 
     @Test

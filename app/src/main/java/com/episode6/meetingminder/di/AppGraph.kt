@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import com.episode6.meetingminder.data.calendar.CalendarRepository
+import com.episode6.meetingminder.permissions.PermissionChecker
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.createAppStore
@@ -52,6 +53,16 @@ interface AppGraph : ViewModelGraph {
 
     @Provides
     @SingleIn(AppScope::class)
-    fun provideAppStore(scope: CoroutineScope, sideEffects: Set<SideEffect<AppState>>): AppStore =
-        createAppStore(scope = scope, initialState = AppState(anchorDate = LocalDate.now()), sideEffects = sideEffects)
+    fun provideAppStore(
+        scope: CoroutineScope,
+        sideEffects: Set<SideEffect<AppState>>,
+        permissionChecker: PermissionChecker,
+    ): AppStore =
+        createAppStore(
+            scope = scope,
+            // Computed synchronously (not via PermissionsMaybeChanged) so the very first
+            // composition already knows whether to route to Onboarding or Day.
+            initialState = AppState(anchorDate = LocalDate.now(), permissions = permissionChecker.currentState()),
+            sideEffects = sideEffects,
+        )
 }

@@ -858,7 +858,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   near midnight in a negative-offset zone, cancelled, declined, hidden calendar. The repository
   also exposes the self-attendee id, access level and organizer-can-respond flags that §4.6 needs.
   `READ_CALENDAR` and `WRITE_CALENDAR` added to the manifest and `expected-permissions.txt`.
-- [ ] **PR-4: Calendar permission + minimal onboarding.** `[Sonnet 5, effort medium]` `permissions/PermissionState`,
+- [x] **PR-4: Calendar permission + minimal onboarding.** `[Sonnet 5, effort medium]` `permissions/PermissionState`,
   `PermissionChecker` (refreshed on `ON_RESUME` via `PermissionsMaybeChanged`), Onboarding screen
   with only the calendar row live and the other rows stubbed as "coming soon", routing: launch →
   onboarding if calendar not granted, else Day. Handles the two-denials → "Open settings" case.
