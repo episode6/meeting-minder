@@ -6,8 +6,7 @@
   runs the new `record-screenshots.yml`, which records the Roborazzi reference PNGs inside the
   CI image and opens a PR with any changes against that PR's branch, to be reviewed image by
   image and merged into it. Nobody records locally any more (running the CI image under local
-  Docker was heavy enough to crash a laptop). Adding any label other than `build-release` no
-  longer reruns Build Installers.
+  Docker was heavy enough to crash a laptop).
 - Review fixes on PR-5: at 1.5× font scale the armed chip's time range now ellipsizes so the
   bell and alarm time always survive a half-width column (the Dentist chip showed a cut-off
   "11"), and the hour-gutter and all-day labels shrink to fit (then ellipsize) instead of

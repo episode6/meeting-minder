@@ -65,7 +65,9 @@ jobs:
           echo "head-ref=$head_ref" >> "$GITHUB_OUTPUT"
           gh pr edit "$PR" -R "$GITHUB_REPOSITORY" --remove-label record-screenshots || true
 
-  image:
+  # not named 'image': check runs are listed by name, and build-installers.yml
+  # already reports an 'image / image' check for the same head SHA
+  ci-image:
     needs: target
     uses: ./.github/workflows/ci-image.yml
     permissions:
@@ -73,7 +75,7 @@ jobs:
       packages: write
 
   record:
-    needs: [target, image]
+    needs: [target, ci-image]
     runs-on: ubuntu-latest
     # Runs the PR's own gradle build, so it gets no write access; the
     # open-pr job that pushes never executes PR code.
@@ -81,7 +83,7 @@ jobs:
       contents: read
       packages: read
     container:
-      image: ${{ needs.image.outputs.image }}
+      image: ${{ needs.ci-image.outputs.image }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
