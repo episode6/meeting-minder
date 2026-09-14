@@ -45,8 +45,6 @@ fun DayEventsLayout(
         val startInset = DayViewDefaults.EventsStartPadding.toPx()
         val usable = max(0f, width - startInset - DayViewDefaults.EventsEndPadding.toPx())
         val columnGap = DayViewDefaults.ColumnGap.toPx()
-        val verticalGap = DayViewDefaults.ChipVerticalGap.toPx()
-        val minHeight = DayViewDefaults.MinChipHeight.toPx()
 
         val placeables = measurables.map { measurable ->
             val slot = checkNotNull(measurable.parentData as? EventSlot) { "every DayEventsLayout child needs Modifier.eventSlot" }
@@ -55,8 +53,8 @@ fun DayEventsLayout(
             val left = startInset + position.col * columnWidth
             val reachesLastColumn = position.col + position.colSpan >= position.colCount
             val chipWidth = max(0f, position.colSpan * columnWidth - if (reachesLastColumn) 0f else columnGap)
-            val chipHeight = max(span.duration / 60f * hourPx - verticalGap, minHeight)
-            val placeable = measurable.measure(Constraints.fixed(chipWidth.roundToInt(), chipHeight.roundToInt()))
+            val chipHeight = DayViewDefaults.chipHeight(span, hourHeight).roundToPx()
+            val placeable = measurable.measure(Constraints.fixed(chipWidth.roundToInt(), chipHeight))
             Triple(placeable, left.roundToInt(), (span.start / 60f * hourPx).roundToInt())
         }
         layout(width, height) {

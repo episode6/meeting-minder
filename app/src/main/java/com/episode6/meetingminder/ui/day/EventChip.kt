@@ -238,7 +238,7 @@ fun EventChip(
                     .padding(vertical = DayViewDefaults.ChipVerticalPadding),
             ) {
                 Row(verticalAlignment = Alignment.Top) {
-                    if (solid) CheckIcon(contentColor, Modifier.padding(top = 2.dp))
+                    if (solid) CheckIcon(contentColor, Modifier.padding(top = DayViewDefaults.ChipCheckIconTopPadding))
                     Text(
                         event.title,
                         style = titleStyle,
@@ -249,7 +249,15 @@ fun EventChip(
                 val separator = stringResource(R.string.event_detail_separator)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (event.armed) {
-                        Text(timeRange + separator, style = detailStyle, maxLines = 1, softWrap = false)
+                        // the alarm time is the point of the armed state: the range gives way first
+                        Text(
+                            timeRange + separator,
+                            style = detailStyle,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
                         AlarmTime(alarmText.orEmpty(), detailStyle)
                     } else {
                         Text(
@@ -285,7 +293,7 @@ private fun AlarmTime(text: String, style: TextStyle, modifier: Modifier = Modif
             contentDescription = null,
             tint = style.color,
             modifier = Modifier
-                .padding(end = 2.dp)
+                .padding(end = DayViewDefaults.ChipInlineIconSpacing)
                 .size(DayViewDefaults.ChipInlineIconSize),
         )
         Text(text, style = style, maxLines = 1, softWrap = false)
