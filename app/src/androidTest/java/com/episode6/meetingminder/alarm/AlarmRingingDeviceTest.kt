@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
@@ -38,7 +39,6 @@ private const val LOG_TAG = "AlarmRingingDeviceTest"
 private const val ALARM_DELAY_MILLIS = 10_000L
 private const val RING_TIMEOUT_MILLIS = 45_000L
 private const val STEP_TIMEOUT_MILLIS = 15_000L
-private const val POLL_MILLIS = 250L
 
 /**
  * The whole ringing path on a real device (TODO.md PR-10): an alarm armed with
@@ -120,9 +120,8 @@ class AlarmRingingDeviceTest {
         await("the alarm to be dismissed", STEP_TIMEOUT_MILLIS) {
             runBlocking { graph.scheduledAlarmDao.byId(alarmId)?.state } == AlarmState.DISMISSED
         }
-        await("the ringing activity to close", STEP_TIMEOUT_MILLIS) {
-            resumedActivities().none { it is AlarmActivity } && graph.appStore.state.ringing == null
-        }
+        await("the ringing service to clear the ringing alarm", STEP_TIMEOUT_MILLIS) { graph.appStore.state.ringing == null }
+        await("the ringing activity to close", STEP_TIMEOUT_MILLIS) { resumedActivities().none { it is AlarmActivity } }
     }
 
     private fun resumedActivities(): List<Activity> {
@@ -133,14 +132,18 @@ class AlarmRingingDeviceTest {
         return activities
     }
 
+    /**
+     * Waits through the compose rule rather than a plain sleep loop: under a compose test the
+     * frame clock only advances while the test synchronises with Compose, so a state change
+     * (the screen closing itself once nothing rings) is never recomposed by bare polling.
+     */
     private fun await(what: String, timeoutMillis: Long, condition: () -> Boolean) {
-        val deadline = SystemClock.uptimeMillis() + timeoutMillis
-        while (SystemClock.uptimeMillis() < deadline) {
-            if (runCatching(condition).getOrDefault(false)) return
-            SystemClock.sleep(POLL_MILLIS)
+        try {
+            composeRule.waitUntil(timeoutMillis) { runCatching(condition).getOrDefault(false) }
+        } catch (e: ComposeTimeoutException) {
+            dumpDiagnostics()
+            throw AssertionError("timed out waiting for $what", e)
         }
-        dumpDiagnostics()
-        throw AssertionError("timed out waiting for $what")
     }
 
     private fun dumpDiagnostics() {
