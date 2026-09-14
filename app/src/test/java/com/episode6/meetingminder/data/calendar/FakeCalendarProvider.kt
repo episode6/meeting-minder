@@ -73,10 +73,12 @@ class FakeCalendarProvider : ContentProvider() {
             MATCH_ATTENDEES -> db.query(ATTENDEES, projection, selection, selectionArgs, null, null, sortOrder)
             MATCH_INSTANCES_WHEN -> {
                 // content://com.android.calendar/instances/when/{begin}/{end} returns every
-                // instance overlapping the window, exactly like the real provider
+                // instance overlapping the window, inclusive on both ends exactly like
+                // CalendarProvider2.SQL_WHERE_INSTANCES_BETWEEN (so a zero-duration event
+                // sitting on the window edge is returned too)
                 val begin = uri.pathSegments[2].toLong()
                 val end = uri.pathSegments[3].toLong()
-                val overlap = "${Instances.END} > $begin AND ${Instances.BEGIN} < $end"
+                val overlap = "${Instances.END} >= $begin AND ${Instances.BEGIN} <= $end"
                 val where = if (selection.isNullOrBlank()) overlap else "$overlap AND ($selection)"
                 db.query(INSTANCES, projection, where, selectionArgs, null, null, sortOrder)
             }

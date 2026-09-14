@@ -26,6 +26,9 @@ data class EventKey(val eventId: Long, val instanceTime: Long) {
             originalId: Long?,
             originalInstanceTime: Long?,
         ): EventKey = when {
+            // The provider requires ORIGINAL_INSTANCE_TIME whenever ORIGINAL_ID is set, so the
+            // `?: begin` branch is unreachable in practice and only there for null safety —
+            // an exception without it would get a key that changes when it moves.
             originalId != null -> EventKey(originalId, originalInstanceTime ?: begin)
             !rrule.isNullOrEmpty() || !rdate.isNullOrEmpty() -> EventKey(eventId, begin)
             else -> EventKey(eventId, instanceTime = 0)
