@@ -2,6 +2,18 @@
 
 ### v1.0.0 - Unreleased
 
+- Robustness (PR-13):
+  - **Change monitoring accelerator:** the calendar provider's `PROVIDER_CHANGED` broadcast now triggers a change check a few seconds after a sync (`monitor/CalendarProviderChangedReceiver`, a new `calendar-change-broadcast` unique work). The receiver is enabled only while some day is shared.
+  - **Battery optimisation onboarding row:** the "Ignore battery optimization" row is live. It is optional and shown only while the app isn't exempt (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` added to the manifest and `expected-permissions.txt`).
+  - **Background-restriction warning:** a "Background use restricted" warning row appears while Android restricts the app (restricted standby bucket, or battery usage set to Restricted). Settings → Permissions says so too.
+  - **Phone-maker card:** Samsung, Xiaomi, Huawei and OnePlus phones get an onboarding card that opens dontkillmyapp.com in the browser.
+  - **Midnight rollover:** a day view left open past midnight now moves "today" (`SetAnchorDate`, `AnchorDateSideEffects`) and keeps showing the page the user was on.
+  - **Automatic alarm maintenance:** armed alarms now follow their meetings. On a calendar change while the app is open, and after boot or a clock/timezone change, `alarm/AlarmMaintainer` (TODO.md §4.4's `MaintainAlarms`) re-times alarms whose meetings moved and cancels those since declined; vanished events keep their alarms.
+  - **Timezone changes:** the graph's `Clock` (`di/DeviceClock`) re-reads the device zone on every call. `Clock.systemDefaultZone()` left every long-lived holder in the old zone.
+  - **Dark theme pass:** the colour scheme now sets every neutral role (outline, secondary container, inverse and surface-container colours), so switches, outlined buttons, menus and snackbars no longer fall back to Material's baseline purple. New dark previews for the day screen, event chips, onboarding, Settings and licences.
+  - **Large font pass:** the day view's app bar title and subtitle ellipsise instead of clipping. New 1.5× previews for the day screen and onboarding.
+  - **TalkBack pass:** chips read "title, start to end, place" with their selected/alarm/declined state and labelled select and "open in calendar" actions. Hour gutter and all-day labels are cleared from semantics. App bar, onboarding and Settings sections are headings, Settings' switch rows toggle as a whole, and the change banner is a polite live region.
+  - **New tests:** `AnchorDateSideEffectsTest`, `DeviceClockTest`, `DayScreenRolloverTest`, `DayTimelineSemanticsTest`, `AlarmMaintainerTest`, `CalendarProviderChangedReceiverTest`, `SleepyManufacturerTest`, `PermissionsStatusTest`, and new `PermissionCheckerTest`/`OnboardingViewModelTest`/`AppStoreReducerTest` cases.
 - Settings screen (PR-12): a new Settings screen, reachable from the day view's overflow
   menu, makes lead time, snooze length, auto-timeout and the alarm sound pack ("all",
   "bundled only", "system only") editable for the first time — `SettingsRepository` gained

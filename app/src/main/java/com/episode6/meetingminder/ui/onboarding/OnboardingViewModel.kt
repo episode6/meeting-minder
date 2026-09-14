@@ -1,7 +1,9 @@
 package com.episode6.meetingminder.ui.onboarding
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.episode6.meetingminder.permissions.SleepyManufacturer
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
@@ -27,18 +29,28 @@ private const val STOP_TIMEOUT_MILLIS = 5_000L
 @ContributesIntoMap(AppScope::class)
 class OnboardingViewModel(private val store: AppStore) : ViewModel() {
 
+    // the device can't change maker, so this is read once
+    private val sleepyManufacturer = SleepyManufacturer.of(Build.MANUFACTURER)
+
     val state: StateFlow<OnboardingUiState> = store
-        .mapStore { it.toOnboardingUiState() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), store.state.toOnboardingUiState())
+        .mapStore { it.toOnboardingUiState(sleepyManufacturer) }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            store.state.toOnboardingUiState(sleepyManufacturer),
+        )
 
     fun onPermissionsMaybeChanged() {
         store.dispatch(PermissionsMaybeChanged)
     }
 }
 
-internal fun AppState.toOnboardingUiState() = OnboardingUiState(
+internal fun AppState.toOnboardingUiState(sleepyManufacturer: SleepyManufacturer? = null) = OnboardingUiState(
     calendarGranted = permissions.calendarGranted,
     notificationsGranted = permissions.notificationsGranted,
     exactAlarmsGranted = permissions.exactAlarmsGranted,
     fullScreenAlarmsGranted = permissions.fullScreenIntentGranted,
+    batteryOptimizationIgnored = permissions.ignoringBatteryOptimizations,
+    backgroundRestricted = permissions.backgroundRestricted,
+    sleepyManufacturer = sleepyManufacturer,
 )

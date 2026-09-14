@@ -1,8 +1,14 @@
 package com.episode6.meetingminder.ui.settings
 
+import android.content.res.Configuration
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -165,7 +171,7 @@ private fun LazyListScope.section(@StringRes title: Int) {
             stringResource(title),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp).semantics { heading() },
         )
     }
 }
@@ -175,7 +181,11 @@ private fun DurationPickerRow(title: String, options: List<Long>, selectedMinute
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         Text(title, style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(
+            modifier = Modifier.selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             options.forEach { minutes ->
                 FilterChip(
                     selected = minutes == selectedMinutes,
@@ -193,7 +203,11 @@ private fun SoundPoolRow(selected: SoundPool, onSelected: (SoundPool) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         Text(stringResource(R.string.settings_sound_pool), style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(
+            modifier = Modifier.selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             SoundPool.entries.forEach { pool ->
                 FilterChip(
                     selected = pool == selected,
@@ -227,7 +241,11 @@ private fun SoundPool.label(): String = when (this) {
 @Composable
 private fun ToggleRow(title: String, description: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        // the whole row is the switch, so TalkBack reads its title with its state
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -235,14 +253,17 @@ private fun ToggleRow(title: String, description: String, checked: Boolean, onCh
             Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
 @Composable
 private fun CalendarRowItem(row: CalendarRow, onToggle: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(value = row.included, role = Role.Switch, onValueChange = onToggle)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -256,7 +277,7 @@ private fun CalendarRowItem(row: CalendarRow, onToggle: (Boolean) -> Unit) {
             }
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = row.included, onCheckedChange = onToggle)
+        Switch(checked = row.included, onCheckedChange = null)
     }
 }
 
@@ -279,6 +300,7 @@ private fun SimpleRow(title: String, onClick: () -> Unit, subtitle: String? = nu
 @Composable
 private fun PermissionsStatus.label(): String = when (this) {
     PermissionsStatus.AllGranted -> stringResource(R.string.settings_permissions_all_granted)
+    PermissionsStatus.BackgroundRestricted -> stringResource(R.string.settings_permissions_background_restricted)
     is PermissionsStatus.MissingSome -> pluralStringResource(R.plurals.settings_permissions_missing, count, count)
 }
 
@@ -288,6 +310,28 @@ internal fun SettingsScreenPreview() {
     MeetingMinderTheme {
         SettingsScreen(
             state = previewState,
+            snackbarHostState = SnackbarHostState(),
+            onBackClick = {},
+            onLeadTimeSelected = {},
+            onSnoozeLengthSelected = {},
+            onAutoTimeoutSelected = {},
+            onSoundPoolSelected = {},
+            onTestAlarmClick = {},
+            onCalendarToggle = { _, _ -> },
+            onShowDeclinedToggle = {},
+            onPermissionsClick = {},
+            onLicensesClick = {},
+        )
+    }
+}
+
+/** Dark theme: the orange selected chips, switches, section titles and the calendar dots on the dark scheme. */
+@Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_NORMAL)
+@Composable
+internal fun SettingsScreenDarkPreview() {
+    MeetingMinderTheme {
+        SettingsScreen(
+            state = previewState.copy(permissionsStatus = PermissionsStatus.BackgroundRestricted),
             snackbarHostState = SnackbarHostState(),
             onBackClick = {},
             onLeadTimeSelected = {},

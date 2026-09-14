@@ -1,7 +1,9 @@
 package com.episode6.meetingminder.ui.navigation
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -176,6 +178,7 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
             val viewModel: OnboardingViewModel = metroViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
             val screenContext = LocalContext.current
+            val uriHandler = LocalUriHandler.current
             val calendarRequest = rememberRuntimePermissionRequest(
                 permissions = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR),
                 granted = state.calendarGranted,
@@ -213,16 +216,34 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                             screenContext.startActivity(PermissionRequester.exactAlarmSettingsIntent(screenContext))
                         OnboardingRow.FullScreenAlarms ->
                             screenContext.startActivity(PermissionRequester.fullScreenIntentSettingsIntent(screenContext))
+                        // a system dialog; some OEM builds don't implement it, so fall back to
+                        // the exemptions list
+                        OnboardingRow.BatteryOptimization -> screenContext.startFirstResolvable(
+                            PermissionRequester.ignoreBatteryOptimizationsIntent(screenContext),
+                            PermissionRequester.batteryOptimizationSettingsIntent(),
+                        )
+                        OnboardingRow.BackgroundRestricted ->
+                            screenContext.startActivity(PermissionRequester.appSettingsIntent(screenContext))
                     }
                 },
                 onOpenSettingsClick = { row ->
                     val intent = when (row) {
-                        OnboardingRow.Calendar -> PermissionRequester.appSettingsIntent(screenContext)
+                        // app info is also where battery usage (Unrestricted / Restricted) is set
+                        OnboardingRow.Calendar, OnboardingRow.BackgroundRestricted -> PermissionRequester.appSettingsIntent(screenContext)
                         OnboardingRow.Notifications -> PermissionRequester.appNotificationSettingsIntent(screenContext)
                         OnboardingRow.ExactAlarms -> PermissionRequester.exactAlarmSettingsIntent(screenContext)
                         OnboardingRow.FullScreenAlarms -> PermissionRequester.fullScreenIntentSettingsIntent(screenContext)
+                        OnboardingRow.BatteryOptimization -> PermissionRequester.batteryOptimizationSettingsIntent()
                     }
                     screenContext.startActivity(intent)
+                },
+                onManufacturerGuideClick = { manufacturer ->
+                    // the app has no network access: the guide opens in the browser, and
+                    // with no browser there is simply nothing to open
+                    try {
+                        uriHandler.openUri(manufacturer.guideUrl)
+                    } catch (_: IllegalArgumentException) {
+                    }
                 },
                 onContinueClick = {
                     if (canNavigateBack) {
@@ -312,6 +333,17 @@ private fun rememberRuntimePermissionRequest(
 private fun Context.rationaleShownFor(permission: String): Boolean {
     val activity = findActivity() ?: return false
     return ActivityCompat.shouldShowRequestPermissionRationale(activity, permission)
+}
+
+/** Starts the first of [intents] some activity can handle; does nothing if none can. */
+private fun Context.startFirstResolvable(vararg intents: Intent) {
+    for (intent in intents) {
+        try {
+            startActivity(intent)
+            return
+        } catch (_: ActivityNotFoundException) {
+        }
+    }
 }
 
 private fun Context.holdsPostNotifications(): Boolean =

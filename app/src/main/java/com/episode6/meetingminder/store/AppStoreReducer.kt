@@ -10,6 +10,7 @@ internal fun AppState.reduce(action: Action): AppState = when (action) {
 
 private fun AppState.reduceUpdateStateAction(action: UpdateStateAction): AppState = when (action) {
     is SetSettledDate -> copy(settledDate = action.date)
+    is SetAnchorDate -> copy(anchorDate = action.date)
     is SetPermissions -> copy(permissions = action.permissions)
     is SetCalendars -> copy(calendars = action.calendars)
     is SetDayEvents -> withDayEvents(action.dayEvents)

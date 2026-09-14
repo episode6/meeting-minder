@@ -19,6 +19,14 @@ sealed interface UpdateStateAction : Action
 /** The day pager settled on [date] (including after the "Today" action scrolls it back). */
 data class SetSettledDate(val date: LocalDate) : UpdateStateAction
 
+/**
+ * The local date is now [date], not [AppState.anchorDate]: midnight passed (or the clock or
+ * timezone changed) while the process was alive (`AnchorDateSideEffects`, TODO.md §5
+ * PR-13). Moves only the anchor — "today" — and never the settled page: the day pager
+ * keeps showing the date the user was looking at, and "Today" now leads to the new date.
+ */
+data class SetAnchorDate(val date: LocalDate) : UpdateStateAction
+
 /** Replaces [AppState.permissions] with a freshly re-checked value; see [PermissionsMaybeChanged]. */
 data class SetPermissions(val permissions: PermissionState) : UpdateStateAction
 

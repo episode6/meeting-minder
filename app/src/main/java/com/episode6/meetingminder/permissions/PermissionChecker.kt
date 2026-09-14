@@ -1,11 +1,14 @@
 package com.episode6.meetingminder.permissions
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.AlarmManager
 import android.app.NotificationManager
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import com.episode6.meetingminder.alarm.AlarmNotifications
 
@@ -29,6 +32,8 @@ class AndroidPermissionChecker(
         notificationsGranted = AlarmNotifications.enabled(context),
         exactAlarmsGranted = context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms(),
         fullScreenIntentGranted = canUseFullScreenIntent(),
+        ignoringBatteryOptimizations = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName),
+        backgroundRestricted = context.isBackgroundRestricted(),
     )
 }
 
@@ -38,3 +43,12 @@ private fun Context.hasGrantedPermission(permission: String): Boolean =
 private fun Context.canUseFullScreenIntent(): Boolean =
     Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
         getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+
+/**
+ * The user's "Restricted" battery setting (which is what `isBackgroundRestricted` reports on
+ * 12+), or the system having put the app in the restricted standby bucket on its own. Both
+ * need no permission for the app's own state.
+ */
+private fun Context.isBackgroundRestricted(): Boolean =
+    getSystemService(ActivityManager::class.java).isBackgroundRestricted ||
+        getSystemService(UsageStatsManager::class.java).appStandbyBucket == UsageStatsManager.STANDBY_BUCKET_RESTRICTED

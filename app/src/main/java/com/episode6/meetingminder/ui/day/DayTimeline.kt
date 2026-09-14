@@ -31,6 +31,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -132,6 +133,8 @@ private fun AllDayRow(
             overflow = TextOverflow.Ellipsis,
             autoSize = gutterLabelAutoSize(style),
             modifier = Modifier
+                // each all-day chip says "all day" itself
+                .clearAndSetSemantics {}
                 .width(DayViewDefaults.GutterWidth)
                 .padding(end = DayViewDefaults.GutterLabelEndPadding)
                 .heightIn(min = DayViewDefaults.AllDayChipHeight)
@@ -188,7 +191,8 @@ private fun HourGutter(timeFormat: TimelineTimeFormat, modifier: Modifier = Modi
                 )
             }
         },
-        modifier = modifier,
+        // 23 hour labels are noise to TalkBack: every chip reads its own times out
+        modifier = modifier.clearAndSetSemantics {},
     ) { measurables, constraints ->
         val hourPx = DayViewDefaults.HourHeight.toPx()
         val width = constraints.maxWidth

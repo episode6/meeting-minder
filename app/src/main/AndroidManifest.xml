@@ -40,6 +40,14 @@
          before the ringing service exists, so the CPU is kept awake from the receiver
          until the ringing stops. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- The optional "Ignore battery optimization" onboarding row (TODO.md §4.4/§4.5): the
+         ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS dialog needs it. Not for delivery —
+         alarm-clock alarms and the ringing service start are exempt already — only a
+         belt-and-braces on OEM builds that kill background work. Play restricts this
+         permission, which doesn't apply to a sideloaded app. -->
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:ignore="BatteryLife" />
     <!-- WorkManager (change detection, TODO.md §4.3) declares ACCESS_NETWORK_STATE for
          network constraints. Nothing here ever uses one (the app is offline by spec), so it
          is stripped from the merge rather than allowlisted. WorkManager's own
@@ -104,6 +112,25 @@
             android:taskAffinity=""
             android:theme="@style/Theme.MeetingMinder.Alarm"
             android:turnScreenOn="true" />
+
+        <!-- Change monitoring's accelerator (TODO.md §4.3 mechanism 3): the calendar provider's
+             PROVIDER_CHANGED broadcast reaches manifest receivers because the provider adds
+             FLAG_RECEIVER_INCLUDE_BACKGROUND (undocumented), so the receiver only enqueues a
+             change check and is harmless if the broadcast stops arriving. Exported because the
+             provider is another app; anyone else sending it only causes one extra check.
+             Disabled here and enabled by WorkManagerChangeWorkScheduler only while a day is
+             shared, so a calendar sync never wakes the app when nothing is monitored. -->
+        <receiver
+            android:name=".monitor.CalendarProviderChangedReceiver"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PROVIDER_CHANGED" />
+                <data
+                    android:host="com.android.calendar"
+                    android:scheme="content" />
+            </intent-filter>
+        </receiver>
 
         <!-- Re-arms stored alarms after the OS may have dropped them (TODO.md §4.4). All of
              these are protected system broadcasts, which reach a non-exported receiver. -->

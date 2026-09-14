@@ -15,3 +15,4 @@ android.permission.FOREGROUND_SERVICE
 android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK
 android.permission.VIBRATE
 android.permission.WAKE_LOCK
+android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS

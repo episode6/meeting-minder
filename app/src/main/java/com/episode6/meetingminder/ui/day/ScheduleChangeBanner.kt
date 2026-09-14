@@ -22,6 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -45,6 +48,8 @@ fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () ->
     val resources = LocalResources.current
     Surface(
         modifier = modifier
+            // TalkBack announces the banner as it appears, without moving focus to it
+            .semantics { liveRegion = LiveRegionMode.Polite }
             .fillMaxWidth()
             .padding(horizontal = DayViewDefaults.BannerOuterHorizontalPadding, vertical = DayViewDefaults.BannerOuterVerticalPadding),
         shape = RoundedCornerShape(DayViewDefaults.BannerCornerRadius),
@@ -62,7 +67,7 @@ fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () ->
             horizontalArrangement = Arrangement.spacedBy(DayViewDefaults.BannerContentSpacing),
         ) {
             Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f).semantics(mergeDescendants = true) {}) {
                 Text(
                     text = if (state.lines.isEmpty()) {
                         stringResource(R.string.day_banner_selection_changed)

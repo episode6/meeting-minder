@@ -42,7 +42,9 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import android.content.res.Configuration
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
@@ -166,6 +168,30 @@ fun EventChip(
         event.selected -> stringResource(R.string.event_state_selected)
         else -> stringResource(R.string.event_state_not_selected)
     }?.let { state -> if (selectable && rsvpText != null) stringResource(R.string.event_state_with_rsvp, state, rsvpText) else state }
+    // what TalkBack reads instead of the visible text, whose dashes, separators and bell
+    // don't read out well: "Design review, 10:00 AM to 11:00 AM, Meet"
+    val a11yLabel = when {
+        contentLayout == ChipContentLayout.TitleOnly -> stringResource(R.string.event_a11y_all_day, event.title)
+        event.location != null -> stringResource(
+            R.string.event_a11y_timed_with_location,
+            event.title,
+            timeFormat.timeWithPeriod(event.begin.toLocalTime()),
+            timeFormat.timeWithPeriod(event.end.toLocalTime()),
+            event.location,
+        )
+        else -> stringResource(
+            R.string.event_a11y_timed,
+            event.title,
+            timeFormat.timeWithPeriod(event.begin.toLocalTime()),
+            timeFormat.timeWithPeriod(event.end.toLocalTime()),
+        )
+    }
+    val clickLabel = when {
+        !selectable -> null
+        event.selected -> stringResource(R.string.event_action_deselect)
+        else -> stringResource(R.string.event_action_select)
+    }
+    val longClickLabel = stringResource(R.string.event_action_open_in_calendar)
 
     Box(
         modifier
@@ -182,6 +208,8 @@ fun EventChip(
             )
             .combinedClickable(
                 role = if (selectable) Role.Checkbox else null,
+                onClickLabel = clickLabel,
+                onLongClickLabel = longClickLabel,
                 onClick = {
                     if (selectable) {
                         haptics.performHapticFeedback(
@@ -193,6 +221,8 @@ fun EventChip(
                 onLongClick = onLongClick,
             )
             .semantics(mergeDescendants = true) {
+                // TalkBack speaks this instead of the merged text, which stays in the tree for tests
+                contentDescription = a11yLabel
                 stateDescription?.let { this.stateDescription = it }
             }
             .padding(horizontal = DayViewDefaults.ChipHorizontalPadding),
@@ -370,6 +400,18 @@ private fun Modifier.dashedBorder(color: Color): Modifier = drawBehind {
 @Preview(showBackground = true, widthDp = 360)
 @Composable
 internal fun EventChipStatesPreview() {
+    EventChipStates()
+}
+
+/** Every chip state on the dark background: 12% fills, dashed declined outline and dimmed past chip must all still read. */
+@Preview(showBackground = true, widthDp = 360, uiMode = Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_NORMAL)
+@Composable
+internal fun EventChipStatesDarkPreview() {
+    EventChipStates()
+}
+
+@Composable
+private fun EventChipStates() {
     val base = PreviewEvents.standup.copy(title = "Design review", location = "Meet")
     MeetingMinderTheme {
         Surface(color = MaterialTheme.colorScheme.background) {

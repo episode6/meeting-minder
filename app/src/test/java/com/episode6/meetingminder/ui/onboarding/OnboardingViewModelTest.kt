@@ -5,6 +5,7 @@ import assertk.assertThat
 import assertk.assertions.isEqualTo
 import com.episode6.meetingminder.permissions.PermissionChecker
 import com.episode6.meetingminder.permissions.PermissionState
+import com.episode6.meetingminder.permissions.SleepyManufacturer
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.createAppStore
 import com.episode6.meetingminder.store.sideeffects.PermissionsSideEffects
@@ -43,6 +44,41 @@ class OnboardingViewModelTest {
             .isEqualTo(
                 OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = false, fullScreenAlarmsGranted = true),
             )
+    }
+
+    @Test
+    fun state_carriesTheOptionalRowsAndThePhoneMaker() {
+        val permissions = PermissionState(calendarGranted = true, ignoringBatteryOptimizations = true, backgroundRestricted = true)
+
+        assertThat(AppState(anchorDate = today, permissions = permissions).toOnboardingUiState(SleepyManufacturer.Samsung))
+            .isEqualTo(
+                OnboardingUiState(
+                    calendarGranted = true,
+                    batteryOptimizationIgnored = true,
+                    backgroundRestricted = true,
+                    sleepyManufacturer = SleepyManufacturer.Samsung,
+                ),
+            )
+    }
+
+    @Test
+    fun rows_offerBatteryOptimisationOnlyWhileNotIgnored_andTheRestrictedWarningOnlyWhileRestricted() {
+        val required = listOf(OnboardingRow.Calendar, OnboardingRow.Notifications, OnboardingRow.ExactAlarms, OnboardingRow.FullScreenAlarms)
+
+        assertThat(OnboardingUiState(calendarGranted = false).rows).isEqualTo(required + OnboardingRow.BatteryOptimization)
+        assertThat(OnboardingUiState(calendarGranted = false, batteryOptimizationIgnored = true).rows).isEqualTo(required)
+        assertThat(OnboardingUiState(calendarGranted = false, batteryOptimizationIgnored = true, backgroundRestricted = true).rows)
+            .isEqualTo(required + OnboardingRow.BackgroundRestricted)
+    }
+
+    @Test
+    fun optionalRows_neverGateContinue() {
+        val allRequired = OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true, fullScreenAlarmsGranted = true)
+
+        assertThat(allRequired.canContinue).isEqualTo(true)
+        assertThat(allRequired.copy(backgroundRestricted = true).canContinue).isEqualTo(true)
+        assertThat(allRequired.granted(OnboardingRow.BackgroundRestricted)).isEqualTo(true)
+        assertThat(allRequired.copy(backgroundRestricted = true).granted(OnboardingRow.BackgroundRestricted)).isEqualTo(false)
     }
 
     @Test

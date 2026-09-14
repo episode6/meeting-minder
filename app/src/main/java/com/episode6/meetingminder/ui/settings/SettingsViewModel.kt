@@ -38,15 +38,23 @@ data class CalendarRow(val info: CalendarInfo, val included: Boolean)
  * onboarding"), derived from [PermissionState]. [MissingSome.count] excludes calendar
  * access from the granted-count denominator implicitly by counting only the flags that
  * are false, so it grows to cover any new required permission without needing an update.
+ * [BackgroundRestricted] is the one optional problem worth surfacing here (TODO.md §5
+ * PR-13's "restricted standby bucket warning"): everything required is granted, but Android
+ * is holding the app back in the background. A missing required grant always wins.
  */
 sealed interface PermissionsStatus {
     data object AllGranted : PermissionsStatus
+    data object BackgroundRestricted : PermissionsStatus
     data class MissingSome(val count: Int) : PermissionsStatus
 }
 
-private fun PermissionState.toStatus(): PermissionsStatus {
+internal fun PermissionState.toStatus(): PermissionsStatus {
     val missing = listOf(calendarGranted, notificationsGranted, exactAlarmsGranted, fullScreenIntentGranted).count { !it }
-    return if (missing == 0) PermissionsStatus.AllGranted else PermissionsStatus.MissingSome(missing)
+    return when {
+        missing > 0 -> PermissionsStatus.MissingSome(missing)
+        backgroundRestricted -> PermissionsStatus.BackgroundRestricted
+        else -> PermissionsStatus.AllGranted
+    }
 }
 
 /** What [SettingsScreen] renders (TODO.md §5 PR-12): the current [Settings] plus every calendar as a [CalendarRow]. */

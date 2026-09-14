@@ -35,7 +35,10 @@ data class PendingShare(val id: Long, val date: LocalDate, val text: String) {
  * `scheduleChanges` (PR-11).
  */
 data class AppState(
-    /** The day the day pager is anchored to: today at launch (midnight rollover is PR-13). */
+    /**
+     * Today: the day the day pager is anchored to. Set at launch and kept current while the
+     * UI is visible by [SetAnchorDate] (midnight rollover, a clock or timezone change).
+     */
     val anchorDate: LocalDate,
     /** The day the user is looking at: the pager's settled page. */
     val settledDate: LocalDate = anchorDate,

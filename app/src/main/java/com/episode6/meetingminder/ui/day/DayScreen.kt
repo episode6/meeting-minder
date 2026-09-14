@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.ui.day
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ScrollState
@@ -47,6 +48,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
@@ -125,6 +129,12 @@ fun DayScreen(
     val scope = rememberCoroutineScope()
     val currentOnPageSettled by rememberUpdatedState(onPageSettled)
     LaunchedEffect(pagerState, state.anchorDate) {
+        // The anchor moves at midnight (SetAnchorDate) while the page index doesn't: keep
+        // showing the date the user was on rather than sliding every page a day forward.
+        // The pager's epoch-day keys usually carry the position over already; this covers
+        // the case where they didn't.
+        val shownPage = dateToPage(state.date, state.anchorDate)
+        if (pagerState.settledPage != shownPage && !pagerState.isScrollInProgress) pagerState.scrollToPage(shownPage)
         snapshotFlow { pagerState.settledPage }.collect { currentOnPageSettled(pageToDate(it, state.anchorDate)) }
     }
     val currentOnJumpHandled by rememberUpdatedState(onJumpHandled)
@@ -140,8 +150,13 @@ fun DayScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(state.date.format(TitleFormatter), style = MaterialTheme.typography.titleLarge)
+                    Column(Modifier.semantics(mergeDescendants = true) { heading() }) {
+                        Text(
+                            state.date.format(TitleFormatter),
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         Subtitle(state.meetingCount, state.fabState, state.armedCount, state.sharedAtTime)
                     }
                 },
@@ -221,6 +236,8 @@ private fun Subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int, sh
             subtitleText(meetingCount, fabState, armedCount, sharedAtTime),
             style = MaterialTheme.typography.bodySmall,
             color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -469,6 +486,38 @@ internal fun DayScreenScheduleChangedPreview() {
             fabState = FabState.Share,
             armedCount = 3,
             sharedAtTime = LocalTime.of(8, 12),
+            days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
+            changeBanner = ScheduleChangeBannerState(PreviewBannerLines),
+        ),
+    )
+}
+
+/** Dark theme over render 6's state: banner, armed chips, the orange bell subtitle and the primary Share FAB on the dark scheme. */
+@Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_NORMAL)
+@Composable
+internal fun DayScreenDarkPreview() {
+    DayScreenPreviewFrame(
+        DayUiState(
+            anchorDate = PreviewDate,
+            meetingCount = 3,
+            fabState = FabState.Share,
+            armedCount = 3,
+            days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
+            changeBanner = ScheduleChangeBannerState(PreviewBannerLines),
+        ),
+    )
+}
+
+/** 1.5× font scale on the busiest app bar: the long date and "3 alarms set · not shared yet" ellipsise rather than clip, and the banner and FAB still fit. */
+@Preview(showBackground = true, fontScale = 1.5f)
+@Composable
+internal fun DayScreenLargeFontPreview() {
+    DayScreenPreviewFrame(
+        DayUiState(
+            anchorDate = PreviewDate,
+            meetingCount = 3,
+            fabState = FabState.Share,
+            armedCount = 3,
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
             changeBanner = ScheduleChangeBannerState(PreviewBannerLines),
         ),

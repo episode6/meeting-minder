@@ -62,6 +62,14 @@
     <string name="event_rsvp_failed">couldn\'t RSVP</string>
     <!-- chip state with an RSVP outcome appended, e.g. "Alarm set for 8:55, RSVP sent" -->
     <string name="event_state_with_rsvp">%1$s, %2$s</string>
+    <!-- what TalkBack reads for a chip (its visible text uses dashes and a bell icon), e.g. "Design review, 10:00 AM to 11:00 AM, Meet" -->
+    <string name="event_a11y_timed">%1$s, %2$s to %3$s</string>
+    <string name="event_a11y_timed_with_location">%1$s, %2$s to %3$s, %4$s</string>
+    <string name="event_a11y_all_day">%1$s, all day</string>
+    <!-- TalkBack action labels: "double tap to select", "double tap and hold to open in calendar" -->
+    <string name="event_action_select">select</string>
+    <string name="event_action_deselect">deselect</string>
+    <string name="event_action_open_in_calendar">open in calendar</string>
 
     <string name="menu_permissions">Permissions</string>
     <string name="menu_settings">Settings</string>
@@ -96,6 +104,8 @@
     <string name="settings_section_about">About</string>
     <!-- Permissions row subtitle: every required onboarding permission is granted -->
     <string name="settings_permissions_all_granted">All granted</string>
+    <!-- Permissions row subtitle: everything required is granted, but Android restricts the app in the background -->
+    <string name="settings_permissions_background_restricted">Background use restricted</string>
     <!-- Permissions row subtitle: how many required permissions are still missing -->
     <plurals name="settings_permissions_missing">
         <item quantity="one">%d not granted</item>
@@ -108,7 +118,6 @@
     <string name="onboarding_granted">Granted</string>
     <string name="onboarding_allow">Allow</string>
     <string name="onboarding_open_settings">Open settings</string>
-    <string name="onboarding_coming_soon">Coming soon</string>
     <string name="onboarding_continue">Continue</string>
 
     <string name="onboarding_calendar_title">Calendar access</string>
@@ -121,6 +130,13 @@
     <string name="onboarding_full_screen_description">Wake the screen when an alarm rings.</string>
     <string name="onboarding_battery_title">Ignore battery optimization</string>
     <string name="onboarding_battery_description">Optional. Helps on phones that kill background apps.</string>
+    <!-- warning row, shown only while Android restricts the app in the background (restricted standby bucket / "Restricted" battery usage) -->
+    <string name="onboarding_restricted_title">Background use restricted</string>
+    <string name="onboarding_restricted_description">Schedule-change reminders can arrive hours late. Set battery usage to Unrestricted.</string>
+    <!-- instructions card for phone makers whose battery managers stop apps; %1$s is the maker, e.g. "Samsung" -->
+    <string name="onboarding_manufacturer_title">%1$s phones</string>
+    <string name="onboarding_manufacturer_description">These phones can put apps to sleep on their own. Keep Meeting Minder out of any sleeping-apps list, and never force-stop it: that cancels its alarms.</string>
+    <string name="onboarding_manufacturer_guide">How to</string>
 
     <string name="notification_channel_alarms">Alarms</string>
     <string name="notification_channel_alarms_description">Rings before each meeting you set an alarm for.</string>
