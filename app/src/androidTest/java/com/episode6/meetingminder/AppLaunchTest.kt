@@ -1,26 +1,36 @@
 package com.episode6.meetingminder
 
+import android.Manifest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.rule.GrantPermissionRule
 import assertk.assertThat
 import assertk.assertions.startsWith
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 
 /**
  * Smoke test: the app launches through the DI graph and navigation to the day view. Release, snapshot and debug builds each
  * carry their own applicationId (`com.episode6.meetingminder[.snapshot][.debug]`), so
- * the package assertion checks the shared prefix rather than one exact id.
+ * the package assertion checks the shared prefix rather than one exact id. Calendar
+ * access is pre-granted (PR-4 routes to Onboarding instead of Day without it); the
+ * Onboarding routing itself is exercised by [com.episode6.meetingminder.ui.onboarding.OnboardingViewModelTest]
+ * and the Roborazzi previews rather than a second device test.
  */
 @RunWith(AndroidJUnit4::class)
 class AppLaunchTest {
 
+    private val permissionRule: GrantPermissionRule =
+        GrantPermissionRule.grant(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+    private val composeRule = createAndroidComposeRule<MainActivity>()
+
     @get:Rule
-    val composeRule = createAndroidComposeRule<MainActivity>()
+    val ruleChain: RuleChain = RuleChain.outerRule(permissionRule).around(composeRule)
 
     @Test
     fun launches_toTheDayView() {
