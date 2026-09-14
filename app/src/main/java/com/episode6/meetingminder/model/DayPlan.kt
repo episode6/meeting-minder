@@ -23,6 +23,8 @@ data class DayPlan(
     val armedKeys: Set<EventKey> = emptySet(),
     /** Non-null once alarms have been set for [date] (PR-8); flips the FAB to "Share schedule". */
     val alarmsSetAt: Instant? = null,
-    /** Non-null once the day's busy ranges have been shared (PR-9). */
+    /** Non-null once the day's busy ranges have been shared (PR-9); "Mark as not shared" clears it. */
     val sharedAt: Instant? = null,
+    /** What went into the last share message (TODO.md §4.2), for PR-11's "Update:" re-share text. */
+    val sharedSnapshot: List<BusyRange>? = null,
 )

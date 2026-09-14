@@ -11,9 +11,13 @@ import com.episode6.meetingminder.model.SelectedEvent
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.ClearMessage
+import com.episode6.meetingminder.store.ClearPendingShare
 import com.episode6.meetingminder.store.LoadDay
+import com.episode6.meetingminder.store.MarkNotShared
+import com.episode6.meetingminder.store.PendingShare
 import com.episode6.meetingminder.store.SetAlarms
 import com.episode6.meetingminder.store.SetSettledDate
+import com.episode6.meetingminder.store.ShareDay
 import com.episode6.meetingminder.store.ShowMessage
 import com.episode6.meetingminder.store.ToggleEvent
 import com.episode6.meetingminder.store.UiMessage
@@ -72,6 +76,12 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
         .filterNotNull()
         .distinctUntilChanged { old, new -> old.id == new.id }
 
+    /** Each share whose text is ready to launch, once; call [onShareLaunched] as `Navigation.kt` opens the chooser. */
+    val pendingShare: Flow<PendingShare> = store
+        .map { it.pendingShare }
+        .filterNotNull()
+        .distinctUntilChanged { old, new -> old.id == new.id }
+
     /** The pager came to rest on [date] (at launch, after a swipe, or after "Today" scrolled it back). */
     fun onPageSettled(date: LocalDate) {
         store.dispatch(SetSettledDate(date))
@@ -86,15 +96,30 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
     /**
      * The FAB was tapped: "Set alarms (N)" (or "Clear alarms", the same state with nothing
      * selected) reconciles the settled day's alarms against its selection ([SetAlarms]);
-     * "Share schedule" is a placeholder snackbar until PR-9.
+     * "Share schedule" formats and shares the day's busy ranges ([ShareDay], TODO.md §4.2).
      */
     fun onFabClick() {
         val state = store.state
         when (state.dayPlans[state.settledDate].toFabState()) {
             is FabState.SetAlarms -> store.dispatch(SetAlarms(state.settledDate))
-            FabState.Share -> store.dispatch(ShowMessage(UiMessage.next(R.string.day_fab_share_coming_soon)))
+            FabState.Share -> store.dispatch(ShareDay(state.settledDate))
             FabState.Hidden -> Unit
         }
+    }
+
+    /** Overflow → "Share again" for the settled day: re-sends the current busy ranges. */
+    fun onShareAgainClick() {
+        store.dispatch(ShareDay(store.state.settledDate))
+    }
+
+    /** Overflow → "Mark as not shared" for the settled day. */
+    fun onMarkNotSharedClick() {
+        store.dispatch(MarkNotShared(store.state.settledDate))
+    }
+
+    /** `Navigation.kt` has opened the share sheet for [share]: clear it so it isn't re-launched. */
+    fun onShareLaunched(share: PendingShare) {
+        store.dispatch(ClearPendingShare(share.id))
     }
 
     /**
@@ -127,6 +152,7 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId) = DayUiStat
     meetingCount = eventsByDay[settledDate]?.events?.count { it.isMeeting },
     fabState = dayPlans[settledDate].toFabState(),
     armedCount = dayPlans[settledDate]?.selected?.values?.count { it.alarmId != null } ?: 0,
+    sharedAtTime = dayPlans[settledDate]?.sharedAt?.let { LocalDateTime.ofInstant(it, zone).toLocalTime() },
     days = eventsByDay.mapValues { (date, day) ->
         day.toTimelineState(zone, now = now.toLocalTime().takeIf { now.toLocalDate() == date }, selected = dayPlans[date]?.selected.orEmpty())
     },

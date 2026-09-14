@@ -141,4 +141,20 @@ class DayPlanDaoTest {
         assertThat(dao.recordRsvpDecision(today, standup.eventId, standup.instanceTime, RsvpState.PENDING)).isEqualTo(0)
         assertThat(dao.selectedEventsOn(today).single().rsvpState).isEqualTo(RsvpState.SYNCED)
     }
+
+    @Test
+    fun markShared_recordsSharedAtAndSnapshot_creatingTheRowIfNeeded() = runTest {
+        dao.markShared(today, sharedAt = 8_000, sharedSnapshot = "[]")
+
+        assertThat(dao.observeDayPlans().first()).containsExactly(DayPlanEntity(today, sharedAt = 8_000, sharedSnapshot = "[]"))
+    }
+
+    @Test
+    fun clearShared_clearsSharedAtAndSnapshot_leavingAlarmsSetAtAlone() = runTest {
+        dao.upsertDayPlan(DayPlanEntity(today, alarmsSetAt = 5_000, sharedAt = 8_000, sharedSnapshot = "[]"))
+
+        dao.clearShared(today)
+
+        assertThat(dao.observeDayPlans().first()).containsExactly(DayPlanEntity(today, alarmsSetAt = 5_000))
+    }
 }

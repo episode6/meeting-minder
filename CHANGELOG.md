@@ -2,6 +2,26 @@
 
 ### v1.0.0 - Unreleased
 
+- Share schedule (PR-9): the "Share schedule" FAB now works. A pure `share/ScheduleTextFormatter`
+  merges the day's selected events into busy ranges and builds the TODO.md §4.2 message
+  ("Mon Sep 14 — I'm in meetings: • 9:00 – 9:30 AM … Free the rest of the day.", 12-hour
+  clock with AM/PM shown only where it changes, "No meetings today." when nothing is
+  selected, or `Update:` + the ranges alone for PR-11's future re-share). Tapping the FAB
+  (or the new overflow items "Share again"/"Mark as not shared", shown once a day has been
+  shared) dispatches `ShareDay(date)`; `ShareDaySideEffects` formats the text, records
+  `day_plan.shared_at`/`shared_snapshot` (the merged ranges, for PR-11's "Update:" text)
+  and a `change_snapshot` row — every event on the day, selected or not, meeting or not —
+  as the baseline PR-11's differ will read (new table, database version 3). The text
+  itself is handed to `Navigation.kt` through a new one-shot `AppState.pendingShare`
+  (mirrors `transientMessage`), which is what actually calls
+  `share/ShareLauncher.kt`'s `Context.shareSchedule` (`ShareCompat`'s chooser): launching
+  an Activity belongs in the UI layer, never a side effect or receiver. The app bar
+  subtitle reads "shared 8:12 AM" once a day has been shared (`TimelineTimeFormat
+  .timeWithPeriod`). New tests: `ScheduleTextFormatterTest` (merging, AM/PM elision, empty
+  day, midnight-spanning, the update form), `ShareDaySideEffectsTest`,
+  `ChangeSnapshotMappingTest`/`DayPlanMappingTest` (JSON round-trips), `ChangeSnapshotDaoTest`,
+  new `DayPlanDaoTest`/`AppStoreReducerTest`/`DayViewModelTest` cases. No new permission or
+  dependency.
 - RSVP on set-alarms (PR-8b): "Set alarms" now also tells the calendar "Yes, going" for
   every meeting it just armed (TODO.md §4.6), so Google Calendar renders it accepted and
   the organizer gets a response through Google's own sync — one occurrence at a time,

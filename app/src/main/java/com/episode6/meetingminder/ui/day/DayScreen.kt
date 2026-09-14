@@ -51,6 +51,7 @@ import com.episode6.meetingminder.R
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 /**
@@ -70,6 +71,12 @@ data class DayUiState(
     val fabState: FabState = FabState.Hidden,
     /** How many of [date]'s selected events have an alarm armed; the subtitle once alarms are set. */
     val armedCount: Int = 0,
+    /**
+     * When [date] was last shared, in the device zone; null if it never has been. Drives
+     * the "shared 8:12 AM" subtitle and whether the overflow shows "Share again"/"Mark as
+     * not shared" (TODO.md §4.2).
+     */
+    val sharedAtTime: LocalTime? = null,
     /** Every loaded day's timeline; days not in here haven't loaded yet. */
     val days: Map<LocalDate, DayTimelineState> = emptyMap(),
     /** Where the timeline should first open, once today's events have loaded; see [initialFirstVisibleHour]. */
@@ -96,6 +103,8 @@ fun DayScreen(
     onSettingsClick: () -> Unit,
     onLicensesClick: () -> Unit,
     onCheckForUpdatesClick: () -> Unit,
+    onShareAgainClick: () -> Unit,
+    onMarkNotSharedClick: () -> Unit,
     onEventClick: (LocalDate, TimelineEvent) -> Unit,
     onEventLongClick: (TimelineEvent) -> Unit,
     onFabClick: () -> Unit,
@@ -118,7 +127,7 @@ fun DayScreen(
                 title = {
                     Column {
                         Text(state.date.format(TitleFormatter), style = MaterialTheme.typography.titleLarge)
-                        Subtitle(state.meetingCount, state.fabState, state.armedCount)
+                        Subtitle(state.meetingCount, state.fabState, state.armedCount, state.sharedAtTime)
                     }
                 },
                 actions = {
@@ -129,10 +138,13 @@ fun DayScreen(
                         Icon(Icons.Outlined.Today, contentDescription = stringResource(R.string.day_today))
                     }
                     OverflowMenu(
+                        hasBeenShared = state.sharedAtTime != null,
                         onPermissionsClick = onPermissionsClick,
                         onSettingsClick = onSettingsClick,
                         onLicensesClick = onLicensesClick,
                         onCheckForUpdatesClick = onCheckForUpdatesClick,
+                        onShareAgainClick = onShareAgainClick,
+                        onMarkNotSharedClick = onMarkNotSharedClick,
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
@@ -161,7 +173,7 @@ fun DayScreen(
  * front, as in render 3.
  */
 @Composable
-private fun Subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int) {
+private fun Subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int, sharedAtTime: LocalTime?) {
     val armed = fabState == FabState.Share
     val color = if (armed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DayViewDefaults.SubtitleIconSpacing)) {
@@ -174,7 +186,7 @@ private fun Subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int) {
             )
         }
         Text(
-            subtitleText(meetingCount, fabState, armedCount),
+            subtitleText(meetingCount, fabState, armedCount, sharedAtTime),
             style = MaterialTheme.typography.bodySmall,
             color = color,
         )
@@ -183,11 +195,12 @@ private fun Subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int) {
 
 /**
  * "3 meetings" / "1 meeting" / "No meetings", with " · N selected" appended while the FAB
- * reads "Set alarms" (render 2); "3 alarms set · not shared yet" once alarms are set
- * (render 3; "shared 8:12 AM" is PR-9); blank (but still a line tall) while the day loads.
+ * reads "Set alarms" (render 2); "3 alarms set · not shared yet" once alarms are set but
+ * not yet shared, or "shared 8:12 AM" once [sharedAtTime] is set (render 3/render 4); blank
+ * (but still a line tall) while the day loads.
  */
 @Composable
-private fun subtitleText(meetingCount: Int?, fabState: FabState, armedCount: Int): String {
+private fun subtitleText(meetingCount: Int?, fabState: FabState, armedCount: Int, sharedAtTime: LocalTime?): String {
     if (meetingCount == null) return ""
     val meetings = when (meetingCount) {
         0 -> stringResource(R.string.day_subtitle_no_meetings)
@@ -195,10 +208,14 @@ private fun subtitleText(meetingCount: Int?, fabState: FabState, armedCount: Int
     }
     return when (fabState) {
         is FabState.SetAlarms -> stringResource(R.string.day_subtitle_with_selected_count, meetings, fabState.count)
-        FabState.Share -> stringResource(
-            R.string.day_subtitle_not_shared_yet,
-            pluralStringResource(R.plurals.day_subtitle_alarms_set, armedCount, armedCount),
-        )
+        FabState.Share -> if (sharedAtTime != null) {
+            stringResource(R.string.day_subtitle_shared_at, rememberTimelineTimeFormat().timeWithPeriod(sharedAtTime))
+        } else {
+            stringResource(
+                R.string.day_subtitle_not_shared_yet,
+                pluralStringResource(R.plurals.day_subtitle_alarms_set, armedCount, armedCount),
+            )
+        }
         FabState.Hidden -> meetings
     }
 }
@@ -268,24 +285,36 @@ private fun InitialScroll(firstVisibleHour: Float?, scrollState: ScrollState) {
     }
 }
 
+/**
+ * "Share again" and "Mark as not shared" only show once [hasBeenShared] (render 3/4;
+ * TODO.md §4.2's interaction rule: changing the selection after sharing keeps the share
+ * affordance available from here even once the FAB has reverted to "Set alarms").
+ */
 @Composable
 private fun OverflowMenu(
+    hasBeenShared: Boolean,
     onPermissionsClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onLicensesClick: () -> Unit,
     onCheckForUpdatesClick: () -> Unit,
+    onShareAgainClick: () -> Unit,
+    onMarkNotSharedClick: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     IconButton(onClick = { expanded = true }) {
         Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.more_options))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        listOf(
-            R.string.menu_permissions to onPermissionsClick,
-            R.string.menu_settings to onSettingsClick,
-            R.string.menu_check_for_updates to onCheckForUpdatesClick,
-            R.string.menu_licenses to onLicensesClick,
-        ).forEach { (label, onClick) ->
+        buildList {
+            if (hasBeenShared) {
+                add(R.string.menu_share_again to onShareAgainClick)
+                add(R.string.menu_mark_not_shared to onMarkNotSharedClick)
+            }
+            add(R.string.menu_permissions to onPermissionsClick)
+            add(R.string.menu_settings to onSettingsClick)
+            add(R.string.menu_check_for_updates to onCheckForUpdatesClick)
+            add(R.string.menu_licenses to onLicensesClick)
+        }.forEach { (label, onClick) ->
             DropdownMenuItem(
                 text = { Text(stringResource(label)) },
                 onClick = {
@@ -307,6 +336,8 @@ private fun DayScreenPreviewFrame(state: DayUiState) {
             onSettingsClick = {},
             onLicensesClick = {},
             onCheckForUpdatesClick = {},
+            onShareAgainClick = {},
+            onMarkNotSharedClick = {},
             onEventClick = { _, _ -> },
             onEventLongClick = {},
             onFabClick = {},
@@ -371,6 +402,22 @@ internal fun DayScreenAlarmsSetPreview() {
             meetingCount = 3,
             fabState = FabState.Share,
             armedCount = 3,
+            days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
+        ),
+    )
+}
+
+/** After "Share schedule": subtitle reads "shared 8:12 AM" and the overflow would offer "Share again"/"Mark as not shared". */
+@Preview(showBackground = true)
+@Composable
+internal fun DayScreenSharedPreview() {
+    DayScreenPreviewFrame(
+        DayUiState(
+            anchorDate = PreviewDate,
+            meetingCount = 3,
+            fabState = FabState.Share,
+            armedCount = 3,
+            sharedAtTime = LocalTime.of(8, 12),
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
         ),
     )

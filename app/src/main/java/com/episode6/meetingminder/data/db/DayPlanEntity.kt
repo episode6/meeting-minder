@@ -7,9 +7,10 @@ import java.time.LocalDate
 
 /**
  * `day_plan` (TODO.md §3.4): one row per day that has ever had a selection, alarms set, or
- * a share. [alarmsSetAt]/[sharedAt]/[sharedSnapshot] stay null until PR-8/PR-9 write them;
- * [sharedSnapshot] (`json BusyRange[]`) is only read back by PR-9's share flow, not by
- * anything in this PR.
+ * a share. [alarmsSetAt]/[sharedAt]/[sharedSnapshot] stay null until "Set alarms"/"Share
+ * schedule" writes them; [sharedSnapshot] is the merged busy ranges that went into the
+ * last share text (`encodeBusyRanges`/`decodeBusyRanges`), read back by PR-11's "Update:"
+ * re-share.
  */
 @Entity(tableName = "day_plan")
 data class DayPlanEntity(

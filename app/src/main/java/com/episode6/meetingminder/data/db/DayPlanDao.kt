@@ -43,6 +43,19 @@ interface DayPlanDao {
         setAlarmsSetAt(date, alarmsSetAt)
     }
 
+    @Query("UPDATE day_plan SET shared_at = :sharedAt, shared_snapshot = :sharedSnapshot WHERE date = :date")
+    suspend fun setShared(date: LocalDate, sharedAt: Long?, sharedSnapshot: String?)
+
+    /** Records a share (or re-share) of [date] at [sharedAt], creating the plan row if the day never had one. */
+    @Transaction
+    suspend fun markShared(date: LocalDate, sharedAt: Long, sharedSnapshot: String) {
+        ensureDayPlan(date)
+        setShared(date, sharedAt, sharedSnapshot)
+    }
+
+    /** "Mark as not shared" (TODO.md §4.2): clears the share bookkeeping, leaving the selection/alarms alone. */
+    suspend fun clearShared(date: LocalDate) = setShared(date, sharedAt = null, sharedSnapshot = null)
+
     @Query("SELECT * FROM selected_event WHERE date = :date")
     suspend fun selectedEventsOn(date: LocalDate): List<SelectedEventEntity>
 
