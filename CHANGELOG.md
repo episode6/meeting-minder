@@ -16,7 +16,8 @@
 - Internal: Robolectric tests drive the repository against a `FakeCalendarProvider`
   (in-memory SQLite behind `com.android.calendar`, so real projections and selections are
   honoured) covering timed, recurring, moved (`ORIGINAL_ID`), all-day-near-midnight,
-  ends-at-midnight, cancelled/deleted, declined and hidden-calendar cases; plain unit tests
+  ends-at-midnight, cancelled/deleted, declined, hidden-calendar, duplicate-owner-row and
+  attendee-chunk-boundary cases; plain unit tests
   cover `isMeeting` and `EventKey`; a `FakeCalendarRepository` is ready for store tests; and
   one instrumented test inserts a `LOCAL` calendar + event into the real provider on the
   emulator and reads it back.

@@ -42,6 +42,7 @@ class ContentResolverCalendarRepository(
 
     override suspend fun eventsOn(date: LocalDate, filter: CalendarFilter): List<CalendarEvent> =
         withContext(ioDispatcher) {
+            if (filter is CalendarFilter.Only && filter.calendarIds.isEmpty()) return@withContext emptyList()
             val instances = queryInstances(date, filter)
             if (instances.isEmpty()) return@withContext emptyList()
             val attendees = queryAttendees(instances)
@@ -58,6 +59,14 @@ class ContentResolverCalendarRepository(
      * all-day event would show up at 8 PM tonight in New York. An event ending exactly at
      * midnight gets `END_DAY` of the previous day from the provider, so it never leaks into
      * the next day either.
+     *
+     * Caveat: the provider computes `START_DAY`/`END_DAY` in its own "instances timezone"
+     * (`CalendarCache`), which equals the device zone only while the timezone type is `auto`
+     * — the default, and the only mode Google Calendar on Android uses. A calendar app that
+     * writes a fixed "home time zone" into the cache would put Julian days in that zone while
+     * this window is built in [zone], and a late-evening event could then land on the wrong
+     * day. Same caveat applies to `Instances.CONTENT_BY_DAY_URI`, so there is no better
+     * option; noted here so the symptom is recognisable.
      */
     private fun queryInstances(date: LocalDate, filter: CalendarFilter): List<InstanceRow> {
         val zone = zone()
@@ -81,7 +90,7 @@ class ContentResolverCalendarRepository(
         return when (filter) {
             CalendarFilter.Visible -> "$base AND ${Instances.VISIBLE} = 1" to emptyArray()
             is CalendarFilter.Only -> {
-                if (filter.calendarIds.isEmpty()) return "$base AND 0" to emptyArray()
+                // an empty id set is answered in eventsOn without a provider round trip
                 val ids = filter.calendarIds.sorted()
                 "$base AND ${Instances.CALENDAR_ID} IN (${placeholders(ids.size)})" to ids.map(Long::toString).toTypedArray()
             }
@@ -95,7 +104,7 @@ class ContentResolverCalendarRepository(
      */
     private fun queryAttendees(instances: List<InstanceRow>): Map<Long, AttendeeSummary> {
         val ownerByEvent = instances.associate { it.eventId to it.ownerAccount }
-        val summaries = mutableMapOf<Long, AttendeeSummary>()
+        val accumulators = mutableMapOf<Long, AttendeeAccumulator>()
         ownerByEvent.keys.sorted().chunked(ATTENDEE_QUERY_CHUNK).forEach { ids ->
             contentResolver.query(
                 Attendees.CONTENT_URI,
@@ -106,29 +115,44 @@ class ContentResolverCalendarRepository(
             )?.use { cursor ->
                 while (cursor.moveToNext()) {
                     val eventId = cursor.getLong(Attendees.EVENT_ID)
-                    val summary = summaries.getOrPut(eventId) { AttendeeSummary() }
-                    if (cursor.getIntOrNull(Attendees.ATTENDEE_TYPE) != Attendees.TYPE_RESOURCE) summary.humans++
+                    val accumulator = accumulators.getOrPut(eventId) { AttendeeAccumulator() }
+                    if (cursor.getIntOrNull(Attendees.ATTENDEE_TYPE) != Attendees.TYPE_RESOURCE) accumulator.humans++
                     val email = cursor.getStringOrNull(Attendees.ATTENDEE_EMAIL)
                     val owner = ownerByEvent[eventId]
                     if (email != null && owner != null && email.equals(owner, ignoreCase = true)) {
-                        summary.selfAttendeeId = cursor.getLong(Attendees._ID)
-                        summary.selfIsOrganizer =
+                        // Some sync adapters produce two rows for the owner (the invite's and the
+                        // account's own). Organizer-ness sticks once any row says so, and the
+                        // organizer row is the one PR-8b should write the RSVP through.
+                        val isOrganizerRow =
                             cursor.getIntOrNull(Attendees.ATTENDEE_RELATIONSHIP) == Attendees.RELATIONSHIP_ORGANIZER
+                        if (isOrganizerRow || accumulator.selfAttendeeId == null) {
+                            accumulator.selfAttendeeId = cursor.getLong(Attendees._ID)
+                        }
+                        accumulator.selfIsOrganizer = accumulator.selfIsOrganizer || isOrganizerRow
                     }
                 }
             }
         }
-        return summaries
+        return accumulators.mapValues { (_, it) -> it.toSummary() }
     }
 
-    private class AttendeeSummary(
-        var humans: Int = 0,
-        var selfAttendeeId: Long? = null,
-        var selfIsOrganizer: Boolean = false,
+    private data class AttendeeSummary(
+        val humans: Int = 0,
+        val selfAttendeeId: Long? = null,
+        val selfIsOrganizer: Boolean = false,
     ) {
         companion object {
             val EMPTY = AttendeeSummary()
         }
+    }
+
+    /** Mutable scratch space for one event's attendee pass; never escapes [queryAttendees]. */
+    private class AttendeeAccumulator {
+        var humans: Int = 0
+        var selfAttendeeId: Long? = null
+        var selfIsOrganizer: Boolean = false
+
+        fun toSummary() = AttendeeSummary(humans, selfAttendeeId, selfIsOrganizer)
     }
 
     /** The raw `Instances` columns one event needs, read before the attendee pass. */

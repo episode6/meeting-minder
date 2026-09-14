@@ -221,7 +221,16 @@ class ContentResolverCalendarRepositoryTest {
         assertThat(repository.eventsOn(today).map { it.eventId }).containsExactly(80L)
         assertThat(repository.eventsOn(today, CalendarFilter.Only(setOf(2L))).map { it.eventId }).containsExactly(81L)
         assertThat(repository.eventsOn(today, CalendarFilter.Only(setOf(1L, 2L))).map { it.eventId }).containsExactly(80L, 81L)
+    }
+
+    @Test
+    fun emptyOnlyFilter_isAnsweredWithoutAskingTheProvider() = runTest {
+        provider.addInstance(
+            instanceId = 800, eventId = 80, begin = today.at(9, zone = zone), end = today.at(10, zone = zone), zone = zone,
+        )
+
         assertThat(repository.eventsOn(today, CalendarFilter.Only(emptySet()))).isEmpty()
+        assertThat(provider.queriedUris).isEmpty()
     }
 
     @Test
@@ -240,6 +249,47 @@ class ContentResolverCalendarRepositoryTest {
         assertThat(events.map { it.humanAttendees }).containsExactly(2, 2, 2, 2, 2)
         assertThat(events.map { it.selfAttendeeId }).containsExactly(10L, 11L, 12L, 13L, 14L)
         assertThat(provider.queriedUris.filter { it.path?.startsWith("/attendees") == true }).hasSize(1)
+    }
+
+    @Test
+    fun attendees_areFetchedInChunks_whenADayHasMoreEventsThanSqliteCanBind() = runTest {
+        val count = 501
+        repeat(count) { i ->
+            provider.addInstance(
+                instanceId = 10_000L + i, eventId = 10_000L + i, begin = today.at(9, zone = zone), end = today.at(10, zone = zone), zone = zone,
+            )
+            provider.addAttendee(id = 20_000L + i, eventId = 10_000L + i, email = "guest$i@example.com")
+        }
+
+        val events = repository.eventsOn(today)
+
+        assertThat(events).hasSize(count)
+        assertThat(events.all { it.humanAttendees == 1 }).isTrue()
+        assertThat(provider.queriedUris.filter { it.path?.startsWith("/attendees") == true }).hasSize(2)
+    }
+
+    @Test
+    fun duplicateSelfRows_keepOrganizerness_andPreferTheOrganizerRowsId() = runTest {
+        // the organizer row comes first and the account's own plain row second: the second
+        // row must neither flip isOrganizer back to false nor replace the organizer row's id
+        provider.addInstance(
+            instanceId = 950, eventId = 95, begin = today.at(9, zone = zone), end = today.at(10, zone = zone), zone = zone,
+        )
+        provider.addAttendee(id = 1, eventId = 95, email = me, relationship = Attendees.RELATIONSHIP_ORGANIZER)
+        provider.addAttendee(id = 2, eventId = 95, email = me)
+        // and the other order: the plain row first, the organizer row second
+        provider.addInstance(
+            instanceId = 951, eventId = 96, begin = today.at(11, zone = zone), end = today.at(12, zone = zone), zone = zone,
+        )
+        provider.addAttendee(id = 3, eventId = 96, email = me)
+        provider.addAttendee(id = 4, eventId = 96, email = me, relationship = Attendees.RELATIONSHIP_ORGANIZER)
+
+        val byId = repository.eventsOn(today).associateBy { it.eventId }
+
+        assertThat(byId.getValue(95).isOrganizer).isTrue()
+        assertThat(byId.getValue(95).selfAttendeeId).isEqualTo(1L)
+        assertThat(byId.getValue(96).isOrganizer).isTrue()
+        assertThat(byId.getValue(96).selfAttendeeId).isEqualTo(4L)
     }
 
     @Test
