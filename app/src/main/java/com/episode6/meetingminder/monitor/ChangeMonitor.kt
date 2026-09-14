@@ -36,8 +36,9 @@ private const val TAG = "MeetingMinderChanges"
  * 2. with calendar access, for each remaining day reads the whole day fresh, promotes waiting
  *    RSVPs to `SYNCED` (§4.6), diffs it against the baseline ([ChangeDetector]), and when
  *    the result differs from what the last check recorded, records it
- *    (`changes_json`) and updates the notification — alerting only when a change is new,
- *    cancelling it when nothing is changed any more;
+ *    (`changes_json`) and updates the notification — alerting only when a change is new
+ *    (and, `setOnlyAlertOnce`, only if it isn't already showing), cancelling it when nothing
+ *    is changed any more;
  * 3. re-arms the background works for the days still shared, or disarms them.
  */
 @Inject
@@ -54,27 +55,28 @@ class ChangeMonitor(
     // the worker and the foreground reload can overlap; one check at a time
     private val mutex = Mutex()
 
-    suspend fun runCheck(reason: ChangeCheckReason) {
-        val sharedDays = mutex.withLock {
-            try {
-                val today = LocalDate.now(clock)
-                val (ended, current) = snapshotDao.all().partition { it.date < today }
-                for (snapshot in ended) {
-                    notifier.cancel(snapshot.date)
-                    snapshotDao.delete(snapshot.date)
-                }
-                if (permissionChecker.currentState().calendarGranted) {
-                    for (snapshot in current) check(snapshot)
-                }
-                current.mapTo(sortedSetOf()) { it.date }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // leave the works as they are: the periodic safety net retries
-                Log.w(TAG, "change check failed", e)
-                null
+    // Both entry points read change_snapshot and arm from what they read under this lock, so
+    // a check that read "nothing shared" can't disarm after a share has armed (and a share's
+    // notification cancel can't land before a check that is still showing one finishes).
+    suspend fun runCheck(reason: ChangeCheckReason) = mutex.withLock {
+        val sharedDays = try {
+            val today = LocalDate.now(clock)
+            val (ended, current) = snapshotDao.all().partition { it.date < today }
+            for (snapshot in ended) {
+                notifier.cancel(snapshot.date)
+                snapshotDao.delete(snapshot.date)
             }
-        } ?: return
+            if (permissionChecker.currentState().calendarGranted) {
+                for (snapshot in current) check(snapshot)
+            }
+            current.mapTo(sortedSetOf()) { it.date }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // leave the works as they are: the periodic safety net retries
+            Log.w(TAG, "change check failed", e)
+            return@withLock
+        }
         scheduler.update(sharedDays, reason)
     }
 
@@ -83,12 +85,15 @@ class ChangeMonitor(
      * longer describes anything (a re-share replaced the baseline), and monitoring may have
      * to start or stop.
      */
-    suspend fun onShareChanged(date: LocalDate) {
+    suspend fun onShareChanged(date: LocalDate) = mutex.withLock {
         notifier.cancel(date)
         val today = LocalDate.now(clock)
         scheduler.update(snapshotDao.all().mapNotNullTo(sortedSetOf()) { it.date.takeIf { day -> day >= today } }, ChangeCheckReason.IN_APP)
     }
 
+    // The fresh read uses the default calendar filter, like the LoadDay read the share's
+    // baseline came from. Any per-day calendar filter (PR-12) must be applied to both, or
+    // every meeting on a calendar only one of them excludes reads as New or Cancelled.
     private suspend fun check(snapshot: ChangeSnapshotEntity) {
         val fresh = try {
             repository.eventsOn(snapshot.date)

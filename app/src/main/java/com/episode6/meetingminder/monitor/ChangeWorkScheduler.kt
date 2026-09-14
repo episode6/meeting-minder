@@ -53,7 +53,10 @@ interface ChangeWorkScheduler {
  * - [PERIODIC_WORK] — the 30-minute (flex 10) safety net, first run one interval out,
  *   `KEEP`, which also re-arms a trigger chain a failed run left dead.
  * - [EXPIRY_WORK] — one-time work delayed until the midnight that ends the last shared day,
- *   `REPLACE`d whenever that day may have moved; when it runs, nothing is shared any more
+ *   `REPLACE`d from the app (a share or "Mark as not shared" may have moved that day),
+ *   `KEEP` from a background check (which only drops days that have ended, so it doesn't
+ *   churn a job on every calendar sync), and appended behind itself from its own run;
+ *   when it runs with nothing shared any more
  *   and the check disarms everything and cancels the notifications.
  *
  * A worker never cancels its own one-time unique work (it is finishing anyway); the
@@ -80,7 +83,13 @@ class WorkManagerChangeWorkScheduler(private val context: Context, private val c
         workManager.enqueueUniquePeriodicWork(PERIODIC_WORK, ExistingPeriodicWorkPolicy.KEEP, periodicRequest())
         workManager.enqueueUniqueWork(
             EXPIRY_WORK,
-            if (reason == ChangeCheckReason.DAY_ENDED) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.REPLACE,
+            when (reason) {
+                ChangeCheckReason.DAY_ENDED -> ExistingWorkPolicy.APPEND_OR_REPLACE
+                // a background check only drops days that have ended, so the last shared day
+                // is where the waiting expiry already is: don't re-create it on every sync
+                ChangeCheckReason.CONTENT_TRIGGER, ChangeCheckReason.PERIODIC -> ExistingWorkPolicy.KEEP
+                ChangeCheckReason.IN_APP -> ExistingWorkPolicy.REPLACE
+            },
             expiryRequest(sharedDays.max()),
         )
     }

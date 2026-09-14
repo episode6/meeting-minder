@@ -14,7 +14,7 @@ import assertk.assertions.isEqualTo
 import assertk.assertions.isNotNull
 import assertk.assertions.isNull
 import assertk.assertions.isTrue
-import com.episode6.meetingminder.DeepLinks
+import com.episode6.meetingminder.ui.navigation.DeepLinks
 import com.episode6.meetingminder.MainActivity
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.ScheduleChange

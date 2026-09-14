@@ -85,6 +85,17 @@ class WorkManagerChangeWorkSchedulerTest {
     }
 
     @Test
+    fun update_fromABackgroundCheck_keepsTheExpiryThatIsAlreadyWaiting() {
+        scheduler.update(setOf(today), ChangeCheckReason.IN_APP)
+        val expiry = work(WorkManagerChangeWorkScheduler.EXPIRY_WORK).id
+
+        scheduler.update(setOf(today), ChangeCheckReason.PERIODIC)
+        scheduler.update(setOf(today), ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(work(WorkManagerChangeWorkScheduler.EXPIRY_WORK).id).isEqualTo(expiry)
+    }
+
+    @Test
     fun update_fromTheApp_keepsATriggerThatIsAlreadyWaiting() {
         scheduler.update(setOf(today), ChangeCheckReason.IN_APP)
         val first = work(WorkManagerChangeWorkScheduler.TRIGGER_WORK).id

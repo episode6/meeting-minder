@@ -12,7 +12,7 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.episode6.meetingminder.DeepLinks
+import com.episode6.meetingminder.ui.navigation.DeepLinks
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.ScheduleChange
@@ -25,9 +25,12 @@ import java.time.format.DateTimeFormatter
 /** Posts and cancels a shared day's "your schedule changed since you shared it" notification (TODO.md §4.3). */
 interface ScheduleChangeNotifier {
     /**
-     * Shows [changes] for [date]. With [alert] false (nothing in [changes] is new, some just
-     * dropped out) it only updates a notification that is still showing, so a dismissed one
-     * doesn't come back for old news.
+     * Shows [changes] for [date]. With [alert] true (something in [changes] is new) it posts
+     * the notification, but since it is `setOnlyAlertOnce` (TODO.md §4.3) it only makes a
+     * sound when the notification isn't already showing: a second new change while the
+     * first is still unread updates it silently. With [alert] false (nothing in [changes] is
+     * new, some just dropped out) it only updates a notification that is still showing, so a
+     * dismissed one doesn't come back for old news.
      */
     fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean)
 

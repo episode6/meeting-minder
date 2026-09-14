@@ -7,7 +7,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import com.episode6.redux.sideeffects.SideEffect
 import com.episode6.redux.Action
 import com.episode6.meetingminder.store.ShareDay
-import com.episode6.meetingminder.DeepLink
 import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.isEqualTo

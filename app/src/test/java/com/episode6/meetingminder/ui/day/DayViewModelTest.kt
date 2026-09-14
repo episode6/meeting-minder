@@ -525,4 +525,17 @@ class DayViewModelTest {
 
         assertThat(state.toDayUiState(now, zone).changeBanner).isNull()
     }
+
+    @Test
+    fun changeBanner_isNull_forASharedDayThatHasEnded() {
+        val yesterday = today.minusDays(1)
+        val state = AppState(
+            anchorDate = today,
+            settledDate = yesterday,
+            dayPlans = mapOf(yesterday to sharedStandup.copy(selected = emptyMap())),
+            scheduleChanges = listOf(ScheduleChange.New(yesterday, designReview.key, designReview.begin, designReview.end)),
+        )
+
+        assertThat(state.toDayUiState(now, zone).changeBanner).isNull()
+    }
 }

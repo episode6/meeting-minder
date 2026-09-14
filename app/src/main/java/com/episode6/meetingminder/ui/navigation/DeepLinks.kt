@@ -1,8 +1,11 @@
-package com.episode6.meetingminder
+package com.episode6.meetingminder.ui.navigation
 
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import com.episode6.meetingminder.MainActivity
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
@@ -55,5 +58,33 @@ object DeepLinks {
         }
     }
 
+    /**
+     * The link [intent] asks [MainActivity] to act on, or null. An intent carrying
+     * `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY` never counts: reopening a task from Recents
+     * after its activity finished re-delivers the intent that first launched it, and a
+     * "Share update" that cold-started the app must not share again when that happens.
+     */
+    fun fromIntent(intent: Intent?): DeepLink? {
+        if (intent == null || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
+        return parse(intent.dataString)
+    }
+
     private val LinkPattern = Regex("$SCHEME://($DAY|$SHARE)/([0-9]{4}-[0-9]{2}-[0-9]{2})/?")
+}
+
+/**
+ * [MainActivity]'s deep links waiting for `Navigation.kt`. The activity [offer]s its launch
+ * intent (on a fresh start only) and every `onNewIntent`; the navigation takes each from
+ * [links] once. Queueing them here instead of listening from the composition matters when
+ * the activity is recreated in a task that outlived it: the new intent then arrives before
+ * the first composition. Conflated, so only the latest tap waits.
+ */
+class DeepLinkInbox {
+    private val channel = Channel<DeepLink>(Channel.CONFLATED)
+
+    val links: ReceiveChannel<DeepLink> get() = channel
+
+    fun offer(intent: Intent?) {
+        DeepLinks.fromIntent(intent)?.let { channel.trySend(it) }
+    }
 }

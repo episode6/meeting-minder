@@ -271,7 +271,8 @@ com.episode6.meetingminder
 ├── share/                         ScheduleTextFormatter, ShareLauncher
 ├── permissions/                   PermissionChecker, PermissionRequester (intents), PermissionState
 └── ui/
-    ├── navigation/                Routes (@Serializable), Navigation.kt (NavHost, VM wiring, launchers)
+    ├── navigation/                Routes (@Serializable), Navigation.kt (NavHost, VM wiring, launchers),
+    │                              DeepLinks + DeepLinkInbox (meetingminder://day|share/{date})
     ├── theme/                     MeetingMinderTheme, Color, Type
     ├── day/                       DayScreen, DayPager, DayTimeline (Layout), EventChip, NowLine, DayViewModel
     ├── onboarding/                OnboardingScreen, OnboardingViewModel
@@ -653,7 +654,10 @@ NB (PR-11), where the build settled things this section leaves open:
   trigger; re-armed from inside its own run with `APPEND_OR_REPLACE`, from anywhere else with
   `KEEP`), `calendar-change-periodic` (the safety net, `KEEP`, first run one interval out) and
   `calendar-change-expiry` (the delayed one-time work at the last shared day's midnight,
-  `REPLACE`d on every arm). A shared day is a `change_snapshot` row; a check deletes the rows
+  `REPLACE`d when the app arms, kept by a background check, appended behind itself from its
+  own run). `ChangeMonitor` reads `change_snapshot` and arms under one lock for both a check and
+  a share, so a check that read "nothing shared" can't disarm a share that armed meanwhile.
+  A shared day is a `change_snapshot` row; a check deletes the rows
   of ended days and cancels their notifications, then arms for the remaining days or disarms.
   A worker never cancels its own one-time work.
 - **"Gone" is judged against the whole day's read**, not the rest-of-day window, so a
@@ -666,10 +670,15 @@ NB (PR-11), where the build settled things this section leaves open:
   it. The weekday names the day within the next six days, a date further out.
 - **Banner**: shown from the recorded changes, and also (lines-free, "Your picks changed since
   you shared") when the loaded day's selected busy ranges no longer match `shared_snapshot`,
-  per §2. A re-share of a day with either difference sends the `Update:` text.
-- **Deep links** are handled in `Navigation.kt` from the launch intent (once, saved across
-  recreation) and `onNewIntent` (the notifications launch `MainActivity` clear-top +
-  single-top). They are dropped while a required grant is missing.
+  per §2. A re-share of a day with either difference sends the `Update:` text. Never shown for
+  a day before today.
+- **Deep links** (`ui/navigation/DeepLinks`): `MainActivity` queues them in a `DeepLinkInbox`
+  from its launch intent (a fresh start only, never a recreation) and from `onNewIntent` (the
+  notifications launch it clear-top + single-top, and an activity recreated in a surviving
+  task gets the new intent before its first composition); `Navigation.kt` takes each once.
+  An intent re-delivered from Recents (`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`) is ignored, so a
+  "Share update" that cold-started the app doesn't share again when the task is reopened.
+  They are dropped while a required grant is missing.
 - WorkManager's merged `ACCESS_NETWORK_STATE` is removed with `tools:node="remove"`; nothing
   uses a network constraint.
 

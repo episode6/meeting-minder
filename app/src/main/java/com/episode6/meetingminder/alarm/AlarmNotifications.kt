@@ -11,7 +11,7 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.episode6.meetingminder.DeepLinks
+import com.episode6.meetingminder.ui.navigation.DeepLinks
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.model.RingingAlarm
 import java.time.LocalDate

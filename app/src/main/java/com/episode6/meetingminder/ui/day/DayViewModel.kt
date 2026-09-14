@@ -168,9 +168,12 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId) = DayUiStat
  * has been shared, and only while something differs from that share — the changes the
  * last check recorded ([AppState.scheduleChanges]), or, once the day's events have loaded,
  * a selection whose busy ranges no longer match [DayPlan.sharedSnapshot] (§2: changing the
- * selection after sharing shows the banner too). A re-share resets both.
+ * selection after sharing shows the banner too). A re-share resets both. Never for a day
+ * before today ([AppState.anchorDate]): monitoring has ended there, and re-sharing it
+ * would tell nobody anything useful.
  */
 internal fun AppState.changeBannerFor(date: LocalDate, zone: ZoneId): ScheduleChangeBannerState? {
+    if (date < anchorDate) return null
     val plan = dayPlans[date]?.takeIf { it.sharedAt != null } ?: return null
     val changes = scheduleChanges.filter { it.date == date }
     val events = eventsByDay[date]?.events

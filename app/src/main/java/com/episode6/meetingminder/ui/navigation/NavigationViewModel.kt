@@ -2,7 +2,6 @@ package com.episode6.meetingminder.ui.navigation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.episode6.meetingminder.DeepLink
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
 import com.episode6.meetingminder.store.ShareDay

@@ -2,11 +2,8 @@ package com.episode6.meetingminder.ui.navigation
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.SnackbarHostState
@@ -16,7 +13,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -24,7 +20,6 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
-import androidx.core.util.Consumer
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -36,7 +31,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.repeatOnLifecycle
-import com.episode6.meetingminder.DeepLinks
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.permissions.PermissionRequester
 import com.episode6.meetingminder.share.shareSchedule
@@ -58,7 +52,7 @@ import java.time.LocalDate
  * links) are handled. Screens below it only take state + callbacks.
  */
 @Composable
-fun MeetingMinderNavigation() {
+fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
     val navController = rememberNavController()
     val navigationViewModel: NavigationViewModel = metroViewModel()
     val requiredPermissionsGranted by navigationViewModel.requiredPermissionsGranted.collectAsStateWithLifecycle()
@@ -94,16 +88,13 @@ fun MeetingMinderNavigation() {
     }
 
     // Deep links from notifications (TODO.md §4.3): meetingminder://day/{date} shows that day,
-    // meetingminder://share/{date} also opens its share sheet. The launch intent is handled
-    // once per activity (saved across recreation, whose intent is still the old link); a
-    // notification tapped while the app is running arrives through onNewIntent, since the
-    // notifications launch MainActivity single-top.
-    val activity = LocalActivity.current as? ComponentActivity
+    // meetingminder://share/{date} also opens its share sheet. MainActivity queues them in
+    // [deepLinks] (its launch intent on a fresh start, and every onNewIntent, since the
+    // notifications launch it single-top) and each is taken here exactly once.
     var pendingJumpDate by rememberSaveable { mutableStateOf<LocalDate?>(null) }
-    var launchIntentHandled by rememberSaveable { mutableStateOf(false) }
-    val handleIntent by rememberUpdatedState { intent: Intent? ->
-        val link = DeepLinks.parse(intent?.dataString)
-        if (link != null && navigationViewModel.onDeepLink(link)) {
+    LaunchedEffect(deepLinks, navigationViewModel, navController) {
+        for (link in deepLinks.links) {
+            if (!navigationViewModel.onDeepLink(link)) continue
             pendingJumpDate = link.date
             if (navController.currentBackStackEntry?.destination?.hasRoute<Route.Day>() != true &&
                 !navController.popBackStack<Route.Day>(inclusive = false)
@@ -114,17 +105,6 @@ fun MeetingMinderNavigation() {
                 }
             }
         }
-    }
-    LaunchedEffect(Unit) {
-        if (!launchIntentHandled) {
-            launchIntentHandled = true
-            handleIntent(activity?.intent)
-        }
-    }
-    DisposableEffect(activity) {
-        val listener = Consumer<Intent> { handleIntent(it) }
-        activity?.addOnNewIntentListener(listener)
-        onDispose { activity?.removeOnNewIntentListener(listener) }
     }
 
     NavHost(navController = navController, startDestination = startDestination) {

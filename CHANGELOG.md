@@ -15,14 +15,15 @@
   `allDay` now), promotes waiting RSVPs to `SYNCED`, and posts, updates or cancels the
   `schedule_updates` notification (render 6: one per day, `InboxStyle` with one time-only
   line per change, titled with the weekday when it isn't today, alerting only when a change
-  is new, with **Review** → `meetingminder://day/{date}` and **Share update** →
+  is new and the notification isn't already showing, with **Review** → `meetingminder://day/{date}` and **Share update** →
   `meetingminder://share/{date}` straight into `MainActivity`). It runs in the background
   from `CalendarChangeWorker` on WorkManager (a content-URI trigger on the calendar provider
   that re-arms itself after every run, a 30-minute periodic safety net, and a one-time work at
   the last shared day's midnight that disarms everything), and in the foreground on every
   `CalendarContentChanged`. A share or "Share again" takes a fresh baseline, cancels the
   notification and arms monitoring; "Mark as not shared" disarms it. `Navigation.kt` handles
-  the deep links (launch intent and `onNewIntent`): the pager jumps to the day and "Share
+  the deep links (`ui/navigation/DeepLinks`, queued by `MainActivity` from its launch intent
+  and `onNewIntent`; a link replayed from Recents is ignored): the pager jumps to the day and "Share
   update" opens the chooser; the missed-alarm notification now opens its day the same way.
   The day view shows a "changed since you shared" banner (`ScheduleChangeBanner`: "2 changes
   since you shared", the change lines and **Re-share**) from the new

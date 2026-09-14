@@ -18,6 +18,9 @@ import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.ScheduleChange
 import com.episode6.meetingminder.model.testCalendarEvent
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.time.Clock
@@ -196,6 +199,30 @@ class ChangeMonitorTest {
 
         assertThat(notifier.shown).isEmpty()
         assertThat(decodeScheduleChanges(today, fake.entries.getValue(today).changesJson)).isEmpty()
+    }
+
+    @Test
+    fun runCheck_whenADayIsSharedMidCheck_leavesMonitoringArmedForIt() = runTest {
+        val fake = FakeChangeSnapshotDao(emptyList())
+        lateinit var checker: ChangeMonitor
+        var shared = false
+        val sharedDuringTheRead = object : ChangeSnapshotDao by fake {
+            override suspend fun all(): List<ChangeSnapshotEntity> = fake.all().also {
+                if (shared) return@also
+                shared = true
+                // ShareDay writes the baseline, then arms, while this check is still running
+                launch(start = CoroutineStart.UNDISPATCHED) {
+                    fake.upsert(sharedSnapshot(today, listOf(designReview)))
+                    checker.onShareChanged(today)
+                }
+            }
+        }
+        checker = monitor(sharedDuringTheRead)
+
+        checker.runCheck(ChangeCheckReason.PERIODIC)
+        advanceUntilIdle()
+
+        assertThat(scheduler.updates.last()).isEqualTo(setOf(today) to ChangeCheckReason.IN_APP)
     }
 
     @Test
