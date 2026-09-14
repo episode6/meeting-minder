@@ -359,11 +359,24 @@ internal fun OnboardingScreenWarningsPreview() {
     )
 }
 
-/** Dark theme: render 1's mid-way state with the restricted warning and the phone-maker card. */
+/**
+ * Dark theme: granted ticks, the restricted warning and the phone-maker card with its "How to",
+ * and an enabled Continue — short enough that nothing needs scrolling.
+ */
 @Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_NORMAL)
 @Composable
 internal fun OnboardingScreenDarkPreview() {
-    OnboardingPreviewFrame(PartlyGranted.copy(backgroundRestricted = true, sleepyManufacturer = SleepyManufacturer.Xiaomi))
+    OnboardingPreviewFrame(
+        OnboardingUiState(
+            calendarGranted = true,
+            notificationsGranted = true,
+            exactAlarmsGranted = true,
+            fullScreenAlarmsGranted = true,
+            batteryOptimizationIgnored = true,
+            backgroundRestricted = true,
+            sleepyManufacturer = SleepyManufacturer.Xiaomi,
+        ),
+    )
 }
 
 /** 1.5× font scale: descriptions wrap beside their buttons, nothing is cut off, and the list scrolls. */
