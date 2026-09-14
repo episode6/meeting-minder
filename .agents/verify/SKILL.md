@@ -108,29 +108,29 @@ a `LOCAL` calendar.
 
 ## Core flow to exercise
 
-> **Current state:** the day view, selection and alarm scheduling are live (TODO.md
-> PR-8): the app launches to today's page of the day pager with the device's visible
-> calendars loaded — swipe between days (the app-bar date and "N meetings" subtitle follow
-> the settled page), Today scrolls back, long-press a chip to open it in the calendar app,
-> and an event inserted with `content insert` (see "Seeding calendar data") appears within
-> a second or two while the day is on screen. Tap chips to select them, tap "Set alarms (N)"
-> (chips gain a bell + alarm time, the subtitle reads "N alarms set · not shared yet" in
-> orange with a bell, the FAB flips to a solid orange "Share schedule" — a placeholder
-> snackbar until PR-9). Deselecting an armed chip reverts the FAB to "Set alarms (N)"
-> without cancelling anything; deselecting every armed chip leaves it as "Clear alarms",
-> and the tap cancels them (`dumpsys alarm` should then show none). Setting alarms also
-> RSVPs "Yes, going" for each armed meeting that has an invite (see "Seeding an RSVP-able
-> invite"): the chip gains a small tick after its alarm time. A fired alarm rings
-> (TODO.md PR-10): `AlarmRingingService` plays a randomised sound on the alarm stream and
-> vibrates, and its notification's full-screen intent brings up the dark ringing screen
-> (clock, countdown, Dismiss / "Snooze 2 min" / "Open meeting", and a subtle "Sound: …"
-> line naming the random sound) over the lock screen — or a heads-up with Snooze/Dismiss
-> while the phone is in use. Unanswered for 3 minutes it snoozes itself once, then gives up
-> with a "Missed alarm" notification. Onboarding needs calendar, notifications, exact
-> alarms and full-screen alarms granted before the day view shows. The chip states are also reviewed through the Roborazzi previews
-> under `app/src/test/screenshots/`. `adb shell setprop log.tag.MeetingMinderStore DEBUG` logs every dispatched
-> store action's type. The flow below is the target; exercise
-> whichever parts of it exist when you verify.
+The full v1.0 flow (TODO.md PR-1 through PR-13) is implemented, so every step below should
+work end to end. The app launches to today's page of the day pager with the device's
+visible calendars loaded — swipe between days (the app-bar date and "N meetings" subtitle
+follow the settled page), Today scrolls back, long-press a chip to open it in the calendar
+app, and an event inserted with `content insert` (see "Seeding calendar data") appears
+within a second or two while the day is on screen. Tap chips to select them, tap
+"Set alarms (N)" (chips gain a bell + alarm time, the subtitle reads
+"N alarms set · not shared yet" in orange with a bell, the FAB flips to a solid orange
+"Share schedule"). Deselecting an armed chip reverts the FAB to "Set alarms (N)" without
+cancelling anything; deselecting every armed chip leaves it as "Clear alarms", and the tap
+cancels them (`dumpsys alarm` should then show none). Setting alarms also RSVPs
+"Yes, going" for each armed meeting that has an invite (see "Seeding an RSVP-able invite"):
+the chip gains a small tick after its alarm time. A fired alarm rings: `AlarmRingingService`
+plays a randomised sound on the alarm stream and vibrates, and its notification's
+full-screen intent brings up the dark ringing screen (clock, countdown, Dismiss /
+"Snooze 2 min" / "Open meeting", and a subtle "Sound: …" line naming the random sound) over
+the lock screen — or a heads-up with Snooze/Dismiss while the phone is in use. Unanswered
+for 3 minutes it snoozes itself once, then gives up with a "Missed alarm" notification.
+Onboarding needs calendar, notifications, exact alarms and full-screen alarms granted
+before the day view shows (battery-optimisation and background-restriction rows are
+shown but optional). The chip states are also reviewed through the Roborazzi previews
+under `app/src/test/screenshots/`. `adb shell setprop log.tag.MeetingMinderStore DEBUG`
+logs every dispatched store action's type.
 
 Day view (launch screen) → swipe left/right between days → tap meetings to select them
 (chip fills, check appears) → FAB reads "Set alarms (N)" → tap it (chips gain a bell +
@@ -138,6 +138,13 @@ alarm time, the RSVP goes to "Yes, going" in the calendar) → FAB becomes
 "Share schedule" → tap and confirm the share text lists busy ranges only, no titles.
 Then move or add an event in Google Calendar and confirm the "changed since you shared"
 notification and in-app banner arrive.
+
+Settings (overflow → Settings): change the lead time, snooze length, auto-timeout and
+sound pack, toggle a calendar's include switch (the day view should stop/start showing
+that calendar's events), toggle "show declined", and tap "Send test alarm" (rings
+immediately without touching real calendar data — the test event is excluded from
+"N meetings" counts and alarm armed-counts). The permissions row reflects onboarding
+state and re-enters onboarding when tapped.
 
 Alarms: set one a minute or two out, lock the screen, and confirm the ringing activity
 comes up over the lock screen with the screen woken and a sound playing. Dismiss and
@@ -176,6 +183,28 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   `content://com.android.calendar` trigger); `adb shell cmd jobscheduler run -f $PKG <jobId>`
   forces a check. Tapping "Share update" should open the chooser with `Update:` text.
 - Landscape probe: `settings put system user_rotation 1` (and back to 0).
+
+## Robustness checks (PR-13)
+
+- `adb shell am broadcast -a android.intent.action.PROVIDER_CHANGED -d content://com.android.calendar -p $PKG`
+  fires the accelerator receiver directly (it's manifest-disabled and only enabled while a
+  day is shared — check `adb shell pm list receivers $PKG` shows it enabled first).
+- Midnight rollover / anchor date: `adb shell date` can't set time on a non-rooted device,
+  so instead leave the app open and past a real midnight, or use
+  `adb emu geo`-style emulator time controls to jump the clock forward; the viewed day and
+  "Today" target should follow.
+- Timezone change: `adb shell "content update --uri content://settings/global --bind name:s:auto_time_zone --bind value:s:0"`
+  then `adb shell service call alarm ...` is fiddly on a real device — easiest on an
+  emulator via Extended Controls → Settings → Time, or `Settings > System > Date & time`
+  by hand; scheduled alarms for the day should still fire at the right local time
+  afterwards.
+- Battery optimisation / restricted standby: `adb shell dumpsys deviceidle whitelist -$PKG`
+  removes the app from the allowlist so onboarding's battery row shows "Allow"; `adb shell
+  am set-standby-bucket $PKG restricted` simulates the "restricted" bucket warning.
+- Dark theme / large font / TalkBack: `adb shell "cmd uimode night yes"` (and `no` after),
+  `adb shell settings put system font_scale 1.5`, and `adb shell settings put secure
+  enabled_accessibility_services com.android.talkback/com.google.android.marvin.talkback.TalkBackService`
+  (revert each afterwards) — walk the day view and onboarding under each.
 
 ## Gotchas
 

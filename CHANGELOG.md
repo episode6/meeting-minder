@@ -2,6 +2,22 @@
 
 ### v1.0.0 - Unreleased
 
+- Release prep (PR-14): README gained a "Screenshots" section with a real day-view-selecting
+  and alarms-set pair (captured on-device and hosted in episode6/screenshots, via the
+  `publish-screenshots` skill) and an updated status line reflecting the completed feature
+  set through PR-13. The `verify` skill's "Core flow to exercise" section no longer hedges
+  on "current state" (everything through PR-13 is live) and gained Settings-screen steps
+  and a "Robustness checks (PR-13)" section (`PROVIDER_CHANGED` broadcast, timezone/midnight
+  rollover, battery optimisation/restricted-standby, dark theme/large font/TalkBack). The
+  launcher icon (`ic_launcher_foreground.xml`/`ic_launcher_background*.xml`) and
+  `project-icon.svg` were reviewed against the brand and app concept and found already
+  finished (a day sheet + alarm clock in episode6 orange, with distinct debug/snapshot
+  colours) — no change needed. `THIRD_PARTY_LICENSES.md` was checked against a freshly
+  regenerated `app/expected-dependencies.txt` (`:app:writeExpectedDependencies`); they
+  already agree, so no changes were needed there either. Cutting the first
+  `release/v1.0.0` branch is deliberately **not** part of this PR — see the PR body — and
+  happens from `main` once the whole PR-1..PR-14 stack has merged, per
+  `RELEASE_CHECKLIST.md`.
 - Robustness (PR-13):
   - **Change monitoring accelerator:** the calendar provider's `PROVIDER_CHANGED` broadcast now triggers a change check a few seconds after a sync (`monitor/CalendarProviderChangedReceiver`, a new `calendar-change-broadcast` unique work). The receiver is enabled only while some day is shared.
   - **Battery optimisation onboarding row:** the "Ignore battery optimization" row is live. It is optional and shown only while the app isn't exempt (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` added to the manifest and `expected-permissions.txt`).
