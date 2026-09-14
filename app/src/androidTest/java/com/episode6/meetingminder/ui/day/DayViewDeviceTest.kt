@@ -7,14 +7,21 @@ import android.net.Uri
 import android.provider.CalendarContract
 import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
+import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.printToLog
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
+import assertk.assertThat
+import assertk.assertions.contains
 import com.episode6.meetingminder.MainActivity
+import com.episode6.meetingminder.data.calendar.ContentResolverCalendarRepository
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -25,6 +32,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 private const val LOAD_TIMEOUT_MILLIS = 15_000L
+private const val LOG_TAG = "DayViewDeviceTest"
 
 /**
  * The day view against the real Calendar Provider (TODO.md PR-6): an event inserted into a
@@ -32,6 +40,9 @@ private const val LOAD_TIMEOUT_MILLIS = 15_000L
  * `LoadDay`) and when it is inserted while the day is on screen (the foreground
  * `ContentObserver` → `CalendarContentChanged` reload). The calendar is deleted afterwards,
  * which cascades to its events.
+ *
+ * The store's action log is switched on for the run, and a timed-out wait prints the
+ * semantics tree, so a failure's logcat shows which actions ran and what was on screen.
  */
 @RunWith(AndroidJUnit4::class)
 class DayViewDeviceTest {
@@ -43,13 +54,15 @@ class DayViewDeviceTest {
     @get:Rule
     val ruleChain: RuleChain = RuleChain.outerRule(permissionRule).around(composeRule)
 
-    private val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val resolver = instrumentation.targetContext.contentResolver
     private val zone: ZoneId = ZoneId.systemDefault()
     private val account = "meeting-minder-day-test@local"
     private var calendarId = -1L
 
     @Before
-    fun insertCalendar() {
+    fun setUp() {
+        instrumentation.uiAutomation.executeShellCommand("setprop log.tag.MeetingMinderStore DEBUG").close()
         val uri = resolver.insert(
             Calendars.CONTENT_URI.asSyncAdapter(),
             ContentValues().apply {
@@ -77,8 +90,12 @@ class DayViewDeviceTest {
     fun eventInsertedBeforeLaunch_appearsOnToday() {
         val title = "Inserted before launch ${System.nanoTime()}"
         insertEventToday(title)
+        // the same query the app runs: if this fails the provider is at fault, not the UI
+        val seenByRepository = runBlocking { ContentResolverCalendarRepository(resolver).eventsOn(LocalDate.now(zone)) }
+        assertThat(seenByRepository.map { it.title }).contains(title)
 
         ActivityScenario.launch(MainActivity::class.java).use {
+            awaitPager()
             awaitChip(title)
         }
     }
@@ -88,20 +105,29 @@ class DayViewDeviceTest {
         val title = "Inserted while showing ${System.nanoTime()}"
 
         ActivityScenario.launch(MainActivity::class.java).use {
-            composeRule.waitUntil(LOAD_TIMEOUT_MILLIS) {
-                runCatching { composeRule.onNodeWithTag(DAY_PAGER_TEST_TAG).assertExists() }.isSuccess
-            }
+            awaitPager()
             insertEventToday(title)
 
             awaitChip(title)
         }
     }
 
-    private fun awaitChip(title: String) {
-        // chips are composed for the whole day (the timeline scrolls, it isn't lazy), so
-        // the chip exists whether or not noon is currently scrolled into view
-        composeRule.waitUntil(LOAD_TIMEOUT_MILLIS) {
-            composeRule.onAllNodes(hasText(title, substring = true)).fetchSemanticsNodes().isNotEmpty()
+    private fun awaitPager() = awaitNode("the day pager") {
+        composeRule.onAllNodes(hasTestTag(DAY_PAGER_TEST_TAG)).fetchSemanticsNodes().isNotEmpty()
+    }
+
+    // chips are composed for the whole day (the timeline scrolls, it isn't lazy), so the
+    // chip exists whether or not noon is currently scrolled into view
+    private fun awaitChip(title: String) = awaitNode("the chip \"$title\"") {
+        composeRule.onAllNodes(hasText(title, substring = true)).fetchSemanticsNodes().isNotEmpty()
+    }
+
+    private fun awaitNode(what: String, condition: () -> Boolean) {
+        try {
+            composeRule.waitUntil(LOAD_TIMEOUT_MILLIS) { runCatching(condition).getOrDefault(false) }
+        } catch (e: ComposeTimeoutException) {
+            runCatching { composeRule.onAllNodes(isRoot()).printToLog(LOG_TAG) }
+            throw AssertionError("timed out waiting for $what", e)
         }
     }
 
