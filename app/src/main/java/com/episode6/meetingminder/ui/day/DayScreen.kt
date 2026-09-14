@@ -56,7 +56,7 @@ import com.episode6.meetingminder.R
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.LocalTime
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
@@ -78,10 +78,11 @@ data class DayUiState(
     val armedCount: Int = 0,
     /**
      * When [date] was last shared, in the device zone; null if it never has been. Drives
-     * the "shared 8:12 AM" subtitle and whether the overflow shows "Share again"/"Mark as
-     * not shared" (TODO.md §4.2).
+     * the "shared 8:12 AM" subtitle ("shared Sep 13, 9:00 PM" when the share happened on
+     * another day — tomorrow's schedule sent tonight, §2) and whether the overflow shows
+     * "Share again"/"Mark as not shared" (TODO.md §4.2).
      */
-    val sharedAtTime: LocalTime? = null,
+    val sharedAt: LocalDateTime? = null,
     /** Every loaded day's timeline; days not in here haven't loaded yet. */
     val days: Map<LocalDate, DayTimelineState> = emptyMap(),
     /** Where the timeline should first open, once today's events have loaded; see [initialFirstVisibleHour]. */
@@ -93,6 +94,9 @@ data class DayUiState(
 }
 
 private val TitleFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
+
+/** The day part of "shared Sep 13, 9:00 PM", for a day shared on another day. */
+private val SharedDateFormatter = DateTimeFormatter.ofPattern("MMM d")
 
 /**
  * The day view (render 2): date + subtitle app bar with the Today action and the overflow
@@ -157,7 +161,7 @@ fun DayScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Subtitle(state.meetingCount, state.fabState, state.armedCount, state.sharedAtTime)
+                        Subtitle(state.date, state.meetingCount, state.fabState, state.armedCount, state.sharedAt)
                     }
                 },
                 actions = {
@@ -168,7 +172,7 @@ fun DayScreen(
                         Icon(Icons.Outlined.Today, contentDescription = stringResource(R.string.day_today))
                     }
                     OverflowMenu(
-                        hasBeenShared = state.sharedAtTime != null,
+                        hasBeenShared = state.sharedAt != null,
                         onPermissionsClick = onPermissionsClick,
                         onSettingsClick = onSettingsClick,
                         onLicensesClick = onLicensesClick,
@@ -220,7 +224,7 @@ private fun ChangeBanner(state: ScheduleChangeBannerState?, onReshareClick: () -
  * front, as in render 3.
  */
 @Composable
-private fun Subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int, sharedAtTime: LocalTime?) {
+private fun Subtitle(date: LocalDate, meetingCount: Int?, fabState: FabState, armedCount: Int, sharedAt: LocalDateTime?) {
     val armed = fabState == FabState.Share
     val color = if (armed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DayViewDefaults.SubtitleIconSpacing)) {
@@ -233,7 +237,7 @@ private fun Subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int, sh
             )
         }
         Text(
-            subtitleText(meetingCount, fabState, armedCount, sharedAtTime),
+            subtitleText(date, meetingCount, fabState, armedCount, sharedAt),
             style = MaterialTheme.typography.bodySmall,
             color = color,
             maxLines = 1,
@@ -245,11 +249,13 @@ private fun Subtitle(meetingCount: Int?, fabState: FabState, armedCount: Int, sh
 /**
  * "3 meetings" / "1 meeting" / "No meetings", with " · N selected" appended while the FAB
  * reads "Set alarms" (render 2); "3 alarms set · not shared yet" once alarms are set but
- * not yet shared, or "shared 8:12 AM" once [sharedAtTime] is set (render 3/render 4); blank
- * (but still a line tall) while the day loads.
+ * not yet shared, or "shared 8:12 AM" once [sharedAt] is set (render 3/render 4) — with
+ * the date in front ("shared Sep 13, 9:00 PM") when the share happened on a day other
+ * than [date], so a bare time can't read as that day's evening; blank (but still a line
+ * tall) while the day loads.
  */
 @Composable
-private fun subtitleText(meetingCount: Int?, fabState: FabState, armedCount: Int, sharedAtTime: LocalTime?): String {
+private fun subtitleText(date: LocalDate, meetingCount: Int?, fabState: FabState, armedCount: Int, sharedAt: LocalDateTime?): String {
     if (meetingCount == null) return ""
     val meetings = when (meetingCount) {
         0 -> stringResource(R.string.day_subtitle_no_meetings)
@@ -257,8 +263,13 @@ private fun subtitleText(meetingCount: Int?, fabState: FabState, armedCount: Int
     }
     return when (fabState) {
         is FabState.SetAlarms -> stringResource(R.string.day_subtitle_with_selected_count, meetings, fabState.count)
-        FabState.Share -> if (sharedAtTime != null) {
-            stringResource(R.string.day_subtitle_shared_at, rememberTimelineTimeFormat().timeWithPeriod(sharedAtTime))
+        FabState.Share -> if (sharedAt != null) {
+            val time = rememberTimelineTimeFormat().timeWithPeriod(sharedAt.toLocalTime())
+            if (sharedAt.toLocalDate() == date) {
+                stringResource(R.string.day_subtitle_shared_at, time)
+            } else {
+                stringResource(R.string.day_subtitle_shared_on, sharedAt.toLocalDate().format(SharedDateFormatter), time)
+            }
         } else {
             stringResource(
                 R.string.day_subtitle_not_shared_yet,
@@ -466,7 +477,7 @@ internal fun DayScreenSharedPreview() {
             meetingCount = 3,
             fabState = FabState.Share,
             armedCount = 3,
-            sharedAtTime = LocalTime.of(8, 12),
+            sharedAt = PreviewDate.atTime(8, 12),
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
         ),
     )
@@ -485,7 +496,7 @@ internal fun DayScreenScheduleChangedPreview() {
             meetingCount = 3,
             fabState = FabState.Share,
             armedCount = 3,
-            sharedAtTime = LocalTime.of(8, 12),
+            sharedAt = PreviewDate.atTime(8, 12),
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
             changeBanner = ScheduleChangeBannerState(PreviewBannerLines),
         ),

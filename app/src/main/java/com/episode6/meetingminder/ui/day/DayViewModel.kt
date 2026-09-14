@@ -155,7 +155,7 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId) = DayUiStat
     meetingCount = eventsByDay[settledDate]?.events?.count { it.isMeeting },
     fabState = dayPlans[settledDate].toFabState(),
     armedCount = dayPlans[settledDate]?.selected?.values?.count { it.alarmId != null } ?: 0,
-    sharedAtTime = dayPlans[settledDate]?.sharedAt?.let { LocalDateTime.ofInstant(it, zone).toLocalTime() },
+    sharedAt = dayPlans[settledDate]?.sharedAt?.let { LocalDateTime.ofInstant(it, zone) },
     days = eventsByDay.mapValues { (date, day) ->
         day.toTimelineState(zone, now = now.toLocalTime().takeIf { now.toLocalDate() == date }, selected = dayPlans[date]?.selected.orEmpty())
     },

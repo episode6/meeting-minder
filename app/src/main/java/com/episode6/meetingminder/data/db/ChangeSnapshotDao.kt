@@ -11,6 +11,11 @@ import java.time.LocalDate
  * Room access to `change_snapshot` (TODO.md §3.4). [com.episode6.meetingminder.store
  * .sideeffects.ShareDaySideEffects] writes the baseline at share time; `monitor/ChangeMonitor`
  * reads it, records what changed, and drops the rows of days that have ended.
+ *
+ * A shared day (`day_plan.shared_at` set) may have **no** row here: the share deliberately
+ * keeps none when the day couldn't be read at share time, and `shared_at` and the baseline
+ * are two writes, not one transaction, so a crash between them leaves the same shape.
+ * Readers treat a missing row as "nothing to compare", never as "everything is new".
  */
 @Dao
 interface ChangeSnapshotDao {

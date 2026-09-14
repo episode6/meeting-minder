@@ -17,7 +17,10 @@ private fun AppState.reduceUpdateStateAction(action: UpdateStateAction): AppStat
     is SetDayPlans -> copy(dayPlans = action.dayPlans)
     is ShowMessage -> copy(transientMessage = action.message)
     is ClearMessage -> if (transientMessage?.id == action.id) copy(transientMessage = null) else this
-    is SetPendingShare -> copy(pendingShare = action.share)
+    // first wins: the wiring layer clears a pending share the moment it takes it, so one
+    // still here is a chooser about to open, and a second ShareDay from a fast double tap
+    // must not open another on top of it
+    is SetPendingShare -> if (pendingShare == null) copy(pendingShare = action.share) else this
     is ClearPendingShare -> if (pendingShare?.id == action.id) copy(pendingShare = null) else this
     is SetRinging -> copy(ringing = action.ringing)
     is SetScheduleChanges -> copy(scheduleChanges = action.changes)

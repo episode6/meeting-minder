@@ -27,6 +27,8 @@
     <string name="day_subtitle_not_shared_yet">%1$s · not shared yet</string>
     <!-- app bar subtitle once the day has been shared, e.g. "shared 8:12 AM" -->
     <string name="day_subtitle_shared_at">shared %1$s</string>
+    <!-- the same when the share happened on a different day: %1$s the date ("Sep 13"), %2$s the time -->
+    <string name="day_subtitle_shared_on">shared %1$s, %2$s</string>
     <!-- snackbars after "Set alarms" -->
     <plurals name="day_alarms_set_today">
         <item quantity="one">%d alarm set for today</item>

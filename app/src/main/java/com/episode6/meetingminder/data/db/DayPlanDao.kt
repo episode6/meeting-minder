@@ -24,8 +24,8 @@ interface DayPlanDao {
 
     /**
      * `REPLACE` deletes and re-inserts the row, so this resets every column of an existing
-     * plan — including `shared_at`. Nothing calls it in production; [markAlarmsSet] (and
-     * PR-9's share write) update their own columns instead.
+     * plan — including `shared_at`. Nothing calls it in production; [markAlarmsSet] and
+     * [markShared] update their own columns instead.
      */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDayPlan(entity: DayPlanEntity)

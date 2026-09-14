@@ -53,7 +53,11 @@ data class ShowMessage(val message: UiMessage) : UpdateStateAction
 /** Clears the pending message, but only if it is still the one with [id]. */
 data class ClearMessage(val id: Long) : UpdateStateAction
 
-/** Sets [AppState.pendingShare]: the share text is ready for `Navigation.kt` to launch. */
+/**
+ * Sets [AppState.pendingShare]: the share text is ready for `Navigation.kt` to launch.
+ * Ignored while another share is still pending (a fast double tap must not open two
+ * choosers); the wiring layer clears each share as it takes it.
+ */
 data class SetPendingShare(val share: PendingShare) : UpdateStateAction
 
 /** Clears [AppState.pendingShare], but only if it is still the one with [id] — like [ClearMessage]. */

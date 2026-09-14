@@ -44,8 +44,9 @@ object ScheduleTextFormatter {
     }
 
     /**
-     * The message for [date]: merges [busyRanges] itself (callers pass the raw selected
-     * times), then either the normal share —
+     * The message for [date]: merges [busyRanges] (idempotent, so raw selected times and
+     * an already merged list — what [selectedBusyRanges] hands the share — both work),
+     * then either the normal share —
      * ```
      * Mon Sep 14 — I'm in meetings:
      * • 9:00 – 9:30 AM
@@ -58,7 +59,11 @@ object ScheduleTextFormatter {
      * • 9:00 – 9:30 AM
      * ```
      * with no header date or closing line. Times are in [zone], 12-hour with AM/PM shown
-     * only where it changes within a range (an overnight range shows both).
+     * only where it changes within a range (an overnight range shows both). Ranges are
+     * **not** clipped to [date]: a midnight-spanning event can be selected on either of its
+     * days, and whichever page it was picked on shares its whole span ("11:00 PM – 1:00 AM"
+     * under Tuesday's header when it was picked on Tuesday). Readers of `shared_snapshot`
+     * (the change banner, `monitor/ChangeDetector`) compare the same unclipped ranges.
      */
     fun format(date: LocalDate, busyRanges: List<BusyRange>, zone: ZoneId, isUpdate: Boolean = false): String {
         val merged = merge(busyRanges)

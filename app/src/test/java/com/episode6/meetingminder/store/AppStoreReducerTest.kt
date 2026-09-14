@@ -139,13 +139,15 @@ class AppStoreReducerTest {
     }
 
     @Test
-    fun setPendingShare_replacesAnyPendingShare() {
+    fun setPendingShare_keepsTheShareAlreadyPending_untilItIsCleared() {
         val first = PendingShare.next(today, "first")
         val second = PendingShare.next(today, "second")
 
-        val result = state.reduce(SetPendingShare(first)).reduce(SetPendingShare(second))
+        val pending = state.reduce(SetPendingShare(first))
+        assertThat(pending.reduce(SetPendingShare(second))).isSameInstanceAs(pending)
 
-        assertThat(result.pendingShare).isEqualTo(second)
+        val cleared = pending.reduce(ClearPendingShare(first.id))
+        assertThat(cleared.reduce(SetPendingShare(second)).pendingShare).isEqualTo(second)
     }
 
     @Test

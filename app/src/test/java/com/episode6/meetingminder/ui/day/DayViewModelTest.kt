@@ -22,6 +22,7 @@ import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.LoadDay
 import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.PendingShare
+import com.episode6.meetingminder.store.SetPendingShare
 import com.episode6.meetingminder.store.SetAlarms
 import com.episode6.meetingminder.store.ShareDay
 import com.episode6.meetingminder.store.ShowMessage
@@ -194,6 +195,27 @@ class DayViewModelTest {
     }
 
     @Test
+    fun pendingShare_emitsEachShareOnce_andLaunchingItClearsIt() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), emptySet()) },
+    ) { store ->
+        val viewModel = DayViewModel(store, clock)
+        val share = PendingShare.next(today, "text")
+        viewModel.pendingShare.test {
+            store.dispatch(SetPendingShare(share))
+            assertThat(awaitItem()).isEqualTo(share)
+
+            viewModel.onShareLaunched(share)
+
+            expectNoEvents()
+            assertThat(store.state.pendingShare).isNull()
+
+            val next = PendingShare.next(today, "again")
+            store.dispatch(SetPendingShare(next))
+            assertThat(awaitItem()).isEqualTo(next)
+        }
+    }
+
+    @Test
     fun onOpenInCalendarFailed_showsTheNoCalendarAppMessage() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today), emptySet()) },
     ) { store ->
@@ -351,14 +373,23 @@ class DayViewModelTest {
 
         val ui = state.toDayUiState(now, zone)
 
-        assertThat(ui.sharedAtTime).isEqualTo(LocalTime.of(8, 12))
+        assertThat(ui.sharedAt).isEqualTo(today.atTime(8, 12))
+    }
+
+    @Test
+    fun toDayUiState_keepsTheDateASharedDayWasSharedOn() {
+        // tomorrow's schedule, shared tonight
+        val shared = DayPlan(tomorrow, alarmsSetAt = Instant.EPOCH, sharedAt = at(today, 21, 0))
+        val state = AppState(anchorDate = today, settledDate = tomorrow, dayPlans = mapOf(tomorrow to shared))
+
+        assertThat(state.toDayUiState(now, zone).sharedAt).isEqualTo(today.atTime(21, 0))
     }
 
     @Test
     fun toDayUiState_sharedAtIsNullUntilTheDayHasBeenShared() {
         val state = AppState(anchorDate = today, dayPlans = mapOf(today to DayPlan(today, alarmsSetAt = Instant.EPOCH)))
 
-        assertThat(state.toDayUiState(now, zone).sharedAtTime).isNull()
+        assertThat(state.toDayUiState(now, zone).sharedAt).isNull()
     }
 
     @Test
