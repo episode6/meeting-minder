@@ -14,7 +14,25 @@
     <string name="menu_licenses">Third-party license notices</string>
     <string name="check_for_updates_no_browser">No app found to open the updates page</string>
 
-    <string name="onboarding_title">Permissions</string>
     <string name="settings_title">Settings</string>
     <string name="licenses_title">Third-party license notices</string>
+
+    <string name="onboarding_heading">Set up Meeting Minder</string>
+    <string name="onboarding_description">To show your day and wake you up for the meetings you pick, the app needs a few permissions. Nothing leaves your phone except your RSVPs, which go through Google Calendar.</string>
+    <string name="onboarding_granted">Granted</string>
+    <string name="onboarding_allow">Allow</string>
+    <string name="onboarding_open_settings">Open settings</string>
+    <string name="onboarding_coming_soon">Coming soon</string>
+    <string name="onboarding_continue">Continue</string>
+
+    <string name="onboarding_calendar_title">Calendar access</string>
+    <string name="onboarding_calendar_description">Read every calendar on every account, and reply \"Yes\" to the meetings you pick.</string>
+    <string name="onboarding_notifications_title">Notifications</string>
+    <string name="onboarding_notifications_description">Alarm and new-meeting reminders.</string>
+    <string name="onboarding_alarms_title">Alarms &amp; reminders</string>
+    <string name="onboarding_alarms_description">Exact alarms so nothing fires late.</string>
+    <string name="onboarding_full_screen_title">Full-screen alarms</string>
+    <string name="onboarding_full_screen_description">Wake the screen when an alarm rings.</string>
+    <string name="onboarding_battery_title">Ignore battery optimization</string>
+    <string name="onboarding_battery_description">Optional. Helps on phones that kill background apps.</string>
 </resources>

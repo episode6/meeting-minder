@@ -1,6 +1,7 @@
 package com.episode6.meetingminder.store
 
 import androidx.annotation.StringRes
+import com.episode6.meetingminder.permissions.PermissionState
 import java.time.LocalDate
 
 /**
@@ -18,6 +19,13 @@ data class AppState(
     val anchorDate: LocalDate,
     /** The day the user is looking at: the pager's settled page. */
     val settledDate: LocalDate = anchorDate,
+    /**
+     * Which OS permission grants we currently hold. [com.episode6.meetingminder.di.AppGraph]
+     * computes the initial value synchronously (so launch routing never flashes the wrong
+     * screen); [PermissionsMaybeChanged] refreshes it afterwards (`ON_RESUME`, right after a
+     * request returns, and after "Open settings" is used).
+     */
+    val permissions: PermissionState = PermissionState(),
     /** One-shot snackbar text; ViewModels expose it as a one-shot `Flow` and clear it by id once shown. */
     val transientMessage: UiMessage? = null,
 )

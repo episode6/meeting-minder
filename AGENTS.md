@@ -32,7 +32,7 @@ Convention plugins must stay in the `build-logic` included build, **never buildS
 
 ## Package map
 
-This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (so far: `di/`, `model/`, `store/` + `store/sideeffects/`, `data/calendar/`, `ui/navigation/`, `ui/theme/`, `ui/day/` (the empty day-view shell), `ui/licenses/` and `ui/util/`). New code goes where this map says, not wherever is convenient.
+This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (so far: `di/`, `model/`, `store/` + `store/sideeffects/`, `data/calendar/`, `permissions/`, `ui/navigation/`, `ui/theme/`, `ui/day/` (the empty day-view shell), `ui/onboarding/`, `ui/licenses/` and `ui/util/`). New code goes where this map says, not wherever is convenient.
 
 | Package | Responsibility |
 |---------|----------------|
