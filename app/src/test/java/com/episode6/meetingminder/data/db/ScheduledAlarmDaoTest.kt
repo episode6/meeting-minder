@@ -79,6 +79,27 @@ class ScheduledAlarmDaoTest {
     }
 
     @Test
+    fun snoozedRows_countAsArmed() = runTest {
+        dao.insert(row(today, 1))
+        val snoozedId = dao.insert(row(today, 2))
+        val firedId = dao.insert(row(today, 3))
+        dao.setState(snoozedId, AlarmState.SNOOZED)
+        dao.setState(firedId, AlarmState.FIRED)
+
+        val armed = arrayOf(row(today, 1).copy(alarmId = 1), row(today, 2).copy(alarmId = snoozedId, state = AlarmState.SNOOZED))
+        assertThat(dao.scheduledOn(today)).containsExactly(*armed)
+        assertThat(dao.allScheduled()).containsExactly(*armed)
+        assertThat(dao.observeScheduled().first()).containsExactly(*armed)
+    }
+
+    @Test
+    fun locationAndTimedOut_roundTrip() = runTest {
+        val id = dao.insert(row(today, 1).copy(location = "Room 4", timedOut = true))
+
+        assertThat(dao.byId(id)).isEqualTo(row(today, 1).copy(alarmId = id, location = "Room 4", timedOut = true))
+    }
+
+    @Test
     fun update_retimesInPlace() = runTest {
         val id = dao.insert(row(today, 1))
 

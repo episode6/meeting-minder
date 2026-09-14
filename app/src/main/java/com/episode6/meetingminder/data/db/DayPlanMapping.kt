@@ -12,8 +12,8 @@ import java.time.Instant
 import java.time.LocalDate
 
 /**
- * [DayPlanEntity]/[SelectedEventEntity] rows plus the `SCHEDULED` [ScheduledAlarmEntity]
- * rows into the `AppState.dayPlans` map (`ObserveDayPlansSideEffects`).
+ * [DayPlanEntity]/[SelectedEventEntity] rows plus the armed (`SCHEDULED`/`SNOOZED`)
+ * [ScheduledAlarmEntity] rows into the `AppState.dayPlans` map (`ObserveDayPlansSideEffects`).
  */
 internal fun buildDayPlans(
     plans: List<DayPlanEntity>,
@@ -22,7 +22,7 @@ internal fun buildDayPlans(
 ): Map<LocalDate, DayPlan> {
     val plansByDate = plans.associateBy { it.date }
     val selectionsByDate = selections.groupBy { it.date }
-    val armedByDate = scheduled.filter { it.state == AlarmState.SCHEDULED }.groupBy({ it.date }, { it.key })
+    val armedByDate = scheduled.filter { it.state.armed }.groupBy({ it.date }, { it.key })
     val dates = plansByDate.keys + selectionsByDate.keys + armedByDate.keys
     return dates.associateWith { date ->
         val plan = plansByDate[date]

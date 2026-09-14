@@ -37,3 +37,9 @@ val DarkSurfaceVariant = Color(0xFF29292C)
 val DarkOnSurfaceVariant = Color(0xFFCAC4C4)
 val DarkOutlineVariant = Color(0xFF3A3A3E)
 val DarkError = Color(0xFFFFB4AB)
+
+// The ringing screen (render 5) is always dark, on the dark scheme above, plus two warmer
+// oranges of its own: the pulsing core behind the alarm icon and the big Dismiss button.
+val AlarmPulseCore = Color(0xFF8F3A00)
+val AlarmDismissContainer = Color(0xFFFFB38A)
+val AlarmOnDismissContainer = Color(0xFF331100)

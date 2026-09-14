@@ -34,6 +34,9 @@ object AlarmUris {
 
     fun alarm(alarmId: Long): Uri = Uri.Builder().scheme(SCHEME).authority("alarm").appendPath(alarmId.toString()).build()
 
+    /** The alarm id in an [alarm] URI; null for anything else. */
+    fun alarmIdOf(uri: Uri): Long? = uri.takeIf { it.scheme == SCHEME && it.authority == "alarm" }?.lastPathSegment?.toLongOrNull()
+
     /** The day view for [date]; PR-11 teaches `Navigation.kt` to deep-link into it. */
     fun day(date: LocalDate): Uri = Uri.Builder().scheme(SCHEME).authority("day").appendPath(date.toString()).build()
 }

@@ -5,6 +5,7 @@ import androidx.annotation.StringRes
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
+import com.episode6.meetingminder.model.RingingAlarm
 import com.episode6.meetingminder.permissions.PermissionState
 import java.time.LocalDate
 
@@ -29,9 +30,9 @@ data class PendingShare(val id: Long, val date: LocalDate, val text: String) {
  * write this one object.
  *
  * Fields arrive with the PR that first needs them: permissions (PR-4), calendars and
- * `eventsByDay` (PR-6), `dayPlans` (PR-7); `ringing` (PR-10) and `scheduleChanges`
- * (PR-11) are added here alongside their model types, each with a default so existing
- * call sites keep compiling.
+ * `eventsByDay` (PR-6), `dayPlans` (PR-7), `pendingShare` (PR-9), `ringing` (PR-10);
+ * `scheduleChanges` (PR-11) is added here alongside its model type, with a default so
+ * existing call sites keep compiling.
  */
 data class AppState(
     /** The day the day pager is anchored to: today at launch (midnight rollover is PR-13). */
@@ -67,6 +68,13 @@ data class AppState(
      * launching an Activity belongs in the UI layer, not a side effect.
      */
     val pendingShare: PendingShare? = null,
+    /**
+     * The alarm ringing right now, or null when nothing is (TODO.md §4.4). Published by
+     * `AlarmRingingService` (the owner of the ringing: it holds the queue when alarms fire
+     * back to back) through [SetRinging]; `AlarmActivity` renders it and closes when it
+     * goes back to null.
+     */
+    val ringing: RingingAlarm? = null,
 )
 
 /** The dates [AppState.eventsByDay] keeps: the settled page and the page either side of it. */

@@ -7,10 +7,13 @@ import assertk.assertions.isSameInstanceAs
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
+import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.RingingAlarm
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.redux.Action
 import com.episode6.redux.subscriberaware.SubscriberStatusChanged
 import org.junit.Test
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 
@@ -141,6 +144,21 @@ class AppStoreReducerTest {
 
         assertThat(showing.reduce(ClearPendingShare(share.id)).pendingShare).isNull()
         assertThat(showing.reduce(ClearPendingShare(share.id - 1))).isSameInstanceAs(showing)
+    }
+
+    @Test
+    fun setRinging_replacesTheRingingAlarm() {
+        val alarm = RingingAlarm(
+            alarmId = 3, date = today, key = EventKey(1, 0), title = "Standup", location = null,
+            begin = Instant.ofEpochMilli(1_000), end = Instant.ofEpochMilli(2_000), soundIndex = 4,
+            snoozeLength = Duration.ofMinutes(2),
+        )
+
+        val ringing = state.reduce(SetRinging(alarm))
+
+        assertThat(ringing).isEqualTo(state.copy(ringing = alarm))
+        assertThat(ringing.reduce(SetRinging(alarm.copy(soundName = "Argon"))).ringing?.soundName).isEqualTo("Argon")
+        assertThat(ringing.reduce(SetRinging(null)).ringing).isNull()
     }
 
     @Test

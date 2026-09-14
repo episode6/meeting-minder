@@ -120,10 +120,14 @@ a `LOCAL` calendar.
 > without cancelling anything; deselecting every armed chip leaves it as "Clear alarms",
 > and the tap cancels them (`dumpsys alarm` should then show none). Setting alarms also
 > RSVPs "Yes, going" for each armed meeting that has an invite (see "Seeding an RSVP-able
-> invite"): the chip gains a small tick after its alarm time. A fired alarm posts
-> a plain high-priority notification for now (the full-screen ringing screen is PR-10).
-> Onboarding needs calendar, notifications and exact alarms granted before
-> the day view shows. The chip states are also reviewed through the Roborazzi previews
+> invite"): the chip gains a small tick after its alarm time. A fired alarm rings
+> (TODO.md PR-10): `AlarmRingingService` plays a randomised sound on the alarm stream and
+> vibrates, and its notification's full-screen intent brings up the dark ringing screen
+> (clock, countdown, Dismiss / "Snooze 2 min" / "Open meeting", and a subtle "Sound: …"
+> line naming the random sound) over the lock screen — or a heads-up with Snooze/Dismiss
+> while the phone is in use. Unanswered for 3 minutes it snoozes itself once, then gives up
+> with a "Missed alarm" notification. Onboarding needs calendar, notifications, exact
+> alarms and full-screen alarms granted before the day view shows. The chip states are also reviewed through the Roborazzi previews
 > under `app/src/test/screenshots/`. `adb shell setprop log.tag.MeetingMinderStore DEBUG` logs every dispatched
 > store action's type. The flow below is the target; exercise
 > whichever parts of it exist when you verify.
@@ -137,7 +141,19 @@ notification and in-app banner arrive.
 
 Alarms: set one a minute or two out, lock the screen, and confirm the ringing activity
 comes up over the lock screen with the screen woken and a sound playing. Dismiss and
-snooze both need checking — snooze must reschedule, not cancel.
+snooze both need checking — snooze must reschedule, not cancel (`dumpsys alarm` shows the
+same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth a look:
+
+- With the phone unlocked and in use, the alarm is a heads-up notification with Snooze and
+  Dismiss instead; tapping it opens the ringing screen.
+- `adb shell appops set $PKG USE_FULL_SCREEN_INTENT deny` → the heads-up fallback even when
+  locked (and onboarding's "Full-screen alarms" row flips back to "Allow").
+- Leave it ringing: after 3 minutes it snoozes itself; unanswered again, it stops with a
+  "Missed alarm: …" notification.
+- Two alarms at the same minute ring one after the other — Dismiss the first and the second
+  starts.
+- `adb shell cmd audio set-enable-hardening throw` (Android 17) must not break playback: every
+  sound is on `USAGE_ALARM`.
 
 ## Driving + screenshots
 

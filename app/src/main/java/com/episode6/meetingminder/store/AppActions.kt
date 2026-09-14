@@ -4,6 +4,7 @@ import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.RingingAlarm
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.redux.Action
 import java.time.LocalDate
@@ -48,6 +49,14 @@ data class SetPendingShare(val share: PendingShare) : UpdateStateAction
 
 /** Clears [AppState.pendingShare], but only if it is still the one with [id] — like [ClearMessage]. */
 data class ClearPendingShare(val id: Long) : UpdateStateAction
+
+/**
+ * Replaces [AppState.ringing]. Only `AlarmRingingService` dispatches this: it owns the
+ * ringing (the sound, the foreground notification and the queue of alarms that fired back
+ * to back) and publishes what is ringing whenever that changes, including the name of
+ * each re-rolled sound. Null once nothing rings any more.
+ */
+data class SetRinging(val ringing: RingingAlarm?) : UpdateStateAction
 
 /**
  * Requests handled only by side effects under `store/sideeffects/` (never by the
@@ -136,3 +145,15 @@ data class ShareDay(val date: LocalDate) : AsyncAction
  * chooser" case (TODO.md §4.2). Leaves the selection and alarms untouched.
  */
 data class MarkNotShared(val date: LocalDate) : AsyncAction
+
+/**
+ * The ringing screen's "Snooze" for alarm [alarmId] (TODO.md §4.4): silence it and ring
+ * again after the snooze length, through a fresh `setAlarmClock`. `AlarmRingingSideEffects`
+ * forwards it to `AlarmRingingService`, which stops the sound, writes the snooze and moves
+ * on to the next queued alarm (or stops). Addressed by id so a tap on a screen that is a
+ * frame behind can never snooze a different alarm that has just started ringing.
+ */
+data class SnoozeAlarm(val alarmId: Long) : AsyncAction
+
+/** The ringing screen's "Dismiss" (or "Open meeting") for alarm [alarmId]; forwarded like [SnoozeAlarm]. */
+data class DismissAlarm(val alarmId: Long) : AsyncAction

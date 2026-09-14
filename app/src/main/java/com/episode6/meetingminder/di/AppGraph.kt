@@ -5,8 +5,12 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import com.episode6.meetingminder.alarm.AlarmRescheduler
-import com.episode6.meetingminder.alarm.FiredAlarmHandler
+import com.episode6.meetingminder.alarm.AlarmRinger
+import com.episode6.meetingminder.alarm.AlarmScheduler
+import com.episode6.meetingminder.alarm.RecentAlarmSounds
 import com.episode6.meetingminder.data.calendar.CalendarRepository
+import com.episode6.meetingminder.data.db.ScheduledAlarmDao
+import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.permissions.PermissionChecker
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
@@ -44,8 +48,16 @@ interface AppGraph : ViewModelGraph {
     /** `BootReceiver`'s re-arm of every stored alarm. */
     val alarmRescheduler: AlarmRescheduler
 
-    /** `AlarmReceiver`'s handling of a fired alarm. */
-    val firedAlarmHandler: FiredAlarmHandler
+    /** `AlarmRingingService`'s row transitions (fire, snooze, dismiss, auto-timeout), and `AlarmReceiver`'s fallback. */
+    val alarmRinger: AlarmRinger
+
+    /** The ringing service's sound player reads these two. */
+    val recentAlarmSounds: RecentAlarmSounds
+    val settingsRepository: SettingsRepository
+
+    /** For `AlarmRingingDeviceTest`, which arms a real alarm the way the reconcile does: a row, then `setAlarmClock`. */
+    val scheduledAlarmDao: ScheduledAlarmDao
+    val alarmScheduler: AlarmScheduler
 
     @DependencyGraph.Factory
     fun interface Factory {

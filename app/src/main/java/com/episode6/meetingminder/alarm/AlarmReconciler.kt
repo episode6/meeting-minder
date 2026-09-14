@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.alarm
 
+import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
 import com.episode6.meetingminder.data.db.SelectedEventEntity
 import com.episode6.meetingminder.model.CalendarEvent
@@ -17,11 +18,11 @@ fun alarmTimeFor(beginMillis: Long, leadTime: Duration): Long = beginMillis - le
 data class AlarmReconciliation(
     /** New rows (`alarmId = 0`, assigned on insert) to insert and arm. */
     val schedule: List<ScheduledAlarmEntity> = emptyList(),
-    /** Existing rows whose event moved (or was retitled): update the row and re-arm it. */
+    /** Existing rows whose event moved (or was retitled/relocated): update the row and re-arm it. */
     val retime: List<ScheduledAlarmEntity> = emptyList(),
     /** Existing rows to disarm and mark `CANCELLED`: deselected, or moved into the past. */
     val cancel: List<ScheduledAlarmEntity> = emptyList(),
-    /** Existing rows that already match; nothing to do. */
+    /** Existing rows that already match (or are snoozed); nothing to do. */
     val keep: List<ScheduledAlarmEntity> = emptyList(),
     /**
      * Selections whose alarm time has already passed and so get no alarm (the snackbar
@@ -47,15 +48,19 @@ data class AlarmReconciliation(
  * alarm time is the event's begin (taken from [freshEvents] when the provider still has
  * the event — so a *moved* event is re-timed — and from the stored selection otherwise)
  * minus [leadTime]. Then:
- *  - no `SCHEDULED` row for the key: schedule one, unless the alarm time is already past
+ *  - no armed row for the key: schedule one, unless the alarm time is already past
  *    (`≤ now`) — those are skipped and counted, never silently dropped;
- *  - a row with the same time and title: keep it;
+ *  - a row with the same time, title and location: keep it;
+ *  - a `SNOOZED` row (it rang and is due back at the snooze time): keep it, unless its
+ *    event has moved far enough that a fresh alarm is due in the future — then re-time it
+ *    to that like any moved event. Comparing a snoozed row's `fireAt` with the alarm time
+ *    would otherwise read every snooze as "moved into the past" and cancel it;
  *  - a row that no longer matches: re-time it in place (same `alarmId`, so the
  *    `PendingIntent` is simply replaced), or cancel it when the new time is already past;
- *  - a `SCHEDULED` row whose key is no longer selected: cancel it.
+ *  - an armed row whose key is no longer selected: cancel it (snoozed or not).
  *
- * [soundIndex] draws each new row's `sound_index`; a row keeps its draw when re-timed so a
- * moved meeting keeps its sound.
+ * [scheduled] is the day's armed (`SCHEDULED`/`SNOOZED`) rows. [soundIndex] draws each new
+ * row's `sound_index`; a row keeps its draw when re-timed so a moved meeting keeps its sound.
  */
 fun reconcileAlarms(
     date: LocalDate,
@@ -84,9 +89,11 @@ fun reconcileAlarms(
         } else {
             selection
         }
+        val row = existing[selection.key]
+        // the provider's location when it still has the event; otherwise whatever the row saved
+        val location = if (event != null) event.location else row?.location
         val fireAt = alarmTimeFor(current.beginMillis, leadTime)
         val past = fireAt <= nowMillis
-        val row = existing[selection.key]
         when {
             row == null && past -> skipped += current
             row == null -> schedule += ScheduledAlarmEntity(
@@ -98,9 +105,12 @@ fun reconcileAlarms(
                 beginMillis = current.beginMillis,
                 endMillis = current.endMillis,
                 soundIndex = soundIndex(),
+                location = location,
             )
-            row.fireAt == fireAt && row.title == current.title &&
-                row.beginMillis == current.beginMillis && row.endMillis == current.endMillis -> keep += row
+            row.state == AlarmState.SNOOZED && (past || row.beginMillis == current.beginMillis) -> keep += row
+            row.state != AlarmState.SNOOZED && row.fireAt == fireAt && row.title == current.title &&
+                row.beginMillis == current.beginMillis && row.endMillis == current.endMillis &&
+                row.location == location -> keep += row
             past -> {
                 cancel += row
                 skipped += current
@@ -110,6 +120,11 @@ fun reconcileAlarms(
                 title = current.title,
                 beginMillis = current.beginMillis,
                 endMillis = current.endMillis,
+                location = location,
+                // a snoozed row re-timed to its moved event is a fresh alarm again, with a
+                // fresh auto-timeout budget
+                state = AlarmState.SCHEDULED,
+                timedOut = false,
             )
         }
     }

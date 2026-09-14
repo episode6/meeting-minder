@@ -97,6 +97,30 @@
 
     <string name="notification_channel_alarms">Alarms</string>
     <string name="notification_channel_alarms_description">Rings before each meeting you set an alarm for.</string>
-    <!-- fired-alarm notification body; %1$s is the meeting's start time -->
+    <!-- ringing and missed-alarm notification body; %1$s is the meeting's start time -->
     <string name="alarm_notification_starts_at">Starts at %1$s</string>
+    <!-- the ringing service's bare foreground notification, shown for a moment at most -->
+    <string name="alarm_notification_starting">Alarm</string>
+    <!-- an alarm that went unanswered twice (or couldn't ring); %1$s is the meeting title -->
+    <string name="alarm_missed_title">Missed alarm: %1$s</string>
+    <string name="alarm_snooze_action">Snooze</string>
+
+    <!-- ringing screen (render 5): the countdown above the clock, shown in capitals -->
+    <plurals name="alarm_meeting_in">
+        <item quantity="one">Meeting in %d minute</item>
+        <item quantity="other">Meeting in %d minutes</item>
+    </plurals>
+    <string name="alarm_meeting_now">Meeting starting now</string>
+    <plurals name="alarm_meeting_started">
+        <item quantity="one">Meeting started %d minute ago</item>
+        <item quantity="other">Meeting started %d minutes ago</item>
+    </plurals>
+    <string name="alarm_dismiss">Dismiss</string>
+    <!-- e.g. "Snooze 2 min" -->
+    <string name="alarm_snooze_minutes">Snooze %d min</string>
+    <string name="alarm_open_meeting">Open meeting</string>
+    <!-- the subtle debug line naming the random sound that is playing -->
+    <string name="alarm_sound_playing">Sound: “%1$s” (random)</string>
+    <string name="alarm_sound_siren">Siren sweep</string>
+    <string name="alarm_sound_default">Default alarm</string>
 </resources>

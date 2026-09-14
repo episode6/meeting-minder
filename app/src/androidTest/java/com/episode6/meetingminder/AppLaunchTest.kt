@@ -39,7 +39,7 @@ class AppLaunchTest {
     private val composeRule = createAndroidComposeRule<MainActivity>()
 
     @get:Rule
-    val ruleChain: RuleChain = RuleChain.outerRule(permissionRule).around(composeRule)
+    val ruleChain: RuleChain = RuleChain.outerRule(permissionRule).around(FullScreenIntentRule()).around(composeRule)
 
     @Test
     fun launches_toTheDayView() {

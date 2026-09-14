@@ -41,6 +41,7 @@ class AlarmReconcilerTest {
         beginMillis = event.begin.toEpochMilli(),
         endMillis = event.end.toEpochMilli(),
         soundIndex = sound,
+        location = event.location,
     )
 
     private fun reconcile(
@@ -166,6 +167,67 @@ class AlarmReconcilerTest {
         assertThat(result.schedule).containsExactly(scheduledRow(standup, alarmId = 0, sound = 100))
         assertThat(result.keep).isEmpty()
         assertThat(cancelled.state).isEqualTo(AlarmState.CANCELLED)
+    }
+
+    @Test
+    fun snoozedRow_stillSelected_isKept_ratherThanReadAsMovedIntoThePast() {
+        // it rang at 8:55 and was snoozed to 9:01; "Set alarms" is tapped again at 8:58
+        val snoozed = scheduledRow(standup, alarmId = 5).copy(state = AlarmState.SNOOZED, fireAt = at(9, 1).toEpochMilli())
+
+        val result = reconcile(selected = listOf(selection(standup)), scheduled = listOf(snoozed), at = at(8, 58))
+
+        assertThat(result).isEqualTo(AlarmReconciliation(keep = listOf(snoozed)))
+    }
+
+    @Test
+    fun snoozedRow_deselected_isCancelled() {
+        val snoozed = scheduledRow(standup, alarmId = 5).copy(state = AlarmState.SNOOZED, fireAt = at(9, 1).toEpochMilli())
+
+        val result = reconcile(selected = emptyList(), scheduled = listOf(snoozed), at = at(8, 58))
+
+        assertThat(result).isEqualTo(AlarmReconciliation(cancel = listOf(snoozed)))
+    }
+
+    @Test
+    fun snoozedRow_whoseEventMovedLater_isRetimedToAFreshAlarm() {
+        val snoozed = scheduledRow(standup, alarmId = 5, sound = 42)
+            .copy(state = AlarmState.SNOOZED, fireAt = at(9, 1).toEpochMilli(), timedOut = true)
+        val moved = standup.copy(begin = at(10), end = at(10, 30))
+
+        val result = reconcile(selected = listOf(selection(standup)), fresh = listOf(moved), scheduled = listOf(snoozed), at = at(8, 58))
+
+        assertThat(result).isEqualTo(
+            AlarmReconciliation(
+                retime = listOf(
+                    snoozed.copy(
+                        state = AlarmState.SCHEDULED,
+                        timedOut = false,
+                        fireAt = at(9, 55).toEpochMilli(),
+                        beginMillis = at(10).toEpochMilli(),
+                        endMillis = at(10, 30).toEpochMilli(),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun newAlarm_carriesTheEventsLocation_forTheRingingScreen() {
+        val inRoom = standup.copy(location = "Room 4")
+
+        val result = reconcile(selected = listOf(selection(inRoom)), fresh = listOf(inRoom))
+
+        assertThat(result.schedule.single().location).isEqualTo("Room 4")
+    }
+
+    @Test
+    fun relocatedEvent_isRetimedSoTheStoredLocationFollows() {
+        val inRoom = standup.copy(location = "Room 4")
+        val row = scheduledRow(inRoom, alarmId = 5)
+
+        val result = reconcile(selected = listOf(selection(inRoom)), fresh = listOf(inRoom.copy(location = "Room 9")), scheduled = listOf(row))
+
+        assertThat(result).isEqualTo(AlarmReconciliation(retime = listOf(row.copy(location = "Room 9"))))
     }
 
     @Test

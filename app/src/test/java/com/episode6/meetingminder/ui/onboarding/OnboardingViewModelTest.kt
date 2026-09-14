@@ -38,9 +38,11 @@ class OnboardingViewModelTest {
     fun state_followsPermissions() {
         assertThat(AppState(anchorDate = today).toOnboardingUiState())
             .isEqualTo(OnboardingUiState(calendarGranted = false, notificationsGranted = false, exactAlarmsGranted = false))
-        val granted = PermissionState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = false)
+        val granted = PermissionState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = false, fullScreenIntentGranted = true)
         assertThat(AppState(anchorDate = today, permissions = granted).toOnboardingUiState())
-            .isEqualTo(OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = false))
+            .isEqualTo(
+                OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = false, fullScreenAlarmsGranted = true),
+            )
     }
 
     @Test
@@ -49,7 +51,11 @@ class OnboardingViewModelTest {
         assertThat(OnboardingUiState(calendarGranted = true).canContinue).isEqualTo(false)
         assertThat(OnboardingUiState(calendarGranted = true, notificationsGranted = true).canContinue).isEqualTo(false)
         assertThat(OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true).canContinue)
-            .isEqualTo(true)
+            .isEqualTo(false)
+        assertThat(
+            OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true, fullScreenAlarmsGranted = true)
+                .canContinue,
+        ).isEqualTo(true)
     }
 
     @Test

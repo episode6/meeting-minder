@@ -187,6 +187,8 @@ fun MeetingMinderNavigation() {
                         // special access, never a dialog: the Settings page is the request
                         OnboardingRow.ExactAlarms ->
                             screenContext.startActivity(PermissionRequester.exactAlarmSettingsIntent(screenContext))
+                        OnboardingRow.FullScreenAlarms ->
+                            screenContext.startActivity(PermissionRequester.fullScreenIntentSettingsIntent(screenContext))
                     }
                 },
                 onOpenSettingsClick = { row ->
@@ -194,6 +196,7 @@ fun MeetingMinderNavigation() {
                         OnboardingRow.Calendar -> PermissionRequester.appSettingsIntent(screenContext)
                         OnboardingRow.Notifications -> PermissionRequester.appNotificationSettingsIntent(screenContext)
                         OnboardingRow.ExactAlarms -> PermissionRequester.exactAlarmSettingsIntent(screenContext)
+                        OnboardingRow.FullScreenAlarms -> PermissionRequester.fullScreenIntentSettingsIntent(screenContext)
                     }
                     screenContext.startActivity(intent)
                 },

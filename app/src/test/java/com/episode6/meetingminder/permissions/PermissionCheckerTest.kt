@@ -22,7 +22,9 @@ class PermissionCheckerTest {
 
     private val context = ApplicationProvider.getApplicationContext<Application>()
     private val notificationManager = context.getSystemService(NotificationManager::class.java)
-    private val checker = AndroidPermissionChecker(context)
+    // Robolectric doesn't model the full-screen-intent app op, so the tests drive it
+    private var fullScreenIntentAllowed = true
+    private val checker = AndroidPermissionChecker(context) { fullScreenIntentAllowed }
 
     @Before
     fun setUp() {
@@ -40,6 +42,7 @@ class PermissionCheckerTest {
     fun nothingGranted_reportsEveryRowNotGranted() {
         shadowOf(notificationManager).setNotificationsEnabled(false)
         ShadowAlarmManager.setCanScheduleExactAlarms(false)
+        fullScreenIntentAllowed = false
 
         assertThat(checker.currentState()).isEqualTo(PermissionState())
         assertThat(checker.currentState().allRequiredGranted).isFalse()
@@ -64,9 +67,24 @@ class PermissionCheckerTest {
         shadowOf(context).grantPermissions(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
 
         assertThat(checker.currentState()).isEqualTo(
-            PermissionState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true),
+            PermissionState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true, fullScreenIntentGranted = true),
         )
         assertThat(checker.currentState().allRequiredGranted).isTrue()
+    }
+
+    @Test
+    fun fullScreenIntentDenied_reportsItNotGranted_andBlocksTheDayView() {
+        shadowOf(context).grantPermissions(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+        fullScreenIntentAllowed = false
+
+        assertThat(checker.currentState().fullScreenIntentGranted).isFalse()
+        assertThat(checker.currentState().allRequiredGranted).isFalse()
+    }
+
+    @Test
+    fun thePlatformFullScreenIntentCheck_runs() {
+        // the default check calls NotificationManager.canUseFullScreenIntent() on 34+
+        AndroidPermissionChecker(context).currentState()
     }
 
     @Test

@@ -34,9 +34,9 @@ internal class FakeScheduledAlarmDao(rows: List<ScheduledAlarmEntity> = emptyLis
     override suspend fun byId(alarmId: Long): ScheduledAlarmEntity? = rows[alarmId]
 
     override suspend fun scheduledOn(date: LocalDate): List<ScheduledAlarmEntity> =
-        rows.values.filter { it.date == date && it.state == AlarmState.SCHEDULED }
+        rows.values.filter { it.date == date && it.state.armed }
 
-    override suspend fun allScheduled(): List<ScheduledAlarmEntity> = rows.values.filter { it.state == AlarmState.SCHEDULED }
+    override suspend fun allScheduled(): List<ScheduledAlarmEntity> = rows.values.filter { it.state.armed }
 
     override suspend fun setState(alarmId: Long, state: AlarmState) {
         rows[alarmId]?.let { rows[alarmId] = it.copy(state = state) }

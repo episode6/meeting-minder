@@ -7,7 +7,13 @@ import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
-/** Room access to `scheduled_alarm` (TODO.md §3.4); written by the alarm reconcile and the receivers under `alarm/`. */
+/**
+ * Room access to `scheduled_alarm` (TODO.md §3.4); written by the alarm reconcile, the
+ * receivers and the ringing service under `alarm/`. "Scheduled" in the query names means
+ * *armed*: `SCHEDULED` or `SNOOZED` ([AlarmState.armed]) — a snoozed alarm is as much
+ * set with `AlarmManager` as a fresh one, and must be re-armed after boot and cancellable
+ * by a reconcile just the same.
+ */
 @Dao
 interface ScheduledAlarmDao {
     /** Returns the new row's generated `alarm_id`. */
@@ -21,11 +27,11 @@ interface ScheduledAlarmDao {
     suspend fun byId(alarmId: Long): ScheduledAlarmEntity?
 
     /** The rows still armed for [date]: what a `SetAlarms(date)` reconcile starts from. */
-    @Query("SELECT * FROM scheduled_alarm WHERE date = :date AND state = 'SCHEDULED'")
+    @Query("SELECT * FROM scheduled_alarm WHERE date = :date AND state IN ('SCHEDULED', 'SNOOZED')")
     suspend fun scheduledOn(date: LocalDate): List<ScheduledAlarmEntity>
 
     /** Every armed row on any day: what the boot / time-change reschedule re-arms. */
-    @Query("SELECT * FROM scheduled_alarm WHERE state = 'SCHEDULED'")
+    @Query("SELECT * FROM scheduled_alarm WHERE state IN ('SCHEDULED', 'SNOOZED')")
     suspend fun allScheduled(): List<ScheduledAlarmEntity>
 
     /**
@@ -33,7 +39,7 @@ interface ScheduledAlarmDao {
      * a day still has armed rows after every selection on it was removed, or the FAB would
      * hide and leave them impossible to cancel.
      */
-    @Query("SELECT * FROM scheduled_alarm WHERE state = 'SCHEDULED'")
+    @Query("SELECT * FROM scheduled_alarm WHERE state IN ('SCHEDULED', 'SNOOZED')")
     fun observeScheduled(): Flow<List<ScheduledAlarmEntity>>
 
     @Query("UPDATE scheduled_alarm SET state = :state WHERE alarm_id = :alarmId")

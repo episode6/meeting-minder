@@ -96,6 +96,18 @@ class DayPlanMappingTest {
     }
 
     @Test
+    fun buildDayPlans_aSnoozedAlarmIsStillArmed() {
+        val snoozed = ScheduledAlarmEntity(
+            alarmId = 1, date = today, eventId = 1, instanceTime = 0, fireAt = 700, title = "Standup",
+            beginMillis = 1_000, endMillis = 2_000, soundIndex = 0, state = AlarmState.SNOOZED,
+        )
+
+        val result = buildDayPlans(plans = emptyList(), selections = emptyList(), scheduled = listOf(snoozed))
+
+        assertThat(result).isEqualTo(mapOf(today to DayPlan(date = today, armedKeys = setOf(EventKey(1, 0)))))
+    }
+
+    @Test
     fun buildDayPlans_carriesTheRsvpColumnsThrough() {
         val accepted = selectedEventEntity(eventId = 1, alarmId = 1, alarmAt = 700, rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 1_000)
 
