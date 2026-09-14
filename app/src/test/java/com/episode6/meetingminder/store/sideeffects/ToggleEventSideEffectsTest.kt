@@ -61,4 +61,17 @@ class ToggleEventSideEffectsTest {
 
         assertThat(dao.selectedEventsOn(today.plusDays(1))).isEmpty()
     }
+
+    @Test
+    fun backToBackTogglesOfTheSameKey_endUnselected() = runTest {
+        val dao = FakeDayPlanDao()
+        val sideEffect = object : ToggleEventSideEffects {}.toggleEvent(dao)
+
+        // Both toggles race through the same flatMapMerge; DayPlanDao.toggleSelectedEvent's
+        // own @Transaction (not a read here + a write there) is what keeps a quick double tap
+        // from reading "not selected" twice and inserting twice.
+        sideEffect.output(ToggleEvent(today, standup.key), ToggleEvent(today, standup.key), state = stateWithStandup).toList()
+
+        assertThat(dao.selectedEventsOn(today)).isEmpty()
+    }
 }

@@ -25,9 +25,10 @@ internal class FakeDayPlanDao(
         selectionsFlow.value = selectionsFlow.value.filterNot { it.date == entity.date && it.key == entity.key } + entity
     }
 
-    override suspend fun deleteSelectedEvent(date: LocalDate, eventId: Long, instanceTime: Long) {
-        selectionsFlow.value = selectionsFlow.value.filterNot {
-            it.date == date && it.eventId == eventId && it.instanceTime == instanceTime
-        }
+    override suspend fun deleteSelectedEvent(date: LocalDate, eventId: Long, instanceTime: Long): Int {
+        val before = selectionsFlow.value
+        val after = before.filterNot { it.date == date && it.eventId == eventId && it.instanceTime == instanceTime }
+        selectionsFlow.value = after
+        return before.size - after.size
     }
 }

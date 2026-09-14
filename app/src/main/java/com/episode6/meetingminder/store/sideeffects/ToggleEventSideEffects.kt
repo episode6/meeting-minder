@@ -22,7 +22,10 @@ import kotlinx.coroutines.flow.flatMapMerge
  * window — the chip that was tapped came from there) is copied into a new row.
  * `ObserveDayPlansSideEffects` reflects the write back into the store; this effect emits
  * no actions of its own. `flatMapMerge` (not `transformLatest`) so toggling two different
- * events in quick succession doesn't cancel the first write.
+ * events in quick succession doesn't cancel the first write — but that also means two
+ * back-to-back toggles of the *same* key can run concurrently, so the read-then-write is
+ * pushed into [DayPlanDao.toggleSelectedEvent]'s single `@Transaction` rather than done here
+ * as two separate DAO calls, which a double tap could interleave between.
  */
 @ContributesTo(AppScope::class)
 interface ToggleEventSideEffects {
@@ -32,12 +35,7 @@ interface ToggleEventSideEffects {
         actions.filterIsInstance<ToggleEvent>().flatMapMerge { toggle ->
             val event = currentState().eventsByDay[toggle.date]?.events?.firstOrNull { it.key == toggle.key }
             if (event != null) {
-                val alreadySelected = dao.selectedEventsOn(toggle.date).any { it.key == toggle.key }
-                if (alreadySelected) {
-                    dao.deleteSelectedEvent(toggle.date, toggle.key.eventId, toggle.key.instanceTime)
-                } else {
-                    dao.upsertSelectedEvent(event.toSelectedEventEntity(toggle.date))
-                }
+                dao.toggleSelectedEvent(event.toSelectedEventEntity(toggle.date))
             }
             emptyFlow<Action>()
         }

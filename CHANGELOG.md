@@ -2,6 +2,17 @@
 
 ### v1.0.0 - Unreleased
 
+- Fix: `ToggleEventSideEffects`' read-then-write across two DAO calls could let a fast
+  double tap on the same chip leave it selected instead of unselected, since `flatMapMerge`
+  runs concurrent toggles and both could read "not selected" before either wrote.
+  `DayPlanDao.toggleSelectedEvent` now wraps the delete-or-insert in one `@Transaction`, so
+  a repeated toggle of the same key is atomic. `DayFab`'s `AnimatedContent` also now keys
+  on the `FabState` subclass so a `SetAlarms(n)` count change updates the label in place
+  instead of crossfading the whole FAB, and keeps rendering its last visible content while
+  `AnimatedVisibility` animates it out (rather than racing an empty `Hidden` frame). New
+  tests: a `ToggleEventSideEffectsTest` case for two back-to-back toggles of the same key,
+  and `SelectionPersistenceStoreTest`, a `runStoreTest` pinning `ObserveDayPlansSideEffects`
+  + `ToggleEventSideEffects` end to end over a `FakeDayPlanDao`.
 - Selection persistence (PR-7): tapping a chip now sticks. A new Room database
   (`MeetingMinderDatabase`, schemas exported to `app/schemas/`) adds the `day_plan` and
   `selected_event` tables (TODO.md §3.4); `ObserveDayPlansSideEffects` streams both into

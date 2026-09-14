@@ -157,8 +157,8 @@ fun DayScreen(
  */
 @Composable
 private fun subtitle(meetingCount: Int?, fabState: FabState): String {
+    if (meetingCount == null) return ""
     val meetings = when (meetingCount) {
-        null -> return ""
         0 -> stringResource(R.string.day_subtitle_no_meetings)
         else -> pluralStringResource(R.plurals.day_subtitle_meetings, meetingCount, meetingCount)
     }
@@ -175,8 +175,17 @@ private fun subtitle(meetingCount: Int?, fabState: FabState): String {
  */
 @Composable
 private fun DayFab(state: FabState, onClick: () -> Unit) {
+    // AnimatedVisibility owns hiding the FAB entirely; AnimatedContent is only ever fed a
+    // non-Hidden target (the last one seen) so its own exit transition never has to render
+    // FabState.Hidden's empty content while AnimatedVisibility is still animating it out.
+    var lastVisibleState by remember { mutableStateOf<FabState>(FabState.SetAlarms(0)) }
+    if (state != FabState.Hidden) lastVisibleState = state
+
     AnimatedVisibility(visible = state != FabState.Hidden) {
-        AnimatedContent(targetState = state, label = "dayFabState") { target ->
+        // contentKey groups by class so a SetAlarms(1) -> SetAlarms(2) count change updates
+        // the label in place instead of crossfading the whole FAB; only a SetAlarms <-> Share
+        // transition (a different key) gets the crossfade.
+        AnimatedContent(targetState = lastVisibleState, contentKey = { it::class }, label = "dayFabState") { target ->
             when (target) {
                 FabState.Hidden -> Unit
                 is FabState.SetAlarms -> ExtendedFloatingActionButton(
