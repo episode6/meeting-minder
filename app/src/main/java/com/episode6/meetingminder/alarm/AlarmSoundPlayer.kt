@@ -17,7 +17,6 @@ import androidx.core.net.toUri
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.RingingAlarm
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -100,14 +99,26 @@ class AlarmSoundPlayer(
             var recorded = false
             for (segment in recipe.segments()) {
                 val output = try {
-                    open(segment.sound).also { it.play(segment, rampElapsedMillis = SystemClock.elapsedRealtime() - startedAt) }
-                } catch (e: CancellationException) {
-                    throw e
+                    open(segment.sound)
                 } catch (e: Exception) {
-                    Log.w(LOG_TAG, "couldn't play ${segment.sound.id}", e)
+                    Log.w(LOG_TAG, "couldn't open ${segment.sound.id}", e)
                     null
                 }
                 if (output == null) {
+                    delay(FAILED_SOUND_BACKOFF_MILLIS)
+                    continue
+                }
+                // an opened output is ours to release whatever happens next: a play() that
+                // throws (createVolumeShaper/start can) must not drop a live native player
+                val started = try {
+                    output.play(segment, rampElapsedMillis = SystemClock.elapsedRealtime() - startedAt)
+                    true
+                } catch (e: RuntimeException) {
+                    Log.w(LOG_TAG, "couldn't play ${segment.sound.id}", e)
+                    output.release()
+                    false
+                }
+                if (!started) {
                     delay(FAILED_SOUND_BACKOFF_MILLIS)
                     continue
                 }
@@ -131,14 +142,24 @@ class AlarmSoundPlayer(
     }
 
     private fun open(sound: AlarmSound): SoundOutput = when (sound) {
-        is AlarmSound.System -> MediaOutput(MediaPlayer().apply { setDataSource(context, sound.uri.toUri()) })
-        is AlarmSound.Bundled -> MediaOutput(
-            MediaPlayer().apply {
-                val resId = BundledAlarmSounds.byName.getValue(sound.name).resId
-                context.resources.openRawResourceFd(resId).use { setDataSource(it) }
-            },
-        )
+        is AlarmSound.System -> mediaOutput { setDataSource(context, sound.uri.toUri()) }
+        is AlarmSound.Bundled -> mediaOutput {
+            val resId = BundledAlarmSounds.byName.getValue(sound.name).resId
+            context.resources.openRawResourceFd(resId).use { setDataSource(it) }
+        }
         is AlarmSound.Siren -> TrackOutput(renderSiren(sound.params))
+    }
+
+    /** A prepared [MediaOutput] over [source]; the player is released if any step of opening it fails. */
+    private fun mediaOutput(source: MediaPlayer.() -> Unit): MediaOutput {
+        val player = MediaPlayer()
+        try {
+            player.source()
+            return MediaOutput(player)
+        } catch (e: Exception) {
+            player.release()
+            throw e
+        }
     }
 
     private fun nameOf(sound: AlarmSound): String = when (sound) {
@@ -147,14 +168,22 @@ class AlarmSoundPlayer(
         is AlarmSound.Siren -> context.getString(R.string.alarm_sound_siren)
     }
 
-    /** The device's alarm ringtones; the default alarm sound if the list can't be read or is empty. */
+    /**
+     * The device's alarm ringtones; the default alarm sound if the list can't be read or is
+     * empty. A ringtone the user added from storage sits on the external volume and needs
+     * `READ_MEDIA_AUDIO` to open, which this app doesn't hold: it fails in [open], costs the
+     * backoff's silence, and the recipe may well draw it again — accepted rather than
+     * asking for a media permission for the sake of a re-roll.
+     */
     private fun systemSounds(): List<AlarmSound.System> {
         val sounds = try {
             val manager = RingtoneManager(context).apply { setType(RingtoneManager.TYPE_ALARM) }
-            val cursor = manager.cursor // owned by the manager; not ours to close
-            List(cursor.count) { position ->
-                cursor.moveToPosition(position)
-                AlarmSound.System(manager.getRingtoneUri(position).toString(), cursor.getString(RingtoneManager.TITLE_COLUMN_INDEX))
+            // the manager is throwaway, so its cursor is ours to close (a CursorLeak on every ring otherwise)
+            manager.cursor.use { cursor ->
+                List(cursor.count) { position ->
+                    cursor.moveToPosition(position)
+                    AlarmSound.System(manager.getRingtoneUri(position).toString(), cursor.getString(RingtoneManager.TITLE_COLUMN_INDEX))
+                }
             }
         } catch (e: Exception) {
             Log.w(LOG_TAG, "couldn't list alarm ringtones", e)

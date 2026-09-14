@@ -1,6 +1,6 @@
 package com.episode6.meetingminder.alarm
 
-import com.episode6.meetingminder.data.settings.SoundPool
+import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import kotlin.math.ceil
 import kotlin.random.Random
 
@@ -90,7 +90,7 @@ object AlarmSoundDefaults {
 class AlarmSoundRecipe(
     private val seed: Int,
     private val catalog: SoundCatalog,
-    private val pool: SoundPool,
+    private val pool: AlarmSoundPool,
     private val recentlyUsed: Set<String>,
 ) {
     /** Endless: the player takes one per re-roll for as long as the alarm rings. */
@@ -113,9 +113,9 @@ class AlarmSoundRecipe(
 
     private fun Random.nextSound(avoid: Set<String>): AlarmSound {
         val sources = buildList {
-            if (pool != SoundPool.BUNDLED_ONLY && catalog.system.isNotEmpty()) add(Source.SYSTEM)
-            if (pool != SoundPool.SYSTEM_ONLY && catalog.bundled.isNotEmpty()) add(Source.BUNDLED)
-            if (pool != SoundPool.SYSTEM_ONLY) add(Source.SIREN)
+            if (pool != AlarmSoundPool.BUNDLED_ONLY && catalog.system.isNotEmpty()) add(Source.SYSTEM)
+            if (pool != AlarmSoundPool.SYSTEM_ONLY && catalog.bundled.isNotEmpty()) add(Source.BUNDLED)
+            if (pool != AlarmSoundPool.SYSTEM_ONLY) add(Source.SIREN)
         }.ifEmpty { listOf(Source.SIREN) }
         var roll = nextInt(sources.sumOf { it.weight })
         val source = sources.first { roll < it.weight || run { roll -= it.weight; false } }

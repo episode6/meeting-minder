@@ -198,6 +198,25 @@ class AlarmRingingSessionTest {
     }
 
     @Test
+    fun aDismissRacingTheAutoTimeout_stillLetsTheServiceGo() = runTest {
+        val dao = FakeScheduledAlarmDao(listOf(row(1)))
+        val session = session(dao)
+        session.fire(1)
+        runCurrent()
+        outputs.events.clear()
+        advanceTimeBy(autoTimeoutMillis)
+
+        // the timeout is due this very instant, so its command is queued behind the mutex
+        // the dismiss takes first; the dismiss's finish() then sees it pending and skips stop()
+        session.dismiss(1)
+        runCurrent()
+
+        assertThat(outputs.events.last()).isEqualTo("stop")
+        assertThat(outputs.events.count { it == "stop" }).isEqualTo(1)
+        assertThat(dao.rows.getValue(1).state).isEqualTo(AlarmState.DISMISSED)
+    }
+
+    @Test
     fun unanswered_snoozesItselfOnceAfterTheAutoTimeout() = runTest {
         val dao = FakeScheduledAlarmDao(listOf(row(1)))
         val session = session(dao)

@@ -18,7 +18,12 @@ fun alarmTimeFor(beginMillis: Long, leadTime: Duration): Long = beginMillis - le
 data class AlarmReconciliation(
     /** New rows (`alarmId = 0`, assigned on insert) to insert and arm. */
     val schedule: List<ScheduledAlarmEntity> = emptyList(),
-    /** Existing rows whose event moved (or was retitled/relocated): update the row and re-arm it. */
+    /**
+     * Existing rows whose event moved (or, for a `SCHEDULED` row, was retitled/relocated):
+     * update the row and re-arm it. A `SNOOZED` row is only re-timed for a move; retitled
+     * or relocated but unmoved it is kept with its old copy (see [keep]) until the
+     * automatic `MaintainAlarms` refreshes it.
+     */
     val retime: List<ScheduledAlarmEntity> = emptyList(),
     /** Existing rows to disarm and mark `CANCELLED`: deselected, or moved into the past. */
     val cancel: List<ScheduledAlarmEntity> = emptyList(),

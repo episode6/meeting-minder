@@ -9,7 +9,7 @@ import assertk.assertions.isEqualTo
 import assertk.assertions.isInstanceOf
 import assertk.assertions.isNotEqualTo
 import assertk.assertions.isTrue
-import com.episode6.meetingminder.data.settings.SoundPool
+import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import org.junit.Test
 import kotlin.math.abs
 
@@ -22,12 +22,12 @@ class AlarmSoundRecipeTest {
 
     private fun recipe(
         seed: Int,
-        pool: SoundPool = SoundPool.ALL,
+        pool: AlarmSoundPool = AlarmSoundPool.ALL,
         recentlyUsed: Set<String> = emptySet(),
         catalog: SoundCatalog = this.catalog,
     ) = AlarmSoundRecipe(seed, catalog, pool, recentlyUsed)
 
-    private fun firstSounds(pool: SoundPool = SoundPool.ALL, catalog: SoundCatalog = this.catalog, seeds: Int = 20_000) =
+    private fun firstSounds(pool: AlarmSoundPool = AlarmSoundPool.ALL, catalog: SoundCatalog = this.catalog, seeds: Int = 20_000) =
         (0 until seeds).map { recipe(it, pool, catalog = catalog).segments().first().sound }
 
     private fun List<AlarmSound>.share(predicate: (AlarmSound) -> Boolean): Double = count(predicate).toDouble() / size
@@ -63,14 +63,14 @@ class AlarmSoundRecipeTest {
 
     @Test
     fun systemOnly_neverPlaysBundledSoundsOrTheSiren() {
-        assertThat(firstSounds(SoundPool.SYSTEM_ONLY, seeds = 2_000)).each { it.isInstanceOf(AlarmSound.System::class) }
-        assertThat(recipe(3, SoundPool.SYSTEM_ONLY).segments().take(200).map { it.sound }.toList())
+        assertThat(firstSounds(AlarmSoundPool.SYSTEM_ONLY, seeds = 2_000)).each { it.isInstanceOf(AlarmSound.System::class) }
+        assertThat(recipe(3, AlarmSoundPool.SYSTEM_ONLY).segments().take(200).map { it.sound }.toList())
             .each { it.isInstanceOf(AlarmSound.System::class) }
     }
 
     @Test
     fun bundledOnly_keepsTheInAppSounds_theSirenIncluded() {
-        val sounds = firstSounds(SoundPool.BUNDLED_ONLY)
+        val sounds = firstSounds(AlarmSoundPool.BUNDLED_ONLY)
 
         assertThat(sounds.none { it is AlarmSound.System }).isTrue()
         assertThat(abs(sounds.share { it is AlarmSound.Siren } - 0.25) < 0.02).isTrue()
@@ -90,7 +90,7 @@ class AlarmSoundRecipeTest {
     fun nothingAtAllToOffer_fallsBackToTheSiren() {
         val empty = SoundCatalog(emptyList(), emptyList())
 
-        assertThat(recipe(1, SoundPool.SYSTEM_ONLY, catalog = empty).segments().take(20).map { it.sound }.toList())
+        assertThat(recipe(1, AlarmSoundPool.SYSTEM_ONLY, catalog = empty).segments().take(20).map { it.sound }.toList())
             .each { it.isInstanceOf(AlarmSound.Siren::class) }
     }
 

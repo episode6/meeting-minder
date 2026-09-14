@@ -148,7 +148,14 @@ internal class AlarmRingingSession(
     }
 
     private suspend fun timedOut(alarm: RingingAlarm) {
-        if (queue.firstOrNull()?.alarmId != alarm.alarmId) return
+        if (queue.firstOrNull()?.alarmId != alarm.alarmId) {
+            // Settled (dismissed or snoozed) while this command was already queued behind
+            // the mutex: that settle's finish() saw it pending and left the service running
+            // for it, so an empty queue is now this command's to let go of. A redundant
+            // finish() is harmless.
+            if (queue.isEmpty()) finish()
+            return
+        }
         settle(alarm.alarmId) {
             when (ringer.timeOut(alarm.alarmId)) {
                 TimeoutResult.GAVE_UP, TimeoutResult.REFUSED -> outputs.postMissed(alarm)
