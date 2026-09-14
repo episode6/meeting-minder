@@ -18,6 +18,7 @@ import dev.zacsweers.metrox.viewmodel.ViewModelGraph
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import java.time.Clock
 import java.time.LocalDate
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -46,6 +47,13 @@ interface AppGraph : ViewModelGraph {
     @Provides
     @SingleIn(AppScope::class)
     fun provideAppCoroutineScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * The wall clock, in the device's zone. Deliberately unscoped: every injection reads the
+     * zone afresh, so a ViewModel created after a timezone change sees the new one.
+     */
+    @Provides
+    fun provideClock(): Clock = Clock.systemDefaultZone()
 
     @Provides
     @SingleIn(AppScope::class)

@@ -12,6 +12,16 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
 
+    <!-- Package visibility (API 30+) for long-press "open in calendar": lets resolveActivity
+         see the calendar app that views content://com.android.calendar/events/… and /time/…
+         (TODO.md §4.1). Not a permission; nothing is added to expected-permissions.txt. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="content" android:host="com.android.calendar" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MeetingMinderApp"
         android:allowBackup="true"

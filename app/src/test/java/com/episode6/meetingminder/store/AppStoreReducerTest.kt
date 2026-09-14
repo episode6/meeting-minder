@@ -4,10 +4,13 @@ import assertk.assertThat
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
 import assertk.assertions.isSameInstanceAs
+import com.episode6.meetingminder.model.CalendarInfo
+import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.redux.Action
 import com.episode6.redux.subscriberaware.SubscriberStatusChanged
 import org.junit.Test
+import java.time.Instant
 import java.time.LocalDate
 
 class AppStoreReducerTest {
@@ -37,6 +40,54 @@ class AppStoreReducerTest {
 
         assertThat(result).isEqualTo(state.copy(permissions = granted))
     }
+
+    @Test
+    fun setCalendars_replacesTheCalendarList() {
+        val calendar = CalendarInfo(
+            id = 1, accountName = "a", accountType = "LOCAL", displayName = "Cal", color = 0, visible = true,
+            syncEvents = true, ownerAccount = "a", isPrimary = true, accessLevel = 700, canOrganizerRespond = false,
+        )
+
+        val result = state.reduce(SetCalendars(listOf(calendar)))
+
+        assertThat(result).isEqualTo(state.copy(calendars = listOf(calendar)))
+    }
+
+    @Test
+    fun setDayEvents_storesTheDay() {
+        val result = state.reduce(SetDayEvents(dayEvents(today))).reduce(SetDayEvents(dayEvents(today.plusDays(1))))
+
+        assertThat(result.eventsByDay).isEqualTo(
+            mapOf(today to dayEvents(today), today.plusDays(1) to dayEvents(today.plusDays(1))),
+        )
+    }
+
+    @Test
+    fun setDayEvents_replacesAnEarlierLoadOfTheSameDay() {
+        val reloaded = dayEvents(today).copy(loadedAt = Instant.EPOCH.plusSeconds(60))
+
+        val result = state.reduce(SetDayEvents(dayEvents(today))).reduce(SetDayEvents(reloaded))
+
+        assertThat(result.eventsByDay).isEqualTo(mapOf(today to reloaded))
+    }
+
+    @Test
+    fun setDayEvents_dropsDaysOutsideTheSettledWindow() {
+        val loaded = state
+            .reduce(SetDayEvents(dayEvents(today.minusDays(1))))
+            .reduce(SetDayEvents(dayEvents(today)))
+            .reduce(SetSettledDate(today.plusDays(1)))
+
+        // a late result for a day the pager has left behind is ignored, and the stale
+        // yesterday falls out of the window as the new day lands
+        val result = loaded
+            .reduce(SetDayEvents(dayEvents(today.minusDays(2))))
+            .reduce(SetDayEvents(dayEvents(today.plusDays(2))))
+
+        assertThat(result.eventsByDay).isEqualTo(mapOf(today to dayEvents(today), today.plusDays(2) to dayEvents(today.plusDays(2))))
+    }
+
+    private fun dayEvents(date: LocalDate) = DayEvents(date, emptyList(), Instant.EPOCH)
 
     @Test
     fun showMessage_replacesAnyPendingMessage() {

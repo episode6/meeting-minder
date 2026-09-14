@@ -22,8 +22,17 @@ object DayViewDefaults {
      */
     val GutterLabelMinFontSize = 8.sp
 
-    /** Hour the day view scrolls to before anything better is known (PR-6 refines it). */
+    /** Hour the day view opens at when today has no meeting (see `initialFirstVisibleHour`). */
     const val DefaultFirstVisibleHour = 8
+
+    /** Pages in the day pager: about 27 years either side of the anchor, effectively unbounded. */
+    const val PagerPageCount = 20_000
+
+    /** The pager page that shows `AppState.anchorDate`. */
+    const val PagerAnchorPage = 10_000
+
+    /** Neighbouring days kept composed (and loaded) either side of the settled page. */
+    const val PagerBeyondViewportPageCount = 1
 
     /** Space above midnight so the first grid line isn't flush with the all-day divider. */
     val TimelineTopPadding = 8.dp

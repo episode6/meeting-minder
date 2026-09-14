@@ -1,6 +1,8 @@
 package com.episode6.meetingminder.store
 
 import androidx.annotation.StringRes
+import com.episode6.meetingminder.model.CalendarInfo
+import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.permissions.PermissionState
 import java.time.LocalDate
 
@@ -10,7 +12,7 @@ import java.time.LocalDate
  * write this one object.
  *
  * Fields arrive with the PR that first needs them: permissions (PR-4), calendars and
- * `eventsByDay` (PR-6), `dayPlans` (PR-7), `ringing` (PR-10) and `scheduleChanges`
+ * `eventsByDay` (PR-6); `dayPlans` (PR-7), `ringing` (PR-10) and `scheduleChanges`
  * (PR-11) are added here alongside their model types, each with a default so existing
  * call sites keep compiling.
  */
@@ -26,9 +28,20 @@ data class AppState(
      * request returns, and after "Open settings" is used).
      */
     val permissions: PermissionState = PermissionState(),
+    /** Every calendar row on every account, hidden and non-syncing ones included. */
+    val calendars: List<CalendarInfo> = emptyList(),
+    /**
+     * Events for [loadedWindow] (see [SetDayEvents]). A day that is absent hasn't loaded
+     * yet; a loaded day with nothing on it maps to an empty event list.
+     */
+    val eventsByDay: Map<LocalDate, DayEvents> = emptyMap(),
     /** One-shot snackbar text; ViewModels expose it as a one-shot `Flow` and clear it by id once shown. */
     val transientMessage: UiMessage? = null,
 )
+
+/** The dates [AppState.eventsByDay] keeps: the settled page and the page either side of it. */
+val AppState.loadedWindow: ClosedRange<LocalDate>
+    get() = settledDate.minusDays(1)..settledDate.plusDays(1)
 
 /**
  * A snackbar message. [id] is chosen by whoever dispatches [ShowMessage] (see

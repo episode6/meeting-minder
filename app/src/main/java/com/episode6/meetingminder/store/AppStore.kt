@@ -10,7 +10,7 @@ typealias AppStore = StoreFlow<AppState>
 
 /**
  * Builds the app store exactly as the graph provides it, so store tests exercise the
- * production wiring. Subscriber-aware so the calendar `ContentObserver` (PR-6) can be
+ * production wiring. Subscriber-aware so the calendar `ContentObserver` (`CalendarObserverSideEffects`) is
  * registered only while something (visible UI) is collecting the store.
  */
 fun createAppStore(

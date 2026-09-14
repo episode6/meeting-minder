@@ -32,7 +32,7 @@ Convention plugins must stay in the `build-logic` included build, **never buildS
 
 ## Package map
 
-This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (so far: `di/`, `model/`, `store/` + `store/sideeffects/`, `data/calendar/`, `permissions/`, `ui/navigation/`, `ui/theme/`, `ui/day/` (the static day timeline: `DayTimeline`, `DayEventsLayout`, `EventChip`, `NowLine`, `DayViewDefaults`; the pager and data arrive with PR-6), `ui/onboarding/`, `ui/licenses/` and `ui/util/`). New code goes where this map says, not wherever is convenient.
+This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (so far: `di/`, `model/`, `store/` + `store/sideeffects/`, `data/calendar/`, `permissions/`, `ui/navigation/`, `ui/theme/`, `ui/day/` (`DayScreen`, `DayPager`, `DayTimeline`, `DayEventsLayout`, `EventChip`, `NowLine`, `DayViewDefaults`, `DayViewModel`), `ui/onboarding/`, `ui/licenses/` and `ui/util/`). New code goes where this map says, not wherever is convenient.
 
 | Package | Responsibility |
 |---------|----------------|
@@ -131,7 +131,7 @@ fun SomeScreen(
 
 ## Testing
 
-Like the package map, this is the **target**, and each convention below arrives with the PR that first needs it. In place so far: plain unit tests for the reducer, store wiring, `DayViewModel`, `isMeeting`, `EventKey`, the `layoutDay` overlap packing and the chip mapping; the side-effect `output(...)` helper (`app/src/test/.../store/sideeffects/SideEffectTestSupport.kt`); `FakeCalendarRepository` and the Robolectric `FakeCalendarProvider` (both under `app/src/test/.../data/calendar/`); Roborazzi's generated preview tests (`generateComposePreviewRobolectricTests` in `app/build.gradle.kts`, covering every non-private `@Preview` under `com.episode6.meetingminder`); the launch smoke test; and one instrumented repository test against the real provider.
+Like the package map, this is the **target**, and each convention below arrives with the PR that first needs it. In place so far: plain unit tests for the reducer, store wiring, `DayViewModel`, `isMeeting`, `EventKey`, the `layoutDay` overlap packing, pager page/date maths and the chip mapping; side-effect tests with the `output(...)` helper (`app/src/test/.../store/sideeffects/SideEffectTestSupport.kt`; its `Flow` overload plus Turbine covers timing-dependent effects such as the debounced `CalendarObserver`); `FakeCalendarRepository`, `FakeCalendarChangeSource` and the Robolectric `FakeCalendarProvider` (all under `app/src/test/.../data/calendar/`), and `testCalendarEvent(...)` for `CalendarEvent` fixtures; Roborazzi's generated preview tests (`generateComposePreviewRobolectricTests` in `app/build.gradle.kts`, covering every non-private `@Preview` under `com.episode6.meetingminder`); the launch smoke test; one instrumented repository test against the real provider; and the instrumented `DayViewDeviceTest`, which inserts events into the real provider and waits for their chips.
 
 - Pure logic (overlap packing, share text formatting, change-detection diff, alarm time math, the reducer) — plain JUnit 4 + **assertk**, no Android.
 - Side effects — podcast-hacker's mockk-free `output(vararg actions, state)` helper over `SideEffectContext`; assert emitted actions with `containsExactly`. **Turbine** for flow assertions.
