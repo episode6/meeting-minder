@@ -8,6 +8,16 @@
   image and merged into it. Nobody records locally any more (running the CI image under local
   Docker was heavy enough to crash a laptop). Adding any label other than `build-release` no
   longer reruns Build Installers.
+- Review fixes on PR-5: at 1.5× font scale the armed chip's time range now ellipsizes so the
+  bell and alarm time always survive a half-width column (the Dentist chip showed a cut-off
+  "11"), and the hour-gutter and all-day labels shrink to fit (then ellipsize) instead of
+  being truncated to "all-da" or pushed past the screen edge; the large-font reference PNG
+  was re-recorded inside the CI image. Also from review: one shared
+  `DayViewDefaults.chipHeight` for placement and content choice, named constants for the
+  last literal paddings, `LocalResources` instead of the deprecated `LocalConfiguration`,
+  zero-padded 24-hour chip times ("09:30") to match the gutter, a documented
+  `timedEvents` contract, and new `TimelineTimeFormatTest` / `ChipContentLayoutTest` plus a
+  three-column expansion case in `LayoutDayTest`.
 - Day timeline UI, static (PR-5): the day view now renders a Google-Calendar-style timeline
   instead of the empty placeholder — an all-day row, a scrolled hour gutter and grid, event
   chips laid out by the new custom `DayEventsLayout`, and the red now-line. Overlapping events

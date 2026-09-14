@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -30,11 +31,12 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.max
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import kotlin.math.ceil
@@ -119,12 +121,16 @@ private fun AllDayRow(
             .fillMaxWidth()
             .padding(vertical = DayViewDefaults.AllDayRowVerticalPadding),
     ) {
+        val style = MaterialTheme.typography.labelSmall
         Text(
             stringResource(R.string.day_all_day),
-            style = MaterialTheme.typography.labelSmall,
+            style = style,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.End,
             maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            autoSize = gutterLabelAutoSize(style),
             modifier = Modifier
                 .width(DayViewDefaults.GutterWidth)
                 .padding(end = DayViewDefaults.GutterLabelEndPadding)
@@ -155,7 +161,15 @@ private fun AllDayRow(
     }
 }
 
-/** Hour labels ("1 AM" … "11 PM"), each vertically centred on its grid line; midnight has none. */
+/** Gutter labels keep their style's size when they fit and shrink (then ellipsize) when they don't. */
+private fun gutterLabelAutoSize(style: TextStyle): TextAutoSize =
+    TextAutoSize.StepBased(minFontSize = DayViewDefaults.GutterLabelMinFontSize, maxFontSize = style.fontSize)
+
+/**
+ * Hour labels ("1 AM" … "11 PM"), each vertically centred on its grid line and end-aligned
+ * to the grid; midnight has none. Labels are measured within the gutter and shrink to fit,
+ * so none is pushed past its start edge.
+ */
 @Composable
 private fun HourGutter(timeFormat: TimelineTimeFormat, modifier: Modifier = Modifier) {
     val style = MaterialTheme.typography.labelSmall
@@ -163,7 +177,15 @@ private fun HourGutter(timeFormat: TimelineTimeFormat, modifier: Modifier = Modi
     Layout(
         content = {
             for (hour in 1 until 24) {
-                Text(timeFormat.hourLabel(hour), style = style, color = color, maxLines = 1, softWrap = false)
+                Text(
+                    timeFormat.hourLabel(hour),
+                    style = style,
+                    color = color,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    autoSize = gutterLabelAutoSize(style),
+                )
             }
         },
         modifier = modifier,
@@ -171,11 +193,15 @@ private fun HourGutter(timeFormat: TimelineTimeFormat, modifier: Modifier = Modi
         val hourPx = DayViewDefaults.HourHeight.toPx()
         val width = constraints.maxWidth
         val endPadding = DayViewDefaults.GutterLabelEndPadding.roundToPx()
-        val placeables = measurables.map { it.measure(Constraints(maxWidth = max(0, width - endPadding))) }
+        val labelWidth = max(0, width - endPadding)
+        val placeables = measurables.map { it.measure(Constraints(maxWidth = labelWidth)) }
         layout(width, (hourPx * 24).roundToInt()) {
             placeables.forEachIndexed { index, placeable ->
                 val hour = index + 1
-                placeable.place(width - endPadding - placeable.width, (hour * hourPx - placeable.height / 2f).roundToInt())
+                placeable.place(
+                    (labelWidth - placeable.width).coerceAtLeast(0),
+                    (hour * hourPx - placeable.height / 2f).roundToInt(),
+                )
             }
         }
     }
@@ -212,16 +238,12 @@ private fun TimedEvents(
         state.timedEvents.forEachIndexed { index, event ->
             val span = spans[index]
             key(event.key) {
-                val chipHeight = max(
-                    DayViewDefaults.HourHeight * (span.duration / 60f) - DayViewDefaults.ChipVerticalGap,
-                    DayViewDefaults.MinChipHeight,
-                )
                 EventChip(
                     event = event,
                     onClick = { onEventClick(event) },
                     onLongClick = { onEventLongClick(event) },
                     past = nowMinute != null && span.end <= nowMinute,
-                    contentLayout = chipContentLayout(chipHeight, density),
+                    contentLayout = chipContentLayout(DayViewDefaults.chipHeight(span), density),
                     timeFormat = timeFormat,
                     modifier = Modifier.eventSlot(span, positions[index]),
                 )

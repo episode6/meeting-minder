@@ -106,6 +106,28 @@ class LayoutDayTest {
     }
 
     @Test
+    fun expansion_acrossSeveralFreeColumns() {
+        // 9–9:30 needs four columns; 10–12 reuses column 1 and columns 2 and 3 are both free by then
+        val positions = layoutDay(
+            listOf(
+                span("9:00", "12:00"),
+                span("9:00", "10:00"),
+                span("9:00", "9:45"),
+                span("9:00", "9:30"),
+                span("10:00", "12:00"),
+            ),
+        )
+
+        assertThat(positions).containsExactly(
+            PositionedEvent(col = 0, colSpan = 1, colCount = 4),
+            PositionedEvent(col = 1, colSpan = 1, colCount = 4),
+            PositionedEvent(col = 2, colSpan = 1, colCount = 4),
+            PositionedEvent(col = 3, colSpan = 1, colCount = 4),
+            PositionedEvent(col = 1, colSpan = 3, colCount = 4),
+        )
+    }
+
+    @Test
     fun expansion_stopsAtTheFirstBlockedColumn() {
         // 10:00–12:00 reuses column 1; column 2 (9:15–11:00) still overlaps it, so it stays one
         // column wide even though column 3 (9:30–9:45) is free beyond the blocked one

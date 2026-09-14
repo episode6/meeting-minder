@@ -51,6 +51,10 @@ data class TimelineEvent(
 data class DayTimelineState(
     val date: LocalDate,
     val allDayEvents: List<TimelineEvent> = emptyList(),
+    /**
+     * Must only hold events that overlap [date]: each is clamped to the day, so one that
+     * doesn't intersect it would collapse to a floor-height chip at midnight or at the bottom.
+     */
     val timedEvents: List<TimelineEvent> = emptyList(),
     /** The current time when [date] is today (draws the now-line and dims ended events), else null. */
     val now: LocalTime? = null,

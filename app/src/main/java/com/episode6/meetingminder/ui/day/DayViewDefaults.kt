@@ -1,6 +1,9 @@
 package com.episode6.meetingminder.ui.day
 
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
+import androidx.compose.ui.unit.sp
 
 /** Every dimension and alpha the day timeline uses (TODO.md §3.5); no magic numbers in layout code. */
 object DayViewDefaults {
@@ -12,6 +15,12 @@ object DayViewDefaults {
 
     /** Space between an hour label and the grid. */
     val GutterLabelEndPadding = 8.dp
+
+    /**
+     * Gutter and all-day labels shrink toward this size when they don't fit [GutterWidth]
+     * (large font scales, long localised labels) and ellipsize below it.
+     */
+    val GutterLabelMinFontSize = 8.sp
 
     /** Hour the day view scrolls to before anything better is known (PR-6 refines it). */
     const val DefaultFirstVisibleHour = 8
@@ -49,6 +58,19 @@ object DayViewDefaults {
     val ChipIconSize = 16.dp
     val ChipInlineIconSize = 12.dp
     val ChipIconSpacing = 4.dp
+
+    /** Nudges the check icon down to sit on the title's first line. */
+    val ChipCheckIconTopPadding = 2.dp
+
+    /** Space between the inline bell and the alarm time. */
+    val ChipInlineIconSpacing = 2.dp
+
+    /**
+     * Height of the chip for [span]: proportional to its duration minus [ChipVerticalGap], floored at
+     * [MinChipHeight]. The one formula both [DayEventsLayout] (placement) and the chip content choice use.
+     */
+    fun chipHeight(span: MinuteSpan, hourHeight: Dp = HourHeight): Dp =
+        max(hourHeight * (span.duration / 60f) - ChipVerticalGap, MinChipHeight)
 
     /** Unselected chips: the calendar colour at this alpha as fill, plus a border in the full colour. */
     const val UnselectedFillAlpha = 0.12f
