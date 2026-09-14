@@ -81,6 +81,25 @@ class ShareDaySideEffectsTest {
     }
 
     @Test
+    fun shareDay_usesTheFreshlyLoadedTimes_whenASelectedEventHasMovedSinceItWasSelected() = runTest {
+        val dayPlanDao = FakeDayPlanDao()
+        val changeSnapshotDao = FakeChangeSnapshotDao()
+        val moved = standup.copy(begin = at(10), end = at(10, 30))
+        val state = CalendarGrantedAppState.copy(
+            eventsByDay = mapOf(today to DayEvents(today, listOf(moved), Instant.EPOCH)),
+            dayPlans = mapOf(today to DayPlan(today, selected = mapOf(standup.key to selected(standup)))),
+        )
+        val effect = object : ShareDaySideEffects {}.shareDay(dayPlanDao, changeSnapshotDao, clock)
+
+        val output = effect.output(ShareDay(today), state = state).toList()
+
+        val share = (output.single() as SetPendingShare).share
+        assertThat(share.text).isEqualTo("Mon Sep 14 — I'm in meetings:\n• 10:00 – 10:30 AM\nFree the rest of the day.")
+        val plan = dayPlanDao.plansFlow.value.single()
+        assertThat(decodeBusyRanges(plan.sharedSnapshot!!)).isEqualTo(listOf(BusyRange(moved.begin, moved.end)))
+    }
+
+    @Test
     fun shareDay_recordsAChangeSnapshotOfEveryEventOnTheDay_selectedOrNot() = runTest {
         val dayPlanDao = FakeDayPlanDao()
         val changeSnapshotDao = FakeChangeSnapshotDao()

@@ -27,7 +27,12 @@ import java.time.Clock
 /**
  * "Share schedule" / "Share again" / "Mark as not shared" (TODO.md §4.2/§4.3). [ShareDay]
  * formats the day's *selected* events into busy-range text with [ScheduleTextFormatter],
- * records `day_plan.shared_at`/`shared_snapshot` (the merged ranges) and the
+ * using each selection's freshly loaded begin/end from `eventsByDay` when the provider
+ * still has the event (same re-timing rule as [com.episode6.meetingminder.alarm.reconcileAlarms])
+ * and falling back to the stored `selected_event` times otherwise — so a meeting moved
+ * after alarms were set still shares its current time, and `change_snapshot`'s baseline
+ * (built from the same fresh read) describes the same moment as the text it's shared
+ * alongside. Records `day_plan.shared_at`/`shared_snapshot` (the merged ranges) and the
  * `change_snapshot` baseline (every event on the day — selected or not, meeting or
  * not — that PR-11's differ will compare a fresh read against), then hands the text to
  * `Navigation.kt` via [SetPendingShare]: `ShareCompat` needs a real Activity context and
@@ -47,7 +52,13 @@ interface ShareDaySideEffects {
             flow {
                 val state = currentState()
                 val selected = state.dayPlans[action.date]?.selected.orEmpty()
-                val busyRanges = ScheduleTextFormatter.merge(selected.values.map { BusyRange(it.begin, it.end) })
+                val fresh = state.eventsByDay[action.date]?.events.orEmpty().associateBy { it.key }
+                val busyRanges = ScheduleTextFormatter.merge(
+                    selected.values.map { selection ->
+                        val event = fresh[selection.key]
+                        if (event != null) BusyRange(event.begin, event.end) else BusyRange(selection.begin, selection.end)
+                    },
+                )
                 val text = ScheduleTextFormatter.format(action.date, busyRanges, clock.zone)
                 val now = clock.instant()
 

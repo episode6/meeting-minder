@@ -21,7 +21,13 @@
   day, midnight-spanning, the update form), `ShareDaySideEffectsTest`,
   `ChangeSnapshotMappingTest`/`DayPlanMappingTest` (JSON round-trips), `ChangeSnapshotDaoTest`,
   new `DayPlanDaoTest`/`AppStoreReducerTest`/`DayViewModelTest` cases. No new permission or
-  dependency.
+  dependency. Fixed: the busy-range text and `shared_snapshot` now use each selected
+  event's freshly loaded begin/end (falling back to the stored selection when the
+  provider no longer has it), the same re-timing rule `reconcileAlarms` uses — previously
+  they used the stale stored times even when a meeting had moved since it was selected,
+  while `change_snapshot`'s baseline (already built from the fresh read) recorded the new
+  time, so a share after a move sent the wrong busy range and PR-11's differ could never
+  detect it.
 - RSVP on set-alarms (PR-8b): "Set alarms" now also tells the calendar "Yes, going" for
   every meeting it just armed (TODO.md §4.6), so Google Calendar renders it accepted and
   the organizer gets a response through Google's own sync — one occurrence at a time,
