@@ -3,25 +3,25 @@ package com.episode6.meetingminder.ui.settings
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -145,7 +146,13 @@ fun SettingsScreen(
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
 
             section(R.string.settings_section_about)
-            item { SimpleRow(title = stringResource(R.string.menu_permissions), onClick = onPermissionsClick) }
+            item {
+                SimpleRow(
+                    title = stringResource(R.string.menu_permissions),
+                    subtitle = state.permissionsStatus.label(),
+                    onClick = onPermissionsClick,
+                )
+            }
             item { SimpleRow(title = stringResource(R.string.menu_licenses), onClick = onLicensesClick) }
             item { Spacer(Modifier.height(24.dp)) }
         }
@@ -168,15 +175,13 @@ private fun DurationPickerRow(title: String, options: List<Long>, selectedMinute
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         Text(title, style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { minutes ->
                 FilterChip(
                     selected = minutes == selectedMinutes,
                     onClick = { onSelected(Duration.ofMinutes(minutes)) },
                     label = { Text(stringResource(R.string.settings_minutes_value, minutes)) },
+                    colors = SettingsChipColors(),
                 )
             }
         }
@@ -188,16 +193,29 @@ private fun SoundPoolRow(selected: SoundPool, onSelected: (SoundPool) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         Text(stringResource(R.string.settings_sound_pool), style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SoundPool.entries.forEach { pool ->
-                FilterChip(selected = pool == selected, onClick = { onSelected(pool) }, label = { Text(pool.label()) })
+                FilterChip(
+                    selected = pool == selected,
+                    onClick = { onSelected(pool) },
+                    label = { Text(pool.label()) },
+                    colors = SettingsChipColors(),
+                )
             }
         }
     }
 }
+
+/**
+ * Selected chips use episode6 orange (`primaryContainer`), not M3's default lavender
+ * `secondaryContainer` — `MeetingMinderTheme` defines no `secondaryContainer`, and orange
+ * is reserved for chrome and selected states of non-calendar controls (AGENTS.md).
+ */
+@Composable
+private fun SettingsChipColors() = FilterChipDefaults.filterChipColors(
+    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+)
 
 @Composable
 private fun SoundPool.label(): String = when (this) {
@@ -228,7 +246,7 @@ private fun CalendarRowItem(row: CalendarRow, onToggle: (Boolean) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Box(modifier = Modifier.width(12.dp).height(12.dp).clip(RoundedCornerShape(50)).background(Color(row.info.color)))
+        Box(modifier = Modifier.size(12.dp).clip(RoundedCornerShape(50)).background(Color(row.info.color)))
         Column(modifier = Modifier.weight(1f)) {
             Text(row.info.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val subtitle = if (row.info.syncEvents) {
@@ -243,13 +261,25 @@ private fun CalendarRowItem(row: CalendarRow, onToggle: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun SimpleRow(title: String, onClick: () -> Unit) {
+private fun SimpleRow(title: String, onClick: () -> Unit, subtitle: String? = null) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
+}
+
+/** "Permissions" row subtitle (TODO.md §5 PR-12: "permissions status re-entry to onboarding"). */
+@Composable
+private fun PermissionsStatus.label(): String = when (this) {
+    PermissionsStatus.AllGranted -> stringResource(R.string.settings_permissions_all_granted)
+    is PermissionsStatus.MissingSome -> pluralStringResource(R.plurals.settings_permissions_missing, count, count)
 }
 
 @Preview(showBackground = true)
@@ -329,4 +359,5 @@ private val previewState = SettingsUiState(
     soundPool = SoundPool.ALL,
     showDeclined = true,
     calendars = listOf(CalendarRow(previewWork, included = true), CalendarRow(previewFamily, included = false)),
+    permissionsStatus = PermissionsStatus.AllGranted,
 )

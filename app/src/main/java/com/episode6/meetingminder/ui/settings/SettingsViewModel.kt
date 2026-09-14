@@ -6,6 +6,7 @@ import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.data.settings.SoundPool
 import com.episode6.meetingminder.model.CalendarInfo
+import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.CalendarContentChanged
 import com.episode6.meetingminder.store.ClearMessage
@@ -32,6 +33,22 @@ private const val STOP_TIMEOUT_MILLIS = 5_000L
 /** One row of the Settings → Calendars list: [included] is [Settings.calendarOverrides]`[info.id] ?: info.visible`. */
 data class CalendarRow(val info: CalendarInfo, val included: Boolean)
 
+/**
+ * The "Permissions" row's subtitle (TODO.md §5 PR-12: "permissions status re-entry to
+ * onboarding"), derived from [PermissionState]. [MissingSome.count] excludes calendar
+ * access from the granted-count denominator implicitly by counting only the flags that
+ * are false, so it grows to cover any new required permission without needing an update.
+ */
+sealed interface PermissionsStatus {
+    data object AllGranted : PermissionsStatus
+    data class MissingSome(val count: Int) : PermissionsStatus
+}
+
+private fun PermissionState.toStatus(): PermissionsStatus {
+    val missing = listOf(calendarGranted, notificationsGranted, exactAlarmsGranted, fullScreenIntentGranted).count { !it }
+    return if (missing == 0) PermissionsStatus.AllGranted else PermissionsStatus.MissingSome(missing)
+}
+
 /** What [SettingsScreen] renders (TODO.md §5 PR-12): the current [Settings] plus every calendar as a [CalendarRow]. */
 data class SettingsUiState(
     val leadTime: Duration = Duration.ZERO,
@@ -40,6 +57,7 @@ data class SettingsUiState(
     val soundPool: SoundPool = SoundPool.ALL,
     val showDeclined: Boolean = true,
     val calendars: List<CalendarRow> = emptyList(),
+    val permissionsStatus: PermissionsStatus = PermissionsStatus.AllGranted,
 )
 
 /**
@@ -58,15 +76,19 @@ data class SettingsUiState(
 @ContributesIntoMap(AppScope::class)
 class SettingsViewModel(private val store: AppStore, private val settings: SettingsRepository) : ViewModel() {
 
-    val state: StateFlow<SettingsUiState> = combine(settings.settings, store.mapStore { it.calendars }) { prefs, calendars ->
-        prefs.toUiState(calendars)
+    val state: StateFlow<SettingsUiState> = combine(
+        settings.settings,
+        store.mapStore { it.calendars },
+        store.mapStore { it.permissions },
+    ) { prefs, calendars, permissions ->
+        prefs.toUiState(calendars, permissions.toStatus())
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
         // DataStore's first emission is asynchronous (unlike the store, it has no
         // synchronous `.state`), so this seeds with the defaults for one frame at most;
         // the real preferences follow almost immediately.
-        Settings().toUiState(store.state.calendars),
+        Settings().toUiState(store.state.calendars, store.state.permissions.toStatus()),
     )
 
     val messages: Flow<UiMessage> = store
@@ -87,8 +109,14 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
         store.dispatch(CalendarContentChanged)
     }
 
-    fun onCalendarToggle(calendarId: Long, included: Boolean) = viewModelScope.launch {
-        settings.setCalendarOverride(calendarId, included)
+    /**
+     * Stores `included` as [Settings.calendarOverrides]`[calendar.id]`, unless it now
+     * matches [CalendarInfo.visible] — the provider's own flag — in which case the
+     * override is cleared instead, so a calendar toggled back to its default tracks any
+     * later change to the provider's own `VISIBLE` flag rather than staying pinned.
+     */
+    fun onCalendarToggle(calendar: CalendarInfo, included: Boolean) = viewModelScope.launch {
+        settings.setCalendarOverride(calendar.id, included.takeIf { it != calendar.visible })
         store.dispatch(CalendarContentChanged)
     }
 
@@ -101,11 +129,12 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
     }
 }
 
-private fun Settings.toUiState(calendars: List<CalendarInfo>) = SettingsUiState(
+private fun Settings.toUiState(calendars: List<CalendarInfo>, permissionsStatus: PermissionsStatus) = SettingsUiState(
     leadTime = leadTime,
     snoozeLength = snoozeLength,
     autoTimeout = autoTimeout,
     soundPool = soundPool,
     showDeclined = showDeclined,
     calendars = calendars.map { CalendarRow(it, included = calendarOverrides[it.id] ?: it.visible) },
+    permissionsStatus = permissionsStatus,
 )

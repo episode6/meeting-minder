@@ -277,6 +277,7 @@ com.episode6.meetingminder
     ├── day/                       DayScreen, DayPager, DayTimeline (Layout), EventChip, NowLine, DayViewModel
     ├── onboarding/                OnboardingScreen, OnboardingViewModel
     ├── alarm/                     AlarmRingingScreen (hosted by AlarmActivity), AlarmRingingViewModel
+    ├── settings/                  SettingsScreen, SettingsViewModel
     ├── licenses/                  LicensesScreen + BasicMarkdown (copied)
     └── util/
 ```

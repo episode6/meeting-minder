@@ -23,6 +23,24 @@
   `SettingsViewModelTest`, new `DataStoreSettingsRepositoryTest` cases, and new cases in
   `LoadDayEventsSideEffectsTest`/`ChangeMonitorTest` for the calendar filter and declined
   wiring. `ui/util/ComingSoonScreen.kt` is gone now that nothing routes to it.
+- Settings screen fixes (PR-12 review): selected `FilterChip`s (lead time, snooze,
+  auto-timeout, sound pack) now render in episode6 orange (`primaryContainer`) instead of
+  M3's default lavender `secondaryContainer`, which the theme never defined; those chip
+  rows wrap in a `FlowRow` instead of scrolling horizontally, so no chip is clipped at the
+  screen edge at any font scale; the Permissions row now shows a status subtitle ("All
+  granted" / "N not granted") derived from `AppState.permissions`, closing the "permissions
+  status re-entry to onboarding" ask from TODO.md §5 PR-12. A cold-process "Share update"
+  (`ShareDaySideEffects.readDay`) and a cold-process day load with a calendar override
+  stored (`LoadDayEventsSideEffects`, whose `state.calendars` can still be empty) both now
+  apply the same `effectiveCalendarFilter`/`excludeDeclined` `monitor.ChangeMonitor` uses,
+  reading the calendar list straight from the provider when `state.calendars` isn't
+  populated yet — closing the rest of the PR-11 seam and fixing a cold-process load that
+  could come up with zero events. The Settings "Test alarm" row is excluded from
+  `DayPlan.armedKeys` (`data/db/DayPlanMapping.buildDayPlans`) so it no longer shows the day
+  view's "Clear alarms" FAB with nothing selected, and the ringing screen hides "Open
+  meeting" for it (`TEST_ALARM_EVENT_ID`, moved to `model/` so both can reference it)
+  instead of opening the calendar app at a non-existent event. `ui/settings/` added to the
+  AGENTS.md and TODO.md §3.3 package maps.
 - Change detection + notification (PR-11): once a day is shared, Meeting Minder watches it
   until its midnight and says when it changes. A pure `monitor/ChangeDetector` diffs the
   day's `change_snapshot` baseline against a fresh read of the whole day using the TODO.md

@@ -6,6 +6,7 @@ import com.episode6.meetingminder.alarm.AlarmScheduler
 import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.ScheduledAlarmDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
+import com.episode6.meetingminder.model.TEST_ALARM_EVENT_ID
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
 import com.episode6.meetingminder.store.ShowMessage
@@ -24,9 +25,6 @@ import java.time.Clock
 import java.time.Duration
 import java.time.LocalDate
 import kotlin.random.Random
-
-/** The `scheduled_alarm.event_id` a test alarm's row uses: never a real `Events._ID`, which is always positive. */
-internal const val TEST_ALARM_EVENT_ID = -1L
 
 /** How long before it rings (TODO.md §4.4: "a 'Test alarm' button that fires in 10 s"). */
 internal val TestAlarmDelay: Duration = Duration.ofSeconds(10)

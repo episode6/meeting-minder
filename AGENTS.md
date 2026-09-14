@@ -49,7 +49,7 @@ This is the **target** layout from `TODO.md` §3.3; each package arrives with th
 | `permissions/` | `PermissionChecker`, `PermissionRequester`, `PermissionState` |
 | `ui/navigation/` | `Routes` (`@Serializable`), `Navigation.kt` (NavHost, VM wiring, launchers) |
 | `ui/theme/` | `MeetingMinderTheme`, M3 colour scheme, typography |
-| `ui/<feature>/` | One folder per screen: Composable(s) + ViewModel (`day/`, `onboarding/`, `alarm/`, `licenses/`) |
+| `ui/<feature>/` | One folder per screen: Composable(s) + ViewModel (`day/`, `onboarding/`, `alarm/`, `settings/`, `licenses/`) |
 
 Root types:
 
@@ -205,6 +205,7 @@ This repo follows the episode6 app-repo shape (see `RELEASE_CHECKLIST.md`, the s
 | Re-arming unique work from inside its own worker | `ExistingWorkPolicy.REPLACE` cancels the run that is asking and `KEEP` does nothing while it runs; the content trigger re-arms itself with `APPEND_OR_REPLACE` and everything else uses `KEEP` (`WorkManagerChangeWorkScheduler`). A periodic work with no initial delay runs at once — in WorkManager's test driver too, where it runs the real worker. |
 | Permissions merged in from a library | `verifyReleasePermissions` checks the **merged** manifest. Remove a permission the app never uses with `tools:node="remove"` in `AndroidManifest.xml` (WorkManager's `ACCESS_NETWORK_STATE`) rather than allowlisting it, and say why in a comment. |
 | `scheduled_alarm` vs `AlarmManager` | The Room row is the source of truth; `AlarmScheduler` only mirrors it. Never arm an alarm without a row, and identify its `PendingIntent` by `alarm_id` (data URI + request code), never by extras. |
+| `TEST_ALARM_EVENT_ID` (`model/RingingAlarm.kt`) | Settings' "Test alarm" row's `event_id` is `-1`, never a real `Events._ID`. Code that folds every armed `scheduled_alarm` row into UI state (`buildDayPlans`'s `armedKeys`, the ringing screen's "Open meeting") must exclude or special-case it, or it leaks into the day view's FAB and tries to open a non-existent calendar event. |
 | Shallow clones | Snapshot versionCodes come from the git commit count; every gradle-running CI checkout needs `fetch-depth: 0`. |
 | Toolchain bump without the CI image | `compileSdk`, build-tools, Gradle or the daemon JVM changed but `.github/docker/ci.Dockerfile` didn't: the gradle job fails inside the image. Edit the Dockerfile in the same PR. |
 

@@ -97,6 +97,7 @@ class LoadDayEventsSideEffectsTest {
     @Test
     fun calendarOverrides_narrowTheQueryToTheEffectiveCalendars() = runTest {
         settings.settings.value = Settings(calendarOverrides = mapOf(9L to true))
+        repository.calendars = listOf(hiddenCalendar)
         val state = CalendarGrantedAppState.copy(calendars = listOf(hiddenCalendar))
 
         sideEffect.output(LoadDay(today), state = state).toList()
@@ -106,6 +107,25 @@ class LoadDayEventsSideEffectsTest {
             today.plusDays(1) to CalendarFilter.Only(setOf(9L)),
             today.minusDays(1) to CalendarFilter.Only(setOf(9L)),
         )
+    }
+
+    @Test
+    fun calendarOverrides_withStateCalendarsStillEmpty_readsTheCalendarListFromTheProvider() = runTest {
+        // a cold process: LoadCalendarsSideEffects' SetCalendars hasn't landed yet, so
+        // state.calendars is empty even though a calendar override is stored
+        settings.settings.value = Settings(calendarOverrides = mapOf(9L to true))
+        repository.calendars = listOf(hiddenCalendar)
+        repository.events[today] = listOf(standup.copy(calendarId = hiddenCalendar.id))
+
+        val output = sideEffect.output(LoadDay(today), state = CalendarGrantedAppState).toList()
+
+        assertThat(repository.eventQueries).containsExactly(
+            today to CalendarFilter.Only(setOf(9L)),
+            today.plusDays(1) to CalendarFilter.Only(setOf(9L)),
+            today.minusDays(1) to CalendarFilter.Only(setOf(9L)),
+        )
+        // the whole point: with the provider read as the fallback, the window isn't empty
+        assertThat(output.first()).isEqualTo(SetDayEvents(DayEvents(today, listOf(standup.copy(calendarId = hiddenCalendar.id)), loadedAt)))
     }
 
     @Test

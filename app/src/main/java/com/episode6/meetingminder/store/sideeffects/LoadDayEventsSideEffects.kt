@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.store.sideeffects
 
+import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.calendar.effectiveCalendarFilter
 import com.episode6.meetingminder.data.calendar.excludeDeclined
@@ -34,7 +35,12 @@ import java.time.LocalDate
  * The calendar filter and the "show declined" toggle (TODO.md §5 PR-12) are read fresh on
  * every window load, not observed: `SettingsViewModel` dispatches [CalendarContentChanged]
  * after any Settings change that affects which events show, which reruns this the same way
- * a provider change would.
+ * a provider change would. [AppState.calendars] is empty in a cold process until
+ * `LoadCalendarsSideEffects`' `SetCalendars` lands, so with a calendar override stored the
+ * filter is read straight from the provider ([CalendarRepository.calendars]) rather than
+ * `state.calendars`, the same fallback `monitor.ChangeMonitor.runCheck` uses — otherwise
+ * `effectiveCalendarFilter` would compute `CalendarFilter.Only(emptySet())` against an
+ * empty calendar list and load the window with zero events.
  */
 @ContributesTo(AppScope::class)
 interface LoadDayEventsSideEffects {
@@ -48,7 +54,13 @@ interface LoadDayEventsSideEffects {
                 if (!state.permissions.calendarGranted) return@transformLatest
                 val center = (action as? LoadDay)?.date ?: state.settledDate
                 val prefs = settings.current()
-                val filter = effectiveCalendarFilter(state.calendars, prefs.calendarOverrides)
+                // computed only when an override exists, same as ChangeMonitor.runCheck: state.calendars
+                // can still be empty in a cold process, and Only(emptySet()) would load nothing
+                val filter = if (prefs.calendarOverrides.isEmpty()) {
+                    CalendarFilter.Visible
+                } else {
+                    effectiveCalendarFilter(repository.calendars(), prefs.calendarOverrides)
+                }
                 try {
                     for (date in windowLoadOrder(center)) {
                         val events = repository.eventsOn(date, filter).excludeDeclined(prefs.showDeclined)

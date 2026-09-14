@@ -259,7 +259,7 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                 onAutoTimeoutSelected = viewModel::onAutoTimeoutSelected,
                 onSoundPoolSelected = viewModel::onSoundPoolSelected,
                 onTestAlarmClick = viewModel::onTestAlarmClick,
-                onCalendarToggle = { calendar, included -> viewModel.onCalendarToggle(calendar.id, included) },
+                onCalendarToggle = { calendar, included -> viewModel.onCalendarToggle(calendar, included) },
                 onShowDeclinedToggle = viewModel::onShowDeclinedToggle,
                 onPermissionsClick = { navController.navigate(Route.Onboarding) },
                 onLicensesClick = { navController.navigate(Route.Licenses) },

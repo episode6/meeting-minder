@@ -88,15 +88,28 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun onCalendarToggle_setsTheOverride_andRequestsAReload() = runStoreTest(
+    fun onCalendarToggle_setsTheOverride_whenItDisagreesWithTheProvider_andRequestsAReload() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today), setOf(recordCalendarContentChanged)) },
     ) { store ->
         val settings = FakeSettingsRepository()
         val viewModel = SettingsViewModel(store, settings)
 
-        viewModel.onCalendarToggle(2L, included = false)
+        viewModel.onCalendarToggle(hidden, included = true)
 
-        assertThat(settings.settings.value.calendarOverrides).isEqualTo(mapOf(2L to false))
+        assertThat(settings.settings.value.calendarOverrides).isEqualTo(mapOf(2L to true))
+        assertThat(reloads.first()).isEqualTo(CalendarContentChanged)
+    }
+
+    @Test
+    fun onCalendarToggle_clearsTheOverride_whenToggledBackToWhatTheProviderSays() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), setOf(recordCalendarContentChanged)) },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(calendarOverrides = mapOf(2L to true)))
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onCalendarToggle(hidden, included = false)
+
+        assertThat(settings.settings.value.calendarOverrides).isEqualTo(emptyMap())
         assertThat(reloads.first()).isEqualTo(CalendarContentChanged)
     }
 

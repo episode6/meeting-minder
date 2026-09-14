@@ -5,6 +5,15 @@ import java.time.Instant
 import java.time.LocalDate
 
 /**
+ * The `scheduled_alarm.event_id` Settings' "Test alarm" row uses (`TestAlarmSideEffects`,
+ * TODO.md §5 PR-12): never a real `Events._ID`, which is always positive. Shared between
+ * `data/db` (excluded from [com.episode6.meetingminder.model.DayPlan.armedKeys], so the
+ * test alarm never shows the day view's "Clear alarms" FAB with nothing selected) and the
+ * ringing screen (which has no real event to open for it).
+ */
+const val TEST_ALARM_EVENT_ID = -1L
+
+/**
  * The alarm that is ringing right now ([com.episode6.meetingminder.store.AppState.ringing]):
  * what `AlarmRingingService` is playing and the full-screen `AlarmActivity` shows (render
  * 5). Built from the denormalised `scheduled_alarm` row alone, never the provider, so it

@@ -94,6 +94,13 @@
     <!-- %1$s is the account email; the calendar has SYNC_EVENTS off and so holds no events (TODO.md §4.1) -->
     <string name="settings_calendar_not_syncing">%1$s · not syncing</string>
     <string name="settings_section_about">About</string>
+    <!-- Permissions row subtitle: every required onboarding permission is granted -->
+    <string name="settings_permissions_all_granted">All granted</string>
+    <!-- Permissions row subtitle: how many required permissions are still missing -->
+    <plurals name="settings_permissions_missing">
+        <item quantity="one">%d not granted</item>
+        <item quantity="other">%d not granted</item>
+    </plurals>
     <string name="licenses_title">Third-party license notices</string>
 
     <string name="onboarding_heading">Set up Meeting Minder</string>
