@@ -29,10 +29,11 @@ private const val TAG = "MeetingMinderRsvp"
  * The RSVP write and its bookkeeping (TODO.md §4.6). [rsvpAccept] answers each
  * [RsvpAccept] through [CalendarRepository.acceptInstance] — every event its own write, so
  * failures are per event — and reports with [RsvpAccepted]; [rsvpState] records that on
- * the selection row, and promotes `ACCEPTED_LOCALLY` to `SYNCED` when a reload of the day
- * ([SetDayEvents], which is what our own `ContentObserver` triggers once the sync adapter
- * clears the provider's `DIRTY` flag) shows the written event clean. Nothing here is ever
- * reversed: deselecting cancels the alarm and leaves the RSVP as it is.
+ * the selection row, and promotes `ACCEPTED_LOCALLY` to `SYNCED` when, on a reload of
+ * the day ([SetDayEvents], which is what our own `ContentObserver` triggers once the sync
+ * adapter clears the provider's `DIRTY` flag), [CalendarRepository.syncedEventIds] reports
+ * the written event clean. Nothing here is ever reversed: deselecting cancels the alarm
+ * and leaves the RSVP as it is.
  *
  * `flatMapMerge` keeps the relay path non-suspending and lets several events' writes run
  * side by side.
@@ -52,7 +53,7 @@ interface RsvpAcceptSideEffects {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Provides @IntoSet
-    fun rsvpState(dao: DayPlanDao): SideEffect<AppState> = sideEffect {
+    fun rsvpState(dao: DayPlanDao, repository: CalendarRepository): SideEffect<AppState> = sideEffect {
         actions
             .filter { it is RsvpAccepted || it is SetDayEvents }
             .flatMapMerge { action ->
@@ -63,7 +64,7 @@ interface RsvpAcceptSideEffects {
                             state = if (action.result is RsvpResult.Accepted) RsvpState.ACCEPTED_LOCALLY else RsvpState.FAILED,
                             rsvpEventId = (action.result as? RsvpResult.Accepted)?.rsvpEventId,
                         )
-                        is SetDayEvents -> dao.promoteSyncedRsvps(action.dayEvents.date, action.dayEvents.events)
+                        is SetDayEvents -> dao.promoteSyncedRsvps(action.dayEvents.date, repository)
                     }
                 }
             }
@@ -79,16 +80,22 @@ private suspend fun CalendarRepository.accept(event: CalendarEvent): RsvpResult 
 
 /**
  * A selection whose write went through is `SYNCED` once the row it was written to
- * ([com.episode6.meetingminder.model.SelectedEvent.rsvpEventId]) comes back with
- * `DIRTY = 0`: the sync adapter has uploaded the response. One-way; a later local edit
- * that dirties the event again doesn't demote it.
+ * ([com.episode6.meetingminder.model.SelectedEvent.rsvpEventId]) reads `DIRTY = 0`: the
+ * sync adapter has uploaded the response. One-way; a later local edit that dirties the
+ * event again doesn't demote it. Nothing is queried unless a row is actually waiting, and
+ * a read that fails (calendar access revoked under us) just leaves it waiting.
  */
-private suspend fun DayPlanDao.promoteSyncedRsvps(date: LocalDate, events: List<CalendarEvent>) {
+private suspend fun DayPlanDao.promoteSyncedRsvps(date: LocalDate, repository: CalendarRepository) {
     val awaitingSync = selectedEventsOn(date).filter { it.rsvpState == RsvpState.ACCEPTED_LOCALLY && it.rsvpEventId != null }
     if (awaitingSync.isEmpty()) return
-    val clean = events.filterNot { it.dirty }.map { it.eventId }.toSet()
+    val synced = try {
+        repository.syncedEventIds(awaitingSync.mapNotNull { it.rsvpEventId })
+    } catch (e: Exception) {
+        Log.w(TAG, "could not check RSVP sync state", e)
+        return
+    }
     for (selection in awaitingSync) {
-        if (selection.rsvpEventId in clean) {
+        if (selection.rsvpEventId in synced) {
             setRsvp(date, selection.eventId, selection.instanceTime, RsvpState.SYNCED, selection.rsvpEventId)
         }
     }

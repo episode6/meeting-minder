@@ -28,7 +28,9 @@ import java.time.ZoneOffset
  * The two RSVP writes (TODO.md §4.6) are accepted and recorded: an `update` on
  * `attendees/{id}` changes that row's status in place ([updates]), and an `insert` on
  * `exception/{eventId}` hands out a fresh event id ([inserts]) without cloning anything —
- * the real provider's exception logic is not emulated, only its addressing.
+ * the real provider's exception logic is not emulated, only its addressing. A tiny
+ * `events` table (`_id`, `dirty`) backs the sync-state query; like the real provider,
+ * the instances table does **not** carry `dirty`.
  */
 class FakeCalendarProvider : ContentProvider() {
 
@@ -64,9 +66,10 @@ class FakeCalendarProvider : ContentProvider() {
                 ${Instances.DISPLAY_COLOR} INTEGER, ${Instances.CALENDAR_COLOR} INTEGER, ${Instances.ORGANIZER} TEXT,
                 ${Instances.IS_ORGANIZER} INTEGER, ${Instances.HAS_ATTENDEE_DATA} INTEGER, ${Instances.AVAILABILITY} INTEGER,
                 ${Instances.RRULE} TEXT, ${Instances.RDATE} TEXT, ${Instances.ORIGINAL_ID} INTEGER,
-                ${Instances.ORIGINAL_INSTANCE_TIME} INTEGER, ${Events.DELETED} INTEGER, ${Events.DIRTY} INTEGER, ${Instances.OWNER_ACCOUNT} TEXT,
+                ${Instances.ORIGINAL_INSTANCE_TIME} INTEGER, ${Events.DELETED} INTEGER, ${Instances.OWNER_ACCOUNT} TEXT,
                 ${Instances.CALENDAR_ACCESS_LEVEL} INTEGER, ${Instances.VISIBLE} INTEGER, ${Instances.EVENT_TIMEZONE} TEXT)""",
         )
+        db.execSQL("CREATE TABLE $EVENTS (${Events._ID} INTEGER PRIMARY KEY, ${Events.DIRTY} INTEGER)")
         db.execSQL(
             """CREATE TABLE $ATTENDEES (
                 ${Attendees._ID} INTEGER PRIMARY KEY, ${Attendees.EVENT_ID} INTEGER, ${Attendees.ATTENDEE_EMAIL} TEXT,
@@ -86,6 +89,7 @@ class FakeCalendarProvider : ContentProvider() {
         return when (matcher.match(uri)) {
             MATCH_CALENDARS -> db.query(CALENDARS, projection, selection, selectionArgs, null, null, sortOrder)
             MATCH_ATTENDEES -> db.query(ATTENDEES, projection, selection, selectionArgs, null, null, sortOrder)
+            MATCH_EVENTS -> db.query(EVENTS, projection, selection, selectionArgs, null, null, sortOrder)
             MATCH_INSTANCES_WHEN -> {
                 // content://com.android.calendar/instances/when/{begin}/{end} returns every
                 // instance overlapping the window, inclusive on both ends exactly like
@@ -199,12 +203,20 @@ class FakeCalendarProvider : ContentProvider() {
                 put(Instances.ORIGINAL_ID, originalId)
                 put(Instances.ORIGINAL_INSTANCE_TIME, originalInstanceTime)
                 put(Events.DELETED, deleted.toInt())
-                put(Events.DIRTY, dirty.toInt())
                 put(Instances.OWNER_ACCOUNT, ownerAccount)
                 put(Instances.CALENDAR_ACCESS_LEVEL, accessLevel)
                 put(Instances.VISIBLE, visible.toInt())
                 put(Instances.EVENT_TIMEZONE, dayZone.id)
             },
+        )
+        db.insertWithOnConflict(
+            EVENTS,
+            null,
+            ContentValues().apply {
+                put(Events._ID, eventId)
+                put(Events.DIRTY, dirty.toInt())
+            },
+            SQLiteDatabase.CONFLICT_REPLACE,
         )
     }
 
@@ -260,11 +272,13 @@ class FakeCalendarProvider : ContentProvider() {
         const val CALENDARS = "calendars"
         const val INSTANCES = "instances"
         const val ATTENDEES = "attendees"
+        const val EVENTS = "events"
         const val MATCH_CALENDARS = 1
         const val MATCH_INSTANCES_WHEN = 2
         const val MATCH_ATTENDEES = 3
         const val MATCH_ATTENDEES_ID = 4
         const val MATCH_EXCEPTION_ID = 5
+        const val MATCH_EVENTS = 6
         const val EPOCH_JULIAN_DAY = 2440588
 
         val matcher = UriMatcher(UriMatcher.NO_MATCH).apply {
@@ -273,6 +287,7 @@ class FakeCalendarProvider : ContentProvider() {
             addURI(CalendarContract.AUTHORITY, "attendees", MATCH_ATTENDEES)
             addURI(CalendarContract.AUTHORITY, "attendees/#", MATCH_ATTENDEES_ID)
             addURI(CalendarContract.AUTHORITY, "exception/#", MATCH_EXCEPTION_ID)
+            addURI(CalendarContract.AUTHORITY, "events", MATCH_EVENTS)
         }
 
         fun julianDay(millis: Long, zone: ZoneId): Int =

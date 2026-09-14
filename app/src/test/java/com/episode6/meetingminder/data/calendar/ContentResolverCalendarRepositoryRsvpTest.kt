@@ -127,12 +127,14 @@ class ContentResolverCalendarRepositoryRsvpTest {
     }
 
     @Test
-    fun dirtyFlag_isReadFromTheInstance() = runTest {
+    fun syncedEventIds_areTheRequestedIdsThatExistAndAreClean() = runTest {
         provider.addInstance(instanceId = 100, eventId = 10, begin = today.at(9, zone = zone), end = today.at(10, zone = zone), zone = zone, dirty = true)
         provider.addInstance(instanceId = 101, eventId = 11, begin = today.at(11, zone = zone), end = today.at(12, zone = zone), zone = zone)
+        provider.addInstance(instanceId = 102, eventId = 12, begin = today.at(13, zone = zone), end = today.at(14, zone = zone), zone = zone)
 
-        val events = repository.eventsOn(today)
-
-        assertThat(events.map { it.eventId to it.dirty }).isEqualTo(listOf(10L to true, 11L to false))
+        // 10 is still dirty, 12 wasn't asked about, 99 doesn't exist (deleted is not synced)
+        assertThat(repository.syncedEventIds(listOf(10, 11, 99))).isEqualTo(setOf(11L))
+        assertThat(repository.syncedEventIds(emptyList())).isEmpty()
+        assertThat(provider.queriedUris.count { it == Events.CONTENT_URI }).isEqualTo(1)
     }
 }

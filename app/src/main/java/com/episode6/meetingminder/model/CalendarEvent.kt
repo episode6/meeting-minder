@@ -47,13 +47,6 @@ data class CalendarEvent(
     val isRecurringInstance: Boolean,
     /** `Calendars.CALENDAR_ACCESS_LEVEL`; [CALENDAR_ACCESS_RESPOND] (300) is what an RSVP needs. */
     val calendarAccessLevel: Int,
-    /**
-     * `Events.DIRTY`: a local write (our RSVP included) that the account's sync adapter
-     * hasn't uploaded yet. Once it drops back to false the response has reached the server,
-     * which is how a selection's [RsvpState.ACCEPTED_LOCALLY] is promoted to
-     * [RsvpState.SYNCED] (TODO.md §4.6). Never cleared on a `LOCAL` calendar.
-     */
-    val dirty: Boolean = false,
 ) {
     /**
      * THE definition of "meeting" (TODO.md §3.4): a timed, un-cancelled, busy block that you

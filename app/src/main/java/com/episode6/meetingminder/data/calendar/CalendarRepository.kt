@@ -45,4 +45,13 @@ interface CalendarRepository {
      * write (missing `WRITE_CALENDAR`, no row updated, insert returned nothing).
      */
     suspend fun acceptInstance(event: CalendarEvent): Long
+
+    /**
+     * Which of [eventIds] exist in `Events` with `DIRTY = 0`: their last local write (our
+     * RSVP) has been uploaded by the account's sync adapter, so the selection that was
+     * written to that id can be promoted to `SYNCED` (TODO.md §4.6). A deleted event is
+     * not "synced", and on a `LOCAL` calendar nothing ever is. Queried on `Events`
+     * directly because the `Instances` view does not expose `DIRTY`.
+     */
+    suspend fun syncedEventIds(eventIds: Collection<Long>): Set<Long>
 }

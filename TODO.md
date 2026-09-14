@@ -210,7 +210,10 @@ returns the initial `rsvp_state` directly (`NOT_APPLICABLE` / `UNRESPONDABLE` / 
 rather than a separate decision type, and the alarm reconcile writes it before fanning out
 `RsvpAccept` for the `PENDING` ones. The `SYNCED` promotion lives in
 `RsvpAcceptSideEffects` too, on `SetDayEvents` (the foreground reload); PR-11's background
-diff can call the same DAO update.
+diff can call the same DAO update. Correction to §4.6: the provider's `Instances` view does
+**not** expose `Events.DIRTY` (querying it throws `Invalid column dirty` on a real device),
+so the promotion asks `CalendarRepository.syncedEventIds(ids)` — one batched query on
+`Events` for the ids that were written to, made only while a row is actually waiting.
 
 NB (PR-8): `BootCompleted` and `TimeChanged` are **not** store actions. A `BroadcastReceiver`
 can't await a dispatch, and the re-arm must finish before the broadcast (and the process) ends,

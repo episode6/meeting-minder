@@ -9,7 +9,8 @@ import java.time.LocalDate
  * [events] per day, then assert on [eventQueries] to see what was loaded. Set [error] to
  * make every call throw it (e.g. a `SecurityException` for revoked calendar access).
  * [acceptInstance] records each event in [accepted] and answers with [rsvpEventIdFor]
- * (the event's own id by default, as for a plain event), or throws [acceptError].
+ * (the event's own id by default, as for a plain event), or throws [acceptError];
+ * [syncedEventIds] answers from [syncedIds].
  */
 class FakeCalendarRepository(
     var calendars: List<CalendarInfo> = emptyList(),
@@ -30,6 +31,12 @@ class FakeCalendarRepository(
 
     /** The id [acceptInstance] reports the write went to; override to simulate a new exception's id. */
     var rsvpEventIdFor: (CalendarEvent) -> Long = { it.eventId }
+
+    /** Event ids whose last local write the (pretend) sync adapter has uploaded. */
+    val syncedIds = mutableSetOf<Long>()
+
+    /** Every `syncedEventIds` call's argument, in order. */
+    val syncQueries = mutableListOf<Set<Long>>()
 
     override suspend fun calendars(): List<CalendarInfo> {
         error?.let { throw it }
@@ -53,5 +60,11 @@ class FakeCalendarRepository(
         error?.let { throw it }
         acceptError?.let { throw it }
         return rsvpEventIdFor(event)
+    }
+
+    override suspend fun syncedEventIds(eventIds: Collection<Long>): Set<Long> {
+        syncQueries += eventIds.toSet()
+        error?.let { throw it }
+        return eventIds.filter { it in syncedIds }.toSet()
     }
 }

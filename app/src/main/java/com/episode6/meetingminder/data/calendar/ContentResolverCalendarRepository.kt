@@ -86,6 +86,22 @@ class ContentResolverCalendarRepository(
         }
     }
 
+    override suspend fun syncedEventIds(eventIds: Collection<Long>): Set<Long> = withContext(ioDispatcher) {
+        val ids = eventIds.toSortedSet()
+        if (ids.isEmpty()) return@withContext emptySet()
+        buildSet {
+            ids.chunked(ATTENDEE_QUERY_CHUNK).forEach { chunk ->
+                contentResolver.query(
+                    Events.CONTENT_URI,
+                    arrayOf(Events._ID),
+                    "${Events._ID} IN (${placeholders(chunk.size)}) AND ${Events.DIRTY} = 0",
+                    chunk.map(Long::toString).toTypedArray(),
+                    null,
+                )?.use { cursor -> while (cursor.moveToNext()) add(cursor.getLong(Events._ID)) }
+            }
+        }
+    }
+
     /**
      * The query window is local midnight → next local midnight **widened by ±1 day**, then
      * re-filtered on `START_DAY`/`END_DAY` (Julian days the provider computed in local time,
@@ -214,7 +230,6 @@ class ContentResolverCalendarRepository(
         val originalInstanceTime: Long?,
         val ownerAccount: String?,
         val calendarAccessLevel: Int,
-        val dirty: Boolean,
     )
 
     private fun Cursor.toInstanceRow() = InstanceRow(
@@ -253,7 +268,6 @@ class ContentResolverCalendarRepository(
         originalInstanceTime = getLongOrNull(Instances.ORIGINAL_INSTANCE_TIME),
         ownerAccount = getStringOrNull(Instances.OWNER_ACCOUNT),
         calendarAccessLevel = getIntOrNull(Instances.CALENDAR_ACCESS_LEVEL) ?: Calendars.CAL_ACCESS_NONE,
-        dirty = getIntOrNull(Events.DIRTY) == 1,
     )
 
     private fun InstanceRow.toCalendarEvent(attendees: AttendeeSummary): CalendarEvent {
@@ -282,7 +296,6 @@ class ContentResolverCalendarRepository(
             selfAttendeeId = attendees.selfAttendeeId,
             isRecurringInstance = isRecurring && !isException,
             calendarAccessLevel = calendarAccessLevel,
-            dirty = dirty,
         )
     }
 
@@ -306,7 +319,7 @@ class ContentResolverCalendarRepository(
     }
 
     private companion object {
-        /** SQLite caps bound variables; a day never has this many events, but chunk anyway. */
+        /** SQLite caps bound variables; a day never has this many events, but chunk the `IN (…)` queries anyway. */
         const val ATTENDEE_QUERY_CHUNK = 500
 
         val CALENDAR_PROJECTION = arrayOf(
@@ -345,7 +358,6 @@ class ContentResolverCalendarRepository(
             Instances.ORIGINAL_ID,
             Instances.ORIGINAL_INSTANCE_TIME,
             Events.DELETED,
-            Events.DIRTY,
             Instances.OWNER_ACCOUNT,
             Instances.CALENDAR_ACCESS_LEVEL,
             Instances.START_DAY,

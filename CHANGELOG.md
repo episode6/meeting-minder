@@ -19,14 +19,15 @@
   `RsvpAccept(date, key)` per newly armed `PENDING` event; the new
   `RsvpAcceptSideEffects` writes on IO, reports `RsvpAccepted(date, key, result)`, stores
   `ACCEPTED_LOCALLY` + `rsvp_event_id` (or `FAILED`), and promotes `ACCEPTED_LOCALLY` to
-  `SYNCED` when a reload of the day shows the written event with `DIRTY = 0`
-  (`CalendarEvent.dirty` is new, read from `Events.DIRTY`). Alarms never wait on the
-  write. Chips show a small tick after the alarm time once the RSVP went through and a
+  `SYNCED` when, on a reload of the day, the new batched
+  `CalendarRepository.syncedEventIds` reports the written event with `DIRTY = 0` (queried
+  on `Events` directly — the provider's `Instances` view does not expose `DIRTY`, as the
+  device tests showed). Alarms never wait on the write. Chips show a small tick after the alarm time once the RSVP went through and a
   subtle "couldn't RSVP" hint when it couldn't (`TimelineEvent.rsvp`, `ChipRsvp`), both
   read out in the chip's state description. No schema change: the columns existed since
   PR-7. New tests: `RsvpDecisionTest` (one per table row, plus the solo-vs-alias
   distinction and table order), `ContentResolverCalendarRepositoryRsvpTest` (Robolectric,
-  both write shapes, the exception-event addressing, the failure path, `dirty`),
+  both write shapes, the exception-event addressing, the failure path, `syncedEventIds`),
   `RsvpAcceptSideEffectsTest`, new cases in `ScheduleAlarmsSideEffectsTest`,
   `DayPlanDaoTest`, `DayPlanMappingTest`, `DayViewModelTest` and `TimelineEventTest`;
   `FakeCalendarProvider` now accepts and records the two writes. The `verify` skill gains

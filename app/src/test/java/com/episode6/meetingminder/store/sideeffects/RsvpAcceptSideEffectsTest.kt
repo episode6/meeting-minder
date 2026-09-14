@@ -33,7 +33,7 @@ class RsvpAcceptSideEffectsTest {
     private val repository = FakeCalendarRepository()
 
     private fun rsvpAccept() = object : RsvpAcceptSideEffects {}.rsvpAccept(repository)
-    private fun rsvpState(dao: FakeDayPlanDao) = object : RsvpAcceptSideEffects {}.rsvpState(dao)
+    private fun rsvpState(dao: FakeDayPlanDao) = object : RsvpAcceptSideEffects {}.rsvpState(dao, repository)
 
     @Test
     fun rsvpAccept_writesTheEventFromTheLoadedWindow_andReportsTheIdItWentTo() = runTest {
@@ -89,7 +89,7 @@ class RsvpAcceptSideEffectsTest {
     }
 
     @Test
-    fun aReloadThatShowsTheWrittenEventClean_promotesAcceptedLocallyToSynced() = runTest {
+    fun aReloadOfTheDay_promotesAcceptedLocallyToSynced_forWrittenEventsTheProviderReportsClean() = runTest {
         // the standup was answered through a new exception (555); the review's write is still dirty
         val dao = FakeDayPlanDao(
             selections = listOf(
@@ -97,14 +97,12 @@ class RsvpAcceptSideEffectsTest {
                 designReview.toSelectedEventEntity(today).copy(rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 2),
             ),
         )
-        val reloaded = DayEvents(
-            today,
-            listOf(standup.copy(eventId = 555, dirty = false), designReview.copy(dirty = true)),
-            Instant.EPOCH,
-        )
+        repository.syncedIds += 555
 
-        rsvpState(dao).output(SetDayEvents(reloaded)).toList()
+        rsvpState(dao).output(SetDayEvents(DayEvents(today, listOf(standup, designReview), Instant.EPOCH))).toList()
 
+        // one batched query for exactly the ids that were written to
+        assertThat(repository.syncQueries).containsExactly(setOf(555L, 2L))
         val rows = dao.selectedEventsOn(today).associateBy { it.eventId }
         assertThat(rows.getValue(standup.eventId).rsvpState).isEqualTo(RsvpState.SYNCED)
         assertThat(rows.getValue(standup.eventId).rsvpEventId).isEqualTo(555)
@@ -112,7 +110,7 @@ class RsvpAcceptSideEffectsTest {
     }
 
     @Test
-    fun aReload_leavesEveryOtherRsvpStateAlone() = runTest {
+    fun aReload_leavesEveryOtherRsvpStateAlone_andQueriesNothing() = runTest {
         val dao = FakeDayPlanDao(
             selections = listOf(
                 standup.toSelectedEventEntity(today).copy(rsvpState = RsvpState.PENDING),
@@ -122,6 +120,20 @@ class RsvpAcceptSideEffectsTest {
 
         rsvpState(dao).output(SetDayEvents(DayEvents(today, listOf(standup, designReview), Instant.EPOCH))).toList()
 
+        assertThat(repository.syncQueries).isEmpty()
         assertThat(dao.selectedEventsOn(today).map { it.rsvpState }).containsExactly(RsvpState.PENDING, RsvpState.FAILED)
+    }
+
+    @Test
+    fun aReload_whoseSyncCheckThrows_leavesTheRowWaiting() = runTest {
+        val dao = FakeDayPlanDao(
+            selections = listOf(standup.toSelectedEventEntity(today).copy(rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 1)),
+        )
+        repository.error = SecurityException("READ_CALENDAR revoked")
+
+        val output = rsvpState(dao).output(SetDayEvents(DayEvents(today, listOf(standup), Instant.EPOCH))).toList()
+
+        assertThat(output).isEmpty()
+        assertThat(dao.selectedEventsOn(today).single().rsvpState).isEqualTo(RsvpState.ACCEPTED_LOCALLY)
     }
 }
