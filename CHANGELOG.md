@@ -2,6 +2,27 @@
 
 ### v1.0.0 - Unreleased
 
+- Settings screen (PR-12): a new Settings screen, reachable from the day view's overflow
+  menu, makes lead time, snooze length, auto-timeout and the alarm sound pack ("all",
+  "bundled only", "system only") editable for the first time — `SettingsRepository` gained
+  setters for all four alongside the existing lead time one — plus a "Test alarm" button
+  that arms a real exact alarm ten seconds out (`TestAlarm`/`TestAlarmSideEffects`,
+  independent of any selection, so the whole ringing path can be checked end to end), a
+  Settings → Calendars list with a per-calendar include switch that overrides the
+  provider's `VISIBLE` flag (and a "not syncing" hint for a calendar whose sync is off),
+  and a "show declined events" toggle (on by default, per TODO.md §4.1). The new
+  `effectiveCalendarFilter`/`excludeDeclined` (`data/calendar/EffectiveCalendars.kt`) apply
+  both to the day view's loaded window (`LoadDayEventsSideEffects`) and to
+  `monitor.ChangeMonitor`'s fresh read, so a shared day's baseline and its background
+  re-checks always agree on which calendars and which declined events are in play — the
+  seam TODO.md left open when PR-11 landed. Toggling a calendar or the declined switch
+  dispatches the existing `CalendarContentChanged` action so the change is reflected
+  immediately rather than waiting for the next provider notification. Settings also links
+  back into Permissions (Onboarding) and the licence notices. No new permissions or
+  dependencies. New tests: `EffectiveCalendarsTest`, `TestAlarmSideEffectsTest`,
+  `SettingsViewModelTest`, new `DataStoreSettingsRepositoryTest` cases, and new cases in
+  `LoadDayEventsSideEffectsTest`/`ChangeMonitorTest` for the calendar filter and declined
+  wiring. `ui/util/ComingSoonScreen.kt` is gone now that nothing routes to it.
 - Change detection + notification (PR-11): once a day is shared, Meeting Minder watches it
   until its midnight and says when it changes. A pure `monitor/ChangeDetector` diffs the
   day's `change_snapshot` baseline against a fresh read of the whole day using the TODO.md

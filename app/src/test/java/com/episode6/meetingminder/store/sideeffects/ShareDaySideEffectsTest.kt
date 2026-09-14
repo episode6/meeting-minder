@@ -16,6 +16,7 @@ import com.episode6.meetingminder.data.db.decodeBusyRanges
 import com.episode6.meetingminder.data.db.decodeChangeSnapshotEvents
 import com.episode6.meetingminder.data.db.encodeBusyRanges
 import com.episode6.meetingminder.data.db.encodeScheduleChanges
+import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayEvents
@@ -30,13 +31,13 @@ import com.episode6.meetingminder.monitor.FakeScheduleChangeNotifier
 import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.SetPendingShare
 import com.episode6.meetingminder.store.ShareDay
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.test.runTest
-import org.junit.Test
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.test.runTest
+import org.junit.Test
 
 class ShareDaySideEffectsTest {
 
@@ -62,7 +63,7 @@ class ShareDaySideEffectsTest {
         dayPlanDao,
         changeSnapshotDao,
         repository,
-        ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, FakeCalendarPermissionChecker(), notifier, scheduler, clock),
+        ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, FakeCalendarPermissionChecker(), notifier, scheduler, FakeSettingsRepository(), clock),
         clock,
     )
 
@@ -206,7 +207,7 @@ class ShareDaySideEffectsTest {
     fun markNotShared_clearsSharedAtAndTheChangeSnapshot_andStopsMonitoring() = runTest {
         val dayPlanDao = FakeDayPlanDao(plans = listOf(DayPlanEntity(today, sharedAt = now.toEpochMilli())))
         val changeSnapshotDao = FakeChangeSnapshotDao(entities = listOf(ChangeSnapshotEntity(today, now.toEpochMilli(), "[]")))
-        val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, FakeCalendarPermissionChecker(), notifier, scheduler, clock)
+        val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, FakeCalendarPermissionChecker(), notifier, scheduler, FakeSettingsRepository(), clock)
         val effect = object : ShareDaySideEffects {}.markNotShared(dayPlanDao, changeSnapshotDao, monitor)
 
         effect.output(MarkNotShared(today), state = CalendarGrantedAppState).toList()

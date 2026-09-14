@@ -40,7 +40,8 @@ import com.episode6.meetingminder.ui.licenses.LicensesScreen
 import com.episode6.meetingminder.ui.onboarding.OnboardingRow
 import com.episode6.meetingminder.ui.onboarding.OnboardingScreen
 import com.episode6.meetingminder.ui.onboarding.OnboardingViewModel
-import com.episode6.meetingminder.ui.util.ComingSoonScreen
+import com.episode6.meetingminder.ui.settings.SettingsScreen
+import com.episode6.meetingminder.ui.settings.SettingsViewModel
 import com.episode6.meetingminder.ui.util.findActivity
 import com.episode6.meetingminder.ui.util.resolve
 import dev.zacsweers.metrox.viewmodel.metroViewModel
@@ -234,9 +235,34 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
             )
         }
         composable<Route.Settings> {
-            ComingSoonScreen(
-                title = stringResource(R.string.settings_title),
-                onBack = { navController.popBackStack() },
+            val viewModel: SettingsViewModel = metroViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            val snackbarHostState = remember { SnackbarHostState() }
+            val resources = LocalResources.current
+            val entryLifecycleOwner = LocalLifecycleOwner.current
+
+            LaunchedEffect(viewModel, entryLifecycleOwner) {
+                entryLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    viewModel.messages.collect { message ->
+                        viewModel.onMessageShown(message)
+                        snackbarHostState.showSnackbar(message.resolve(resources))
+                    }
+                }
+            }
+
+            SettingsScreen(
+                state = state,
+                snackbarHostState = snackbarHostState,
+                onBackClick = { navController.popBackStack() },
+                onLeadTimeSelected = viewModel::onLeadTimeSelected,
+                onSnoozeLengthSelected = viewModel::onSnoozeLengthSelected,
+                onAutoTimeoutSelected = viewModel::onAutoTimeoutSelected,
+                onSoundPoolSelected = viewModel::onSoundPoolSelected,
+                onTestAlarmClick = viewModel::onTestAlarmClick,
+                onCalendarToggle = { calendar, included -> viewModel.onCalendarToggle(calendar.id, included) },
+                onShowDeclinedToggle = viewModel::onShowDeclinedToggle,
+                onPermissionsClick = { navController.navigate(Route.Onboarding) },
+                onLicensesClick = { navController.navigate(Route.Licenses) },
             )
         }
         composable<Route.Licenses> {

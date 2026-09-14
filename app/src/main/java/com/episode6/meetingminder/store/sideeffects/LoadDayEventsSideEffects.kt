@@ -1,6 +1,9 @@
 package com.episode6.meetingminder.store.sideeffects
 
 import com.episode6.meetingminder.data.calendar.CalendarRepository
+import com.episode6.meetingminder.data.calendar.effectiveCalendarFilter
+import com.episode6.meetingminder.data.calendar.excludeDeclined
+import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.CalendarContentChanged
@@ -27,21 +30,29 @@ import java.time.LocalDate
  * days never queues up reloads of days already left behind (and [SetDayEvents] drops any
  * result that lands outside the window anyway). Nothing is read without calendar access;
  * a `SecurityException` (access revoked under us) triggers a permission re-check instead.
+ *
+ * The calendar filter and the "show declined" toggle (TODO.md §5 PR-12) are read fresh on
+ * every window load, not observed: `SettingsViewModel` dispatches [CalendarContentChanged]
+ * after any Settings change that affects which events show, which reruns this the same way
+ * a provider change would.
  */
 @ContributesTo(AppScope::class)
 interface LoadDayEventsSideEffects {
     @OptIn(ExperimentalCoroutinesApi::class)
     @Provides @IntoSet
-    fun loadDayEvents(repository: CalendarRepository, clock: Clock): SideEffect<AppState> = sideEffect {
+    fun loadDayEvents(repository: CalendarRepository, clock: Clock, settings: SettingsRepository): SideEffect<AppState> = sideEffect {
         actions
             .filter { it is LoadDay || it is CalendarContentChanged }
             .transformLatest { action ->
                 val state = currentState()
                 if (!state.permissions.calendarGranted) return@transformLatest
                 val center = (action as? LoadDay)?.date ?: state.settledDate
+                val prefs = settings.current()
+                val filter = effectiveCalendarFilter(state.calendars, prefs.calendarOverrides)
                 try {
                     for (date in windowLoadOrder(center)) {
-                        emit(SetDayEvents(DayEvents(date, repository.eventsOn(date), clock.instant())))
+                        val events = repository.eventsOn(date, filter).excludeDeclined(prefs.showDeclined)
+                        emit(SetDayEvents(DayEvents(date, events, clock.instant())))
                     }
                 } catch (_: SecurityException) {
                     emit(PermissionsMaybeChanged)

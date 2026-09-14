@@ -64,6 +64,42 @@ class DataStoreSettingsRepositoryTest {
     }
 
     @Test
+    fun setSnoozeLength_autoTimeout_soundPool_andShowDeclined_persist() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-pr12-test"))
+
+        repository.setSnoozeLength(Duration.ofMinutes(10))
+        repository.setAutoTimeout(Duration.ofMinutes(1))
+        repository.setSoundPool(SoundPool.SYSTEM_ONLY)
+        repository.setShowDeclined(false)
+
+        assertThat(repository.current()).isEqualTo(
+            Settings(
+                snoozeLength = Duration.ofMinutes(10),
+                autoTimeout = Duration.ofMinutes(1),
+                soundPool = SoundPool.SYSTEM_ONLY,
+                showDeclined = false,
+            ),
+        )
+    }
+
+    @Test
+    fun setCalendarOverride_forcesIncludeOrExclude_andClearsWithNull() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-calendar-overrides-test"))
+
+        repository.setCalendarOverride(1L, included = true)
+        repository.setCalendarOverride(2L, included = false)
+
+        assertThat(repository.current().calendarOverrides).isEqualTo(mapOf(1L to true, 2L to false))
+
+        // flipping 1's override to excluded moves it out of "included", never leaves it in both
+        repository.setCalendarOverride(1L, included = false)
+        assertThat(repository.current().calendarOverrides).isEqualTo(mapOf(1L to false, 2L to false))
+
+        repository.setCalendarOverride(1L, included = null)
+        assertThat(repository.current().calendarOverrides).isEqualTo(mapOf(2L to false))
+    }
+
+    @Test
     fun unreadableValues_fallBackToTheDefaults() = runTest {
         val dataStore = dataStore("settings-garbage-test")
         val repository = DataStoreSettingsRepository(dataStore)

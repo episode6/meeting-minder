@@ -3,9 +3,14 @@ package com.episode6.meetingminder.store.sideeffects
 import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
+import assertk.assertions.isEqualTo
 import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
+import com.episode6.meetingminder.data.settings.FakeSettingsRepository
+import com.episode6.meetingminder.data.settings.Settings
+import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.SelfStatus
 import com.episode6.meetingminder.model.testCalendarEvent
 import com.episode6.meetingminder.store.CalendarContentChanged
 import com.episode6.meetingminder.store.LoadDay
@@ -26,8 +31,22 @@ class LoadDayEventsSideEffectsTest {
     private val loadedAt = Instant.parse("2026-09-14T12:00:00Z")
     private val standup = testCalendarEvent(1, Instant.parse("2026-09-14T13:00:00Z"), Instant.parse("2026-09-14T13:30:00Z"))
     private val dentist = testCalendarEvent(2, Instant.parse("2026-09-15T16:00:00Z"), Instant.parse("2026-09-15T17:00:00Z"))
+    private val hiddenCalendar = CalendarInfo(
+        id = 9L,
+        accountName = "me@work.com",
+        accountType = "com.google",
+        displayName = "Hidden",
+        color = 0,
+        visible = false,
+        syncEvents = true,
+        ownerAccount = "me@work.com",
+        isPrimary = false,
+        accessLevel = 700,
+        canOrganizerRespond = false,
+    )
     private val repository = FakeCalendarRepository(events = mutableMapOf(today to listOf(standup), today.plusDays(1) to listOf(dentist)))
-    private val sideEffect = object : LoadDayEventsSideEffects {}.loadDayEvents(repository, Clock.fixed(loadedAt, ZoneOffset.UTC))
+    private val settings = FakeSettingsRepository()
+    private val sideEffect = object : LoadDayEventsSideEffects {}.loadDayEvents(repository, Clock.fixed(loadedAt, ZoneOffset.UTC), settings)
 
     @Test
     fun loadDay_loadsThatDayFirst_thenTheDayEitherSide() = runTest {
@@ -73,6 +92,31 @@ class LoadDayEventsSideEffectsTest {
         val output = sideEffect.output(LoadDay(today), state = CalendarGrantedAppState).toList()
 
         assertThat(output).containsExactly(PermissionsMaybeChanged)
+    }
+
+    @Test
+    fun calendarOverrides_narrowTheQueryToTheEffectiveCalendars() = runTest {
+        settings.settings.value = Settings(calendarOverrides = mapOf(9L to true))
+        val state = CalendarGrantedAppState.copy(calendars = listOf(hiddenCalendar))
+
+        sideEffect.output(LoadDay(today), state = state).toList()
+
+        assertThat(repository.eventQueries).containsExactly(
+            today to CalendarFilter.Only(setOf(9L)),
+            today.plusDays(1) to CalendarFilter.Only(setOf(9L)),
+            today.minusDays(1) to CalendarFilter.Only(setOf(9L)),
+        )
+    }
+
+    @Test
+    fun showDeclinedOff_dropsDeclinedEvents() = runTest {
+        val declined = standup.copy(selfStatus = SelfStatus.DECLINED)
+        repository.events[today] = listOf(standup, declined)
+        settings.settings.value = Settings(showDeclined = false)
+
+        val output = sideEffect.output(LoadDay(today), state = CalendarGrantedAppState).toList()
+
+        assertThat(output.first()).isEqualTo(SetDayEvents(DayEvents(today, listOf(standup), loadedAt)))
     }
 
     @Test

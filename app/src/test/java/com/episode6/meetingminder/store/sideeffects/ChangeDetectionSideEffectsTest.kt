@@ -10,6 +10,7 @@ import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.FakeChangeSnapshotDao
 import com.episode6.meetingminder.data.db.FakeDayPlanDao
 import com.episode6.meetingminder.data.db.encodeScheduleChanges
+import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.ScheduleChange
 import com.episode6.meetingminder.model.testCalendarEvent
@@ -21,13 +22,13 @@ import com.episode6.meetingminder.monitor.FakeScheduleChangeNotifier
 import com.episode6.meetingminder.store.CalendarContentChanged
 import com.episode6.meetingminder.store.LoadDay
 import com.episode6.meetingminder.store.SetScheduleChanges
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.test.runTest
-import org.junit.Test
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.test.runTest
+import org.junit.Test
 
 class ChangeDetectionSideEffectsTest {
 
@@ -64,7 +65,7 @@ class ChangeDetectionSideEffectsTest {
         val repository = FakeCalendarRepository(events = mutableMapOf(today to listOf(testCalendarEvent(1, at(today, 15), at(today, 16)))))
         val snapshots = FakeChangeSnapshotDao(listOf(ChangeSnapshotEntity(today, 1, "[]")))
         val scheduler = FakeChangeWorkScheduler()
-        val monitor = ChangeMonitor(repository, snapshots, FakeDayPlanDao(), FakeCalendarPermissionChecker(), FakeScheduleChangeNotifier(), scheduler, clock)
+        val monitor = ChangeMonitor(repository, snapshots, FakeDayPlanDao(), FakeCalendarPermissionChecker(), FakeScheduleChangeNotifier(), scheduler, FakeSettingsRepository(), clock)
 
         val output = object : ChangeDetectionSideEffects {}.runChangeCheck(monitor).output(LoadDay(today), CalendarContentChanged).toList()
 
