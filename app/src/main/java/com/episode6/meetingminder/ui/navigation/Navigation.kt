@@ -112,6 +112,9 @@ fun MeetingMinderNavigation() {
                         viewModel.onCheckForUpdatesFailed()
                     }
                 },
+                // selection (PR-7) and open-in-calendar (PR-6) aren't wired yet
+                onEventClick = {},
+                onEventLongClick = {},
             )
         }
         composable<Route.Onboarding> {

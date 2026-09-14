@@ -862,7 +862,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   `PermissionChecker` (refreshed on `ON_RESUME` via `PermissionsMaybeChanged`), Onboarding screen
   with only the calendar row live and the other rows stubbed as "coming soon", routing: launch →
   onboarding if calendar not granted, else Day. Handles the two-denials → "Open settings" case.
-- [ ] **PR-5: Day timeline UI (static).** `[Opus 5, effort high]` `DayTimeline` custom `Layout`, `layoutDay()` overlap
+- [x] **PR-5: Day timeline UI (static).** `[Opus 5, effort high]` `DayTimeline` custom `Layout`, `layoutDay()` overlap
   packing with unit tests (no overlap, chain of overlaps, three-way, back-to-back sharing a
   column, expansion into free columns), `EventChip` with all visual states, `NowLine`, all-day row,
   hour gutter, `DayViewDefaults`. Only previews + Roborazzi screenshots at this point (states listed

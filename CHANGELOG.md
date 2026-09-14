@@ -2,6 +2,20 @@
 
 ### v1.0.0 - Unreleased
 
+- Day timeline UI, static (PR-5): the day view now renders a Google-Calendar-style timeline
+  instead of the empty placeholder — an all-day row, a scrolled hour gutter and grid, event
+  chips laid out by the new custom `DayEventsLayout`, and the red now-line. Overlapping events
+  sit side by side via the pure `layoutDay()` packing (sort → cluster connected overlaps →
+  first-fit columns → expand into free columns, with short events packed by their 24dp chip
+  height), unit-tested alongside the midnight clamping. `EventChip` covers every visual state
+  from renders 2/3: unselected (12% fill + calendar-colour border), tentative (40% fill),
+  selected (solid + check), armed (bell + alarm time), declined/cancelled (dashed,
+  strikethrough, not selectable) and past (60% alpha), with checkbox semantics and haptic
+  ticks. Dimensions live in `DayViewDefaults`; times follow the device's 12/24-hour setting.
+  No data is wired yet — the app shows an empty timeline until PR-6 loads events, and the
+  new Roborazzi previews (busy, selecting, alarms set, dark, 1.5× font, overlaps, empty, chip
+  states) are recorded inside the CI image. The launch smoke test now asserts the timeline's
+  test tag instead of the removed empty-day text.
 - Review fixes on PR-4: the start-destination decision and the `ON_RESUME` permission
   refresh now go through a new `ui/navigation/NavigationViewModel` instead of
   `Navigation.kt` reaching `context.appGraph.appStore` directly, per AGENTS.md
