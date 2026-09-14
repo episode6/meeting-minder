@@ -57,6 +57,11 @@
     <string name="event_state_not_selected">Not selected</string>
     <string name="event_state_alarm_set">Alarm set for %1$s</string>
     <string name="event_state_declined">Declined</string>
+    <!-- chip hints for the RSVP sent when the alarm was set: a small tick, or a subtle "couldn't RSVP" -->
+    <string name="event_rsvp_sent">RSVP sent</string>
+    <string name="event_rsvp_failed">couldn\'t RSVP</string>
+    <!-- chip state with an RSVP outcome appended, e.g. "Alarm set for 8:55, RSVP sent" -->
+    <string name="event_state_with_rsvp">%1$s, %2$s</string>
 
     <string name="menu_permissions">Permissions</string>
     <string name="menu_settings">Settings</string>

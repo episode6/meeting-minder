@@ -179,4 +179,5 @@ private fun CalendarEvent.toTimelineEvent(zone: ZoneId, selection: SelectedEvent
     zone = zone,
     selected = selection != null,
     alarmAt = selection?.alarmAt?.let { LocalDateTime.ofInstant(it, zone).toLocalTime() },
+    rsvp = selection?.rsvpState?.toChipRsvp() ?: ChipRsvp.None,
 )

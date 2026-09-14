@@ -73,10 +73,11 @@ internal object PreviewEvents {
         ),
     )
 
+    // the two meetings got their "Yes, going" tick; the dentist is a solo block, nothing to answer
     val alarmsSetDay = busyDay.copy(
         timedEvents = listOf(
-            standup.copy(selected = true, alarmAt = LocalTime.of(8, 55)),
-            designReview.copy(selected = true, alarmAt = LocalTime.of(9, 55)),
+            standup.copy(selected = true, alarmAt = LocalTime.of(8, 55), rsvp = ChipRsvp.Sent),
+            designReview.copy(selected = true, alarmAt = LocalTime.of(9, 55), rsvp = ChipRsvp.Sent),
             oneOnOne,
             dentist.copy(selected = true, alarmAt = LocalTime.of(11, 55)),
             vendorSync,

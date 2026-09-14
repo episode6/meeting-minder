@@ -203,6 +203,15 @@ stay reachable ("Clear alarms", `FabState.SetAlarms(0)`) after every selection o
 while its alarms are still armed; otherwise those alarms could never be cancelled (§2's reconcile
 only runs on the tap).
 
+NB (PR-8b): `RsvpAccept` and `RsvpAccepted` carry the **date** as well as the key
+(`RsvpAccept(date, key)`), like `ToggleEvent`: the event is looked up in that day's loaded
+events and the outcome lands on that day's `selected_event` row. `rsvpDecision(event)`
+returns the initial `rsvp_state` directly (`NOT_APPLICABLE` / `UNRESPONDABLE` / `PENDING`)
+rather than a separate decision type, and the alarm reconcile writes it before fanning out
+`RsvpAccept` for the `PENDING` ones. The `SYNCED` promotion lives in
+`RsvpAcceptSideEffects` too, on `SetDayEvents` (the foreground reload); PR-11's background
+diff can call the same DAO update.
+
 NB (PR-8): `BootCompleted` and `TimeChanged` are **not** store actions. A `BroadcastReceiver`
 can't await a dispatch, and the re-arm must finish before the broadcast (and the process) ends,
 so `alarm/BootReceiver` calls the injected `AlarmRescheduler.rescheduleAll()` directly under
@@ -916,12 +925,13 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   plain high-priority notification. Permissions: exact alarm (see §4.4), `RECEIVE_BOOT_COMPLETED`.
   Onboarding gets the "Alarms & reminders" and "Notifications" rows for real. Unit tests for alarm
   time math and reconciliation; Robolectric `ShadowAlarmManager` test for scheduling/cancelling.
-- [ ] **PR-8b: RSVP on set-alarms.** `[Fable 5.1, effort high]` After PR-8, ∥ with PR-9. `rsvpDecision(event)` (pure, one
+- [x] **PR-8b: RSVP on set-alarms.** `[Fable 5.1, effort high]` After PR-8, ∥ with PR-9. `rsvpDecision(event)` (pure, one
   test per row of the §4.6 skip table), `CalendarRepository.acceptInstance(event)` doing the
   Attendees update or the exception insert, the `RsvpAccept` side effect fanned out from
   `SetAlarms`, `rsvp_state`/`rsvp_event_id` columns, the "sent" tick and "couldn't RSVP" hint on
   chips, Robolectric tests for both write shapes, and the emulator seeding recipe in the `verify`
-  skill. Manual check against a real Google account before this merges.
+  skill. Manual check against a real Google account before this merges. (The columns had
+  already landed with PR-7's schema, so no database version bump was needed.)
 - [ ] **PR-9: Share schedule.** `[Sonnet 5, effort medium]` ∥ with PR-8. `ScheduleTextFormatter` (pure, tested: merging,
   AM/PM elision, empty day, midnight-spanning), `ShareDay`/`SharedDay` side effects writing
   `shared_at` + `shared_snapshot` and the `change_snapshot` baseline (§4.3), the FAB's `Share`

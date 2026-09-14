@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.EventStatus
+import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.SelfStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -23,6 +24,25 @@ enum class ChipStatus {
     Declined,
 }
 
+/** What the chip says about the RSVP that "Set alarms" sent for the event (TODO.md §4.6). */
+enum class ChipRsvp {
+    /** Nothing to show: not decided yet, still being written, or nothing to answer. */
+    None,
+
+    /** Our "Yes, going" reached the calendar: a small tick after the alarm time. */
+    Sent,
+
+    /** We couldn't answer (read-only calendar, invite to an alias, or the write failed): a subtle hint. */
+    Failed,
+}
+
+/** [ChipRsvp] for a selection's stored [RsvpState]. */
+fun RsvpState.toChipRsvp(): ChipRsvp = when (this) {
+    RsvpState.ACCEPTED_LOCALLY, RsvpState.SYNCED -> ChipRsvp.Sent
+    RsvpState.UNRESPONDABLE, RsvpState.FAILED -> ChipRsvp.Failed
+    RsvpState.NOT_APPLICABLE, RsvpState.PENDING -> ChipRsvp.None
+}
+
 /** One chip on the timeline or in the all-day row: everything [EventChip] draws. */
 @Immutable
 data class TimelineEvent(
@@ -37,8 +57,10 @@ data class TimelineEvent(
     val status: ChipStatus = ChipStatus.Normal,
     /** "I'm going to this" (PR-7 feeds it from the day plan). */
     val selected: Boolean = false,
-    /** When this event's alarm rings, once alarms are set (PR-8); null = not armed. */
+    /** When this event's alarm rings, once alarms are set; null = not armed. */
     val alarmAt: LocalTime? = null,
+    /** The outcome of the RSVP sent when the alarm was set. */
+    val rsvp: ChipRsvp = ChipRsvp.None,
 ) {
     /** Declined and cancelled chips ignore taps; long-press (open in calendar) still works. */
     val toggleable: Boolean get() = status != ChipStatus.Declined
@@ -68,6 +90,7 @@ fun CalendarEvent.toTimelineEvent(
     zone: ZoneId,
     selected: Boolean = false,
     alarmAt: LocalTime? = null,
+    rsvp: ChipRsvp = ChipRsvp.None,
 ): TimelineEvent {
     val readZone = if (allDay) ZoneOffset.UTC else zone
     return TimelineEvent(
@@ -84,5 +107,6 @@ fun CalendarEvent.toTimelineEvent(
         },
         selected = selected,
         alarmAt = alarmAt,
+        rsvp = rsvp,
     )
 }

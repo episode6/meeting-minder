@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import com.episode6.meetingminder.model.RsvpState
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
@@ -49,7 +50,8 @@ interface DayPlanDao {
      * `REPLACE` deletes and re-inserts the row, so calling this on an existing key resets
      * every column to [entity]'s values — including [SelectedEventEntity.alarmId]/`alarmAt`/
      * `rsvpState`. Safe today only because [toggleSelectedEvent] never calls it on a key
-     * that already exists; re-timing a moved *selected* event goes through [armSelectedEvent].
+     * that already exists; re-timing a moved *selected* event goes through [armSelectedEvent]
+     * and the RSVP columns through [setRsvp].
      */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSelectedEvent(entity: SelectedEventEntity)
@@ -99,4 +101,16 @@ interface DayPlanDao {
         beginMillis: Long,
         endMillis: Long,
     )
+
+    /**
+     * Records where a selection's RSVP stands (TODO.md §4.6): the `rsvpDecision` outcome
+     * when the event is armed, then `ACCEPTED_LOCALLY`/`FAILED` (with the id the write went
+     * to) once the provider write returns, and `SYNCED` when a reload sees that row clean.
+     * A targeted update so the alarm pointer survives, like [armSelectedEvent].
+     */
+    @Query(
+        "UPDATE selected_event SET rsvp_state = :state, rsvp_event_id = :rsvpEventId " +
+            "WHERE date = :date AND event_id = :eventId AND instance_time = :instanceTime",
+    )
+    suspend fun setRsvp(date: LocalDate, eventId: Long, instanceTime: Long, state: RsvpState, rsvpEventId: Long?)
 }

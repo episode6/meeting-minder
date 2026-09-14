@@ -8,6 +8,7 @@ import assertk.assertions.isNull
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.SelectedEvent
 import com.episode6.meetingminder.model.testCalendarEvent
 import org.junit.Test
@@ -28,6 +29,8 @@ class DayPlanMappingTest {
         endMillis: Long = 2_000,
         alarmId: Long? = null,
         alarmAt: Long? = null,
+        rsvpState: RsvpState = RsvpState.NOT_APPLICABLE,
+        rsvpEventId: Long? = null,
     ) = SelectedEventEntity(
         date = date,
         eventId = eventId,
@@ -37,6 +40,8 @@ class DayPlanMappingTest {
         endMillis = endMillis,
         alarmId = alarmId,
         alarmAt = alarmAt,
+        rsvpState = rsvpState,
+        rsvpEventId = rsvpEventId,
     )
 
     @Test
@@ -90,6 +95,20 @@ class DayPlanMappingTest {
     }
 
     @Test
+    fun buildDayPlans_carriesTheRsvpColumnsThrough() {
+        val accepted = selectedEventEntity(eventId = 1, alarmId = 1, alarmAt = 700, rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 1_000)
+
+        val result = buildDayPlans(plans = emptyList(), selections = listOf(accepted))
+
+        assertThat(result.getValue(today).selected.getValue(EventKey(1, 0))).isEqualTo(
+            SelectedEvent(
+                key = EventKey(1, 0), title = "Standup", begin = Instant.ofEpochMilli(1_000), end = Instant.ofEpochMilli(2_000),
+                alarmId = 1, alarmAt = Instant.ofEpochMilli(700), rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 1_000,
+            ),
+        )
+    }
+
+    @Test
     fun buildDayPlans_aDayPlanRowWithNoSelections_stillAppears() {
         val plan = DayPlanEntity(date = today, alarmsSetAt = null, sharedAt = 9_000)
 
@@ -125,7 +144,7 @@ class DayPlanMappingTest {
             ),
         )
         assertThat(entity.alarmId).isNull()
-        assertThat(entity.rsvpState).isEqualTo("NOT_APPLICABLE")
+        assertThat(entity.rsvpState).isEqualTo(RsvpState.NOT_APPLICABLE)
     }
 }
 

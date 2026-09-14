@@ -84,7 +84,33 @@ data class ToggleEvent(val date: LocalDate, val key: EventKey) : AsyncAction
  * The user tapped "Set alarms (N)" on [date]: make `scheduled_alarm` match the day's
  * selection (`ScheduleAlarmsSideEffects`, TODO.md §4.4) — cancel alarms for deselected
  * events, arm new ones, re-time moved ones, skip (and count in the snackbar) any whose
- * alarm time has already passed — and record `alarms_set_at`. PR-8b fans out one
- * `RsvpAccept` per newly-armed event from the same reconcile.
+ * alarm time has already passed — and record `alarms_set_at`. The same reconcile fans out
+ * one [RsvpAccept] per newly-armed event whose `rsvpDecision` is `PENDING` (TODO.md §4.6).
  */
 data class SetAlarms(val date: LocalDate) : AsyncAction
+
+/**
+ * Mark [key]'s occurrence on [date] "Yes, going" on the calendar
+ * (`RsvpAcceptSideEffects` → `CalendarRepository.acceptInstance`), then report back with
+ * [RsvpAccepted]. Only ever dispatched by the "Set alarms" reconcile, for an event it just
+ * armed; alarm scheduling never waits on it. Carries [date] like [ToggleEvent] does, since
+ * the event is looked up in that day's loaded events and the state lands on that day's
+ * `selected_event` row.
+ */
+data class RsvpAccept(val date: LocalDate, val key: EventKey) : AsyncAction
+
+/**
+ * The provider write for [RsvpAccept] finished: record [result] on the selection's
+ * `rsvp_state`/`rsvp_event_id` (`RsvpAcceptSideEffects`; `ObserveDayPlans` streams it
+ * back so the chip shows its "sent" tick or "couldn't RSVP" hint).
+ */
+data class RsvpAccepted(val date: LocalDate, val key: EventKey, val result: RsvpResult) : AsyncAction
+
+/** The outcome of one RSVP write; failures are per event and never retried automatically. */
+sealed interface RsvpResult {
+    /** Our attendee row now says accepted on the event with [rsvpEventId] (the new exception's id for a recurring occurrence). */
+    data class Accepted(val rsvpEventId: Long) : RsvpResult
+
+    /** The provider refused the write, or the event had left the loaded window before it ran. */
+    data object Failed : RsvpResult
+}

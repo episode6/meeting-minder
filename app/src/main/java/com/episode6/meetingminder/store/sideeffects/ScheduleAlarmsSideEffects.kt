@@ -10,8 +10,12 @@ import com.episode6.meetingminder.data.db.ScheduledAlarmDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.CalendarEvent
+import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.RsvpState
+import com.episode6.meetingminder.model.rsvpDecision
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
+import com.episode6.meetingminder.store.RsvpAccept
 import com.episode6.meetingminder.store.SetAlarms
 import com.episode6.meetingminder.store.ShowMessage
 import com.episode6.meetingminder.store.UiMessage
@@ -37,9 +41,14 @@ import kotlin.random.Random
  * re-timed), and the lead time from settings; then cancels, inserts, re-times and arms
  * through [AlarmScheduler], points each selection at its alarm, and records
  * `alarms_set_at`. `ObserveDayPlansSideEffects` streams the result back into the store;
- * this effect only emits the snackbar ("3 alarms set for today", how many were skipped
+ * this effect emits the snackbar ("3 alarms set for today", how many were skipped
  * because their alarm time had passed — never silently dropped — or "3 alarms cleared"
- * when the selection had been emptied and the tap only cancelled).
+ * when the selection had been emptied and the tap only cancelled) and then one
+ * [RsvpAccept] per newly armed event that [rsvpDecision] says to answer (TODO.md §4.6):
+ * setting alarms is the commitment moment, so the same tap tells the calendar. The
+ * decision is recorded on the selection row first (`PENDING`, or the skip reason so the
+ * chip can show "couldn't RSVP"); `RsvpAcceptSideEffects` does the write, which never
+ * holds up the alarms.
  *
  * Without the exact-alarm grant nothing is written: the snackbar says so and a permission
  * re-check is requested. If the OS refuses an individual `setAlarmClock` (the grant was
@@ -79,13 +88,21 @@ interface ScheduleAlarmsSideEffects {
                 } else {
                     emit(ShowMessage(alarmsSetMessage(result.reconciliation, action.date, today = state.anchorDate)))
                 }
+                for (key in result.rsvp) emit(RsvpAccept(action.date, key))
             }
         }
     }
 }
 
-/** The outcome of one applied reconcile; [failedToArm] counts rows the OS refused to arm. */
-internal data class AppliedReconciliation(val reconciliation: AlarmReconciliation, val failedToArm: Int)
+/**
+ * The outcome of one applied reconcile: [failedToArm] counts rows the OS refused to arm,
+ * [rsvp] is the newly armed events whose RSVP is to be written (`PENDING` on their rows).
+ */
+internal data class AppliedReconciliation(
+    val reconciliation: AlarmReconciliation,
+    val failedToArm: Int,
+    val rsvp: List<EventKey> = emptyList(),
+)
 
 /** Writes one [reconcileAlarms] result through the DAOs and [AlarmScheduler]. */
 internal class AlarmReconcileWriter(
@@ -119,8 +136,19 @@ internal class AlarmReconcileWriter(
             )
         }
         var failed = 0
+        val rsvp = mutableListOf<EventKey>()
+        val fresh = freshEvents.associateBy { it.key }
         for (row in plan.schedule) {
-            if (!arm(row.copy(alarmId = alarmDao.insert(row)))) failed++
+            if (!arm(row.copy(alarmId = alarmDao.insert(row)))) {
+                failed++
+                continue
+            }
+            // only an event that actually got an alarm is answered, and only a newly armed
+            // one: a kept row was decided when it was first armed. An event the provider no
+            // longer returns can't be answered at all (its row stays NOT_APPLICABLE)
+            val decision = fresh[row.key]?.let(::rsvpDecision) ?: continue
+            dayPlanDao.setRsvp(date, row.eventId, row.instanceTime, decision, rsvpEventId = null)
+            if (decision == RsvpState.PENDING) rsvp += row.key
         }
         for (row in plan.retime) {
             alarmDao.update(row)
@@ -137,7 +165,7 @@ internal class AlarmReconcileWriter(
         } else {
             dayPlanDao.setAlarmsSetAt(date, null)
         }
-        return AppliedReconciliation(plan, failed)
+        return AppliedReconciliation(plan, failed, rsvp)
     }
 
     /**

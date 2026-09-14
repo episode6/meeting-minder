@@ -2,6 +2,7 @@ package com.episode6.meetingminder.data.calendar
 
 import android.content.ContentResolver
 import android.content.ContentUris
+import android.content.ContentValues
 import android.database.Cursor
 import android.provider.CalendarContract.Attendees
 import android.provider.CalendarContract.Calendars
@@ -50,6 +51,40 @@ class ContentResolverCalendarRepository(
                 .map { it.toCalendarEvent(attendees[it.eventId] ?: AttendeeSummary.EMPTY) }
                 .sortedWith(compareByDescending<CalendarEvent> { it.allDay }.thenBy { it.begin }.thenByDescending { it.end }.thenBy { it.title })
         }
+
+    /**
+     * The write shapes are the ones AOSP's own calendar app uses (TODO.md §4.6), both
+     * addressed by the occurrence's **own** id ([CalendarEvent.eventId]), never by
+     * `key.eventId` (the series id for a recurring occurrence):
+     *  - a recurring occurrence → `insert(Events.CONTENT_EXCEPTION_URI/{eventId})` with
+     *    `ORIGINAL_INSTANCE_TIME = begin` and `SELF_ATTENDEE_STATUS = ACCEPTED`. That is the
+     *    one place `SELF_ATTENDEE_STATUS` is app-writable: the provider clones the event as
+     *    an exception (with `ORIGINAL_ID`, so it keeps the same [EventKey]) and updates the
+     *    clone's self-attendee row. Google syncs it as a per-instance response.
+     *  - anything else → `update(Attendees.CONTENT_URI/{selfAttendeeId})` with
+     *    `ATTENDEE_STATUS = ACCEPTED`; the provider mirrors it into `SELF_ATTENDEE_STATUS`.
+     * Either way the provider marks the event `DIRTY` and the account's sync adapter
+     * uploads the response on its next upload sync.
+     */
+    override suspend fun acceptInstance(event: CalendarEvent): Long = withContext(ioDispatcher) {
+        if (event.isRecurringInstance) {
+            val uri = ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, event.eventId)
+            val values = ContentValues().apply {
+                put(Events.ORIGINAL_INSTANCE_TIME, event.begin.toEpochMilli())
+                put(Events.SELF_ATTENDEE_STATUS, Attendees.ATTENDEE_STATUS_ACCEPTED)
+                put(Events.STATUS, Events.STATUS_CONFIRMED)
+            }
+            val inserted = contentResolver.insert(uri, values) ?: error("exception insert on $uri returned no row")
+            ContentUris.parseId(inserted)
+        } else {
+            val selfAttendeeId = event.selfAttendeeId ?: error("event ${event.eventId} has no self-attendee row to answer through")
+            val uri = ContentUris.withAppendedId(Attendees.CONTENT_URI, selfAttendeeId)
+            val values = ContentValues().apply { put(Attendees.ATTENDEE_STATUS, Attendees.ATTENDEE_STATUS_ACCEPTED) }
+            val updated = contentResolver.update(uri, values, null, null)
+            check(updated == 1) { "attendee update on $uri touched $updated rows" }
+            event.eventId
+        }
+    }
 
     /**
      * The query window is local midnight → next local midnight **widened by ±1 day**, then
@@ -179,6 +214,7 @@ class ContentResolverCalendarRepository(
         val originalInstanceTime: Long?,
         val ownerAccount: String?,
         val calendarAccessLevel: Int,
+        val dirty: Boolean,
     )
 
     private fun Cursor.toInstanceRow() = InstanceRow(
@@ -217,6 +253,7 @@ class ContentResolverCalendarRepository(
         originalInstanceTime = getLongOrNull(Instances.ORIGINAL_INSTANCE_TIME),
         ownerAccount = getStringOrNull(Instances.OWNER_ACCOUNT),
         calendarAccessLevel = getIntOrNull(Instances.CALENDAR_ACCESS_LEVEL) ?: Calendars.CAL_ACCESS_NONE,
+        dirty = getIntOrNull(Events.DIRTY) == 1,
     )
 
     private fun InstanceRow.toCalendarEvent(attendees: AttendeeSummary): CalendarEvent {
@@ -245,6 +282,7 @@ class ContentResolverCalendarRepository(
             selfAttendeeId = attendees.selfAttendeeId,
             isRecurringInstance = isRecurring && !isException,
             calendarAccessLevel = calendarAccessLevel,
+            dirty = dirty,
         )
     }
 
@@ -307,6 +345,7 @@ class ContentResolverCalendarRepository(
             Instances.ORIGINAL_ID,
             Instances.ORIGINAL_INSTANCE_TIME,
             Events.DELETED,
+            Events.DIRTY,
             Instances.OWNER_ACCOUNT,
             Instances.CALENDAR_ACCESS_LEVEL,
             Instances.START_DAY,
