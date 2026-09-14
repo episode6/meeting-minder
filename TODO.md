@@ -137,7 +137,10 @@ typealias AppStore = StoreFlow<AppState>
 @Provides @SingleIn(AppScope::class)
 fun provideAppStore(scope: CoroutineScope, sideEffects: Set<SideEffect<AppState>>): AppStore =
     SubscriberAwareStoreFlow(          // emits SubscriberStatusChanged so we can register the
-        scope = scope,                 // ContentObserver only while UI is visible
+        scope = scope,                 // ContentObserver only while UI is visible. NB: PR-6 ended
+                                       // up rebuilding this in store/AppStore.kt (createAppStore)
+                                       // with onSubscription instead of the library's onStart —
+                                       // see AGENTS.md "Common pitfalls" for why.
         initialValue = AppState(),
         reducer = AppState::reduce,
         middlewares = listOf(SideEffectMiddleware(sideEffects)),

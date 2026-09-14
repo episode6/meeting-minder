@@ -2,6 +2,14 @@
 
 ### v1.0.0 - Unreleased
 
+- Fix: the day view could launch showing stale (or no) events until the store next changed.
+  `createAppStore` now hands each new collector the current state with `onSubscription`
+  instead of redux-store-flow's `SubscriberAwareStoreFlow` `onStart` hand-over, which runs
+  before the collector is registered with the shared flow — so a load that finished while
+  the UI was still busy with its first frame (the `combine` in `DayViewModel` yields after
+  every value) was emitted to nobody. Found by the device test relaunching in a warm
+  process on a slow emulator; pinned by a new `AppStoreTest` case. The device test now
+  prints the full semantics tree (not just the roots) when a wait times out.
 - Day pager wired to the store (PR-6): the day view now shows your real calendar. A
   `HorizontalPager` (anchor page = today) swipes between days; each settled page dispatches
   `LoadDay`, and the new `LoadDayEvents` side effect (`transformLatest`) loads that day and

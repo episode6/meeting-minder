@@ -126,7 +126,7 @@ class DayViewDeviceTest {
         try {
             composeRule.waitUntil(LOAD_TIMEOUT_MILLIS) { runCatching(condition).getOrDefault(false) }
         } catch (e: ComposeTimeoutException) {
-            runCatching { composeRule.onAllNodes(isRoot()).printToLog(LOG_TAG) }
+            runCatching { composeRule.onAllNodes(isRoot()).printToLog(LOG_TAG, maxDepth = Int.MAX_VALUE) }
             throw AssertionError("timed out waiting for $what", e)
         }
     }

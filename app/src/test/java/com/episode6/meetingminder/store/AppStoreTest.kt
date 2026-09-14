@@ -7,12 +7,18 @@ import com.episode6.meetingminder.store.sideeffects.ActionLogSideEffects
 import com.episode6.redux.Action
 import com.episode6.redux.sideeffects.SideEffect
 import com.episode6.redux.testsupport.runStoreTest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.withTimeout
 import org.junit.Test
 import java.time.LocalDate
 
-/** The production store wiring ([createAppStore]): reducer + side-effect middleware. */
+/** The production store wiring ([createAppStore]): reducer + side-effect middleware + subscriber awareness. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppStoreTest {
 
     private val today = LocalDate.of(2026, 9, 14)
@@ -49,6 +55,44 @@ class AppStoreTest {
                 store.dispatch(JumpAhead(days = 3))
 
                 assertThat(awaitItem().settledDate).isEqualTo(today.plusDays(3))
+            }
+        }
+
+    /**
+     * The late-subscriber gap that hid a launch's loaded events (see [createAppStore]): with
+     * another collector already keeping the shared upstream alive, a collector whose handling
+     * of the first (current) state suspends — the UI's first frame — must still be handed a
+     * change reduced while it was busy, not stay on the old state until the next change.
+     */
+    @Test
+    fun collectorThatSuspendsOnTheFirstState_stillReceivesAChangeMadeMeanwhile() =
+        runStoreTest({ createAppStore(this, initial, sideEffects) }) { store ->
+            store.test {
+                assertThat(awaitItem()).isEqualTo(initial)
+
+                val busyUntil = CompletableDeferred<Unit>()
+                val seenTwo = CompletableDeferred<List<LocalDate>>()
+                val seen = mutableListOf<LocalDate>()
+                val busyCollector = launch(UnconfinedTestDispatcher(testScheduler)) {
+                    store.collect { state ->
+                        seen += state.settledDate
+                        when (seen.size) {
+                            1 -> {
+                                store.dispatch(SetSettledDate(today.plusDays(1)))
+                                busyUntil.await()
+                            }
+                            2 -> seenTwo.complete(seen.toList())
+                        }
+                    }
+                }
+                // the change went through the store while the new collector was still busy
+                assertThat(awaitItem().settledDate).isEqualTo(today.plusDays(1))
+
+                busyUntil.complete(Unit)
+
+                assertThat(withTimeout(1_000) { seenTwo.await() }).isEqualTo(listOf(today, today.plusDays(1)))
+                busyCollector.cancel()
+                cancelAndIgnoreRemainingEvents()
             }
         }
 }

@@ -70,20 +70,17 @@ typealias AppStore = StoreFlow<AppState>
 
 @Provides @SingleIn(AppScope::class)
 fun provideAppStore(scope: CoroutineScope, sideEffects: Set<SideEffect<AppState>>): AppStore =
-    SubscriberAwareStoreFlow(
-        scope = scope,
-        initialValue = AppState(),
-        reducer = AppState::reduce,
-        middlewares = listOf(SideEffectMiddleware(sideEffects)),
-    )
+    createAppStore(scope, AppState(anchorDate = LocalDate.now(), …), sideEffects)   // store/AppStore.kt
 ```
+
+`createAppStore` builds the store the way redux-store-flow's `SubscriberAwareStoreFlow` does (a `StoreFlow` + `SideEffectMiddleware`, shared with `WhileSubscribed()` and `replay = 0`, dispatching `SubscriberStatusChanged` as collectors come and go) with one deliberate difference: each new collector is handed the current state via `onSubscription`, not the library's `onStart`. `onStart` runs before the collector is registered with the shared flow, so a state change reduced while the collector is still busy with that first value (a `combine` downstream `yield()`s after every value, which on the main thread means "after the first frame") is emitted to nobody and the collector stays on stale state until the next change — the day view launched with an empty day whenever the load finished during the first frame. Keep building the store here, not with the library call, until the library adopts `onSubscription`.
 
 Conventions:
 
 - Actions split into `sealed interface UpdateStateAction : Action` (the **only** actions the reducer touches) and `sealed interface AsyncAction : Action` (handled only by side effects).
 - Side effects are contributed per feature: `@ContributesTo(AppScope::class) interface XSideEffects { @Provides @IntoSet fun ...: SideEffect<AppState> }`. One file per concern under `store/sideeffects/`.
 - **Room is the source of truth for persisted state.** An observe-only side effect streams DAO flows into `Set…` actions. Two gotchas, both learned in podcast-hacker: an observe-only effect must still subscribe to `actions` (`merge(actions.filter { false }, dao.observe().map { … })`) or every effect starves; and never suspend inline in the relay path — do IO inside `flatMapMerge`/`transformLatest`.
-- `SubscriberAwareStoreFlow` emits `SubscriberStatusChanged`, which is how the calendar `ContentObserver` gets registered only while UI is visible.
+- The store emits `SubscriberStatusChanged` (redux-store-flow's `subscriber-aware` action) when its first collector arrives and its last one leaves, which is how the calendar `ContentObserver` gets registered only while UI is visible.
 
 **ViewModels still exist**, one thin one per screen, and they are the only thing a Composable sees:
 
@@ -186,6 +183,7 @@ This repo follows the episode6 app-repo shape (see `RELEASE_CHECKLIST.md`, the s
 | Convention plugins in buildSrc | Never. buildSrc's classloader silently disables Metro codegen; keep them in the `build-logic` included build. |
 | Suspending inline in a side effect's relay path | Starves the effect. Do IO inside `flatMapMerge`/`transformLatest`. |
 | Observe-only side effects | Must still subscribe to `actions` (`merge(actions.filter { false }, …)`) or every effect starves. |
+| `SubscriberAwareStoreFlow(...)` from the library | Don't: its `onStart { emit(state) }` hand-over loses changes made while a new collector is busy with its first value (the first frame). `createAppStore` uses `onSubscription`; `AppStoreTest` pins it. |
 | Store in Composables | Composables take `state` + callbacks. Only ViewModels (and non-UI components) touch the store. |
 | `EventKey` vs `eventId` | The key survives moves and identifies a *plan*; `eventId` is what provider writes and dirty checks use. They differ for exception events. |
 | Alarms in the past | Skipped, with a snackbar — never silently dropped. |
