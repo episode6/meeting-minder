@@ -6,6 +6,7 @@ import assertk.assertions.isNull
 import assertk.assertions.isSameInstanceAs
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.redux.Action
 import com.episode6.redux.subscriberaware.SubscriberStatusChanged
@@ -88,6 +89,15 @@ class AppStoreReducerTest {
     }
 
     private fun dayEvents(date: LocalDate) = DayEvents(date, emptyList(), Instant.EPOCH)
+
+    @Test
+    fun setDayPlans_replacesTheWholeMap() {
+        val plans = mapOf(today to DayPlan(today))
+
+        val result = state.reduce(SetDayPlans(plans))
+
+        assertThat(result).isEqualTo(state.copy(dayPlans = plans))
+    }
 
     @Test
     fun showMessage_replacesAnyPendingMessage() {

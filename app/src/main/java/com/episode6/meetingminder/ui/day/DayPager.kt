@@ -60,7 +60,7 @@ fun DayPager(
     state: DayUiState,
     pagerState: PagerState,
     scrollState: ScrollState,
-    onEventClick: (TimelineEvent) -> Unit,
+    onEventClick: (LocalDate, TimelineEvent) -> Unit,
     onEventLongClick: (TimelineEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -70,10 +70,11 @@ fun DayPager(
         beyondViewportPageCount = DayViewDefaults.PagerBeyondViewportPageCount,
         key = { pageToDate(it, state.anchorDate).toEpochDay() },
     ) { page ->
+        val date = pageToDate(page, state.anchorDate)
         DayTimeline(
-            state = state.timelineFor(pageToDate(page, state.anchorDate)),
+            state = state.timelineFor(date),
             scrollState = scrollState,
-            onEventClick = onEventClick,
+            onEventClick = { event -> onEventClick(date, event) },
             onEventLongClick = onEventLongClick,
             modifier = Modifier.fillMaxSize(),
         )

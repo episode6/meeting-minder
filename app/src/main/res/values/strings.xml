@@ -12,6 +12,13 @@
         <item quantity="other">%d meetings</item>
     </plurals>
     <string name="open_in_calendar_failed">No calendar app found to open this event</string>
+    <!-- app bar subtitle with a selection, e.g. "3 meetings · 2 selected" -->
+    <string name="day_subtitle_with_selected_count">%1$s · %2$d selected</string>
+    <!-- FAB label while at least one event is selected -->
+    <string name="day_fab_set_alarms">Set alarms (%d)</string>
+    <!-- FAB label once alarms are set (PR-8/9) -->
+    <string name="day_fab_share">Share schedule</string>
+    <string name="day_fab_coming_soon">Alarms aren\'t set up yet</string>
     <string name="day_all_day">all-day</string>
     <!-- chip time range, e.g. "9:00 – 9:30" -->
     <string name="event_time_range">%1$s – %2$s</string>

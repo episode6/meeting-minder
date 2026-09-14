@@ -8,12 +8,16 @@ import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
 import assertk.assertions.prop
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.SelectedEvent
 import com.episode6.meetingminder.model.testCalendarEvent
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.LoadDay
 import com.episode6.meetingminder.store.ShowMessage
+import com.episode6.meetingminder.store.ToggleEvent
 import com.episode6.meetingminder.store.UiMessage
 import com.episode6.meetingminder.store.createAppStore
 import com.episode6.redux.Action
@@ -204,6 +208,85 @@ class DayViewModelTest {
             assertThat(awaitItem()).prop(UiMessage::text).isEqualTo(R.string.check_for_updates_no_browser)
         }
     }
+
+    @Test
+    fun onEventToggle_dispatchesToggleEventForThePagesDate() {
+        val toggles = MutableSharedFlow<Action>(replay = 10)
+        val recordToggles = SideEffect<AppState> {
+            actions.onEach { if (it is ToggleEvent) toggles.emit(it) }.filter { false }
+        }
+        runStoreTest({ createAppStore(this, AppState(anchorDate = today), setOf(recordToggles)) }) { store ->
+            val viewModel = DayViewModel(store, clock)
+
+            // the event loaded on today's page, but the tap came from tomorrow's (an event
+            // spanning midnight can appear on both, each with its own selection)
+            viewModel.onEventToggle(tomorrow, standup.toTimelineEvent(zone))
+
+            assertThat(toggles.first()).isEqualTo(ToggleEvent(tomorrow, standup.key))
+        }
+    }
+
+    @Test
+    fun onFabClick_showsTheComingSoonMessage() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), emptySet()) },
+    ) { store ->
+        val viewModel = DayViewModel(store, clock)
+        viewModel.messages.test {
+            viewModel.onFabClick()
+
+            assertThat(awaitItem()).prop(UiMessage::text).isEqualTo(R.string.day_fab_coming_soon)
+        }
+    }
+
+    @Test
+    fun toFabState_hiddenWithNoSelections_setAlarmsWithSome_shareOnceAlarmsAreSet() {
+        val noPlan: DayPlan? = null
+        assertThat(noPlan.toFabState()).isEqualTo(FabState.Hidden)
+        assertThat(DayPlan(today).toFabState()).isEqualTo(FabState.Hidden)
+
+        val selected = DayPlan(today, selected = mapOf(standup.key to standup.toSelectedEventForTest()))
+        assertThat(selected.toFabState()).isEqualTo(FabState.SetAlarms(1))
+
+        val armed = selected.copy(alarmsSetAt = Instant.EPOCH)
+        assertThat(armed.toFabState()).isEqualTo(FabState.Share)
+    }
+
+    @Test
+    fun toDayUiState_marksSelectedEventsAndTheirAlarmTime() {
+        val state = AppState(
+            anchorDate = today,
+            eventsByDay = mapOf(today to DayEvents(today, listOf(standup, dentist), loadedAt)),
+            dayPlans = mapOf(
+                today to DayPlan(
+                    today,
+                    selected = mapOf(
+                        standup.key to SelectedEvent(
+                            key = standup.key,
+                            title = standup.title,
+                            begin = standup.begin,
+                            end = standup.end,
+                            alarmAt = standup.begin.minusSeconds(300),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val ui = state.toDayUiState(now, zone)
+
+        assertThat(ui.fabState).isEqualTo(FabState.SetAlarms(1))
+        assertThat(ui.timelineFor(today).timedEvents).containsExactly(
+            standup.toTimelineEvent(zone, selected = true, alarmAt = LocalTime.of(9, 25)),
+            dentist.toTimelineEvent(zone),
+        )
+    }
+
+    private fun CalendarEvent.toSelectedEventForTest() = SelectedEvent(
+        key = key,
+        title = title,
+        begin = begin,
+        end = end,
+    )
 
     @Test
     fun toTimelineState_dropsTimedEventsThatDontOverlapTheDay() {

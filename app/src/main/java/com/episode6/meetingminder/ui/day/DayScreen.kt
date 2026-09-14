@@ -1,16 +1,21 @@
 package com.episode6.meetingminder.ui.day
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,18 +48,20 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 /**
- * What [DayScreen] renders: the app bar for the settled [date] and one [DayTimelineState]
- * per loaded day of the pager. Selections and the FAB state join in PR-7.
+ * What [DayScreen] renders: the app bar for the settled [date], the FAB, and one
+ * [DayTimelineState] per loaded day of the pager.
  */
 @Immutable
 data class DayUiState(
     /** The pager's anchor page date (today at launch). */
     val anchorDate: LocalDate,
-    /** The settled page's date: what the app bar shows. */
+    /** The settled page's date: what the app bar and FAB show. */
     val date: LocalDate = anchorDate,
     val isToday: Boolean = date == anchorDate,
     /** [com.episode6.meetingminder.model.CalendarEvent.isMeeting] count on [date]; null until it has loaded. */
     val meetingCount: Int? = null,
+    /** The FAB for [date]: hidden, "Set alarms (N)", or (PR-8/9) "Share schedule". */
+    val fabState: FabState = FabState.Hidden,
     /** Every loaded day's timeline; days not in here haven't loaded yet. */
     val days: Map<LocalDate, DayTimelineState> = emptyMap(),
     /** Where the timeline should first open, once today's events have loaded; see [initialFirstVisibleHour]. */
@@ -81,8 +88,9 @@ fun DayScreen(
     onSettingsClick: () -> Unit,
     onLicensesClick: () -> Unit,
     onCheckForUpdatesClick: () -> Unit,
-    onEventClick: (TimelineEvent) -> Unit,
+    onEventClick: (LocalDate, TimelineEvent) -> Unit,
     onEventLongClick: (TimelineEvent) -> Unit,
+    onFabClick: () -> Unit,
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     pagerState: PagerState = rememberDayPagerState(state.anchorDate, state.date),
@@ -103,7 +111,7 @@ fun DayScreen(
                     Column {
                         Text(state.date.format(TitleFormatter), style = MaterialTheme.typography.titleLarge)
                         Text(
-                            subtitle(state.meetingCount),
+                            subtitle(state.meetingCount, state.fabState),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -127,6 +135,7 @@ fun DayScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = { DayFab(state.fabState, onFabClick) },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         DayPager(
@@ -142,12 +151,47 @@ fun DayScreen(
     }
 }
 
-/** "3 meetings" / "1 meeting" / "No meetings"; blank (but still a line tall) while the day loads. */
+/**
+ * "3 meetings" / "1 meeting" / "No meetings", with " · N selected" appended while the FAB
+ * reads "Set alarms" (render 2); blank (but still a line tall) while the day loads.
+ */
 @Composable
-private fun subtitle(meetingCount: Int?): String = when (meetingCount) {
-    null -> ""
-    0 -> stringResource(R.string.day_subtitle_no_meetings)
-    else -> pluralStringResource(R.plurals.day_subtitle_meetings, meetingCount, meetingCount)
+private fun subtitle(meetingCount: Int?, fabState: FabState): String {
+    val meetings = when (meetingCount) {
+        null -> return ""
+        0 -> stringResource(R.string.day_subtitle_no_meetings)
+        else -> pluralStringResource(R.plurals.day_subtitle_meetings, meetingCount, meetingCount)
+    }
+    return if (fabState is FabState.SetAlarms) {
+        stringResource(R.string.day_subtitle_with_selected_count, meetings, fabState.count)
+    } else {
+        meetings
+    }
+}
+
+/**
+ * [ExtendedFloatingActionButton] for [state], animated between the icon/label of
+ * [FabState.SetAlarms] and (PR-8/9) [FabState.Share], hidden entirely while [FabState.Hidden].
+ */
+@Composable
+private fun DayFab(state: FabState, onClick: () -> Unit) {
+    AnimatedVisibility(visible = state != FabState.Hidden) {
+        AnimatedContent(targetState = state, label = "dayFabState") { target ->
+            when (target) {
+                FabState.Hidden -> Unit
+                is FabState.SetAlarms -> ExtendedFloatingActionButton(
+                    onClick = onClick,
+                    icon = { Icon(Icons.Outlined.Alarm, contentDescription = null) },
+                    text = { Text(stringResource(R.string.day_fab_set_alarms, target.count)) },
+                )
+                FabState.Share -> ExtendedFloatingActionButton(
+                    onClick = onClick,
+                    icon = { Icon(Icons.Outlined.Share, contentDescription = null) },
+                    text = { Text(stringResource(R.string.day_fab_share)) },
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -208,8 +252,9 @@ private fun DayScreenPreviewFrame(state: DayUiState) {
             onSettingsClick = {},
             onLicensesClick = {},
             onCheckForUpdatesClick = {},
-            onEventClick = {},
+            onEventClick = { _, _ -> },
             onEventLongClick = {},
+            onFabClick = {},
             scrollState = rememberTimelineScrollState(PreviewEvents.FIRST_VISIBLE_HOUR),
         )
     }
@@ -230,6 +275,20 @@ internal fun DayScreenEmptyPreview() {
 internal fun DayScreenBusyPreview() {
     DayScreenPreviewFrame(
         DayUiState(anchorDate = PreviewDate, meetingCount = 3, days = mapOf(PreviewDate to PreviewEvents.busyDay)),
+    )
+}
+
+/** Render 2 with two events selected: "3 meetings · 2 selected" and the "Set alarms (2)" FAB. */
+@Preview(showBackground = true)
+@Composable
+internal fun DayScreenSelectingPreview() {
+    DayScreenPreviewFrame(
+        DayUiState(
+            anchorDate = PreviewDate,
+            meetingCount = 3,
+            fabState = FabState.SetAlarms(2),
+            days = mapOf(PreviewDate to PreviewEvents.selectingDay),
+        ),
     )
 }
 

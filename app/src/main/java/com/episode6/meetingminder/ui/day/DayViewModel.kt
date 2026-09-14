@@ -5,13 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.SelectedEvent
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.ClearMessage
 import com.episode6.meetingminder.store.LoadDay
 import com.episode6.meetingminder.store.SetSettledDate
 import com.episode6.meetingminder.store.ShowMessage
+import com.episode6.meetingminder.store.ToggleEvent
 import com.episode6.meetingminder.store.UiMessage
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
@@ -74,6 +77,16 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
         store.dispatch(LoadDay(date))
     }
 
+    /** A chip on [date]'s page was tapped: flip its selection. */
+    fun onEventToggle(date: LocalDate, event: TimelineEvent) {
+        store.dispatch(ToggleEvent(date, event.key))
+    }
+
+    /** The FAB was tapped; alarms aren't wired up yet (PR-8). */
+    fun onFabClick() {
+        store.dispatch(ShowMessage(UiMessage.next(R.string.day_fab_coming_soon)))
+    }
+
     /**
      * The provider event behind a chip, for "open in calendar". Null if it has left the
      * loaded window since the chip was drawn.
@@ -102,18 +115,38 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId) = DayUiStat
     date = settledDate,
     isToday = settledDate == anchorDate,
     meetingCount = eventsByDay[settledDate]?.events?.count { it.isMeeting },
+    fabState = dayPlans[settledDate].toFabState(),
     days = eventsByDay.mapValues { (date, day) ->
-        day.toTimelineState(zone, now = now.toLocalTime().takeIf { now.toLocalDate() == date })
+        day.toTimelineState(zone, now = now.toLocalTime().takeIf { now.toLocalDate() == date }, selected = dayPlans[date]?.selected.orEmpty())
     },
     initialFirstVisibleHour = eventsByDay[anchorDate]?.let { initialFirstVisibleHour(it.date, it.events, zone) },
 )
+
+/**
+ * The FAB's state (TODO.md §3.5): hidden with nothing picked, "Set alarms (N)" with a
+ * selection and no alarms yet, "Share schedule" once alarms are set (PR-8 is the first PR
+ * that can ever produce a non-null [DayPlan.alarmsSetAt], so [FabState.Share] is
+ * unreachable through this PR's own UI, but the precedence is right for when it lands).
+ */
+internal fun DayPlan?.toFabState(): FabState {
+    val selected = this?.selected.orEmpty()
+    return when {
+        this?.alarmsSetAt != null -> FabState.Share
+        selected.isEmpty() -> FabState.Hidden
+        else -> FabState.SetAlarms(selected.size)
+    }
+}
 
 /**
  * Splits one day's provider events into the all-day row and the timeline. Timed events that
  * don't actually overlap the day are dropped (see [DayTimelineState.timedEvents]); an event
  * ending exactly at midnight belongs only to the day it started.
  */
-internal fun DayEvents.toTimelineState(zone: ZoneId, now: java.time.LocalTime?): DayTimelineState {
+internal fun DayEvents.toTimelineState(
+    zone: ZoneId,
+    now: java.time.LocalTime?,
+    selected: Map<EventKey, SelectedEvent> = emptyMap(),
+): DayTimelineState {
     val (allDay, timed) = events.partition { it.allDay }
     val dayStart = date.atStartOfDay()
     val dayEnd = date.plusDays(1).atStartOfDay()
@@ -121,8 +154,15 @@ internal fun DayEvents.toTimelineState(zone: ZoneId, now: java.time.LocalTime?):
         date = date,
         allDayEvents = allDay.map { it.toTimelineEvent(zone) },
         timedEvents = timed
-            .map { it.toTimelineEvent(zone) }
+            .map { it.toTimelineEvent(zone, selection = selected[it.key]) }
             .filter { it.begin < dayEnd && (it.end > dayStart || (it.end == it.begin && it.begin >= dayStart)) },
         now = now,
     )
 }
+
+/** [CalendarEvent.toTimelineEvent] driven by the day's [SelectedEvent] row, if any. */
+private fun CalendarEvent.toTimelineEvent(zone: ZoneId, selection: SelectedEvent?): TimelineEvent = toTimelineEvent(
+    zone = zone,
+    selected = selection != null,
+    alarmAt = selection?.alarmAt?.let { LocalDateTime.ofInstant(it, zone).toLocalTime() },
+)

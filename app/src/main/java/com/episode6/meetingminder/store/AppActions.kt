@@ -2,6 +2,8 @@ package com.episode6.meetingminder.store
 
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.DayPlan
+import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.redux.Action
 import java.time.LocalDate
@@ -27,6 +29,13 @@ data class SetCalendars(val calendars: List<CalendarInfo>) : UpdateStateAction
  * dropped, and so is any cached day that has fallen outside the window.
  */
 data class SetDayEvents(val dayEvents: DayEvents) : UpdateStateAction
+
+/**
+ * Replaces [AppState.dayPlans] with a fresh read of `day_plan` + `selected_event`
+ * (`ObserveDayPlansSideEffects`), full-replace like [SetCalendars] since the underlying
+ * DAO flows already emit the complete table on every change.
+ */
+data class SetDayPlans(val dayPlans: Map<LocalDate, DayPlan>) : UpdateStateAction
 
 /** Shows [message] as a snackbar, replacing any message still pending. */
 data class ShowMessage(val message: UiMessage) : UpdateStateAction
@@ -62,3 +71,11 @@ data class LoadDay(val date: LocalDate) : AsyncAction
  * [AppState.settledDate].
  */
 data object CalendarContentChanged : AsyncAction
+
+/**
+ * The user tapped an event chip on [date]: flip its selection ("I'm going to this") and
+ * persist the change to `selected_event` (`ToggleEventSideEffects`). [key] alone doesn't
+ * say which page's chip was tapped, since the same occurrence can appear on two adjacent
+ * days' timelines (an event crossing midnight) with its own selection on each.
+ */
+data class ToggleEvent(val date: LocalDate, val key: EventKey) : AsyncAction
