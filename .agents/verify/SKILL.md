@@ -127,8 +127,11 @@ full-screen intent brings up the dark ringing screen (clock, countdown, Dismiss 
 the lock screen — or a heads-up with Snooze/Dismiss while the phone is in use. Unanswered
 for 3 minutes it snoozes itself once, then gives up with a "Missed alarm" notification.
 Onboarding needs calendar, notifications, exact alarms and full-screen alarms granted
-before the day view shows (battery-optimisation and background-restriction rows are
-shown but optional). The chip states are also reviewed through the Roborazzi previews
+before the day view shows. Two optional rows are conditional, so a fresh emulator shows
+neither: "Ignore battery optimization" appears only while the app isn't exempt, and the
+"Background use restricted" warning only while Android restricts the app (the restricted
+standby bucket, or battery usage set to Restricted — see "Robustness checks" for how to
+force each). The chip states are also reviewed through the Roborazzi previews
 under `app/src/test/screenshots/`. `adb shell setprop log.tag.MeetingMinderStore DEBUG`
 logs every dispatched store action's type.
 
@@ -139,13 +142,14 @@ alarm time, the RSVP goes to "Yes, going" in the calendar) → FAB becomes
 Then move or add an event in Google Calendar and confirm the "changed since you shared"
 notification and in-app banner arrive.
 
-Settings (overflow → Settings): change the lead time, snooze length, auto-timeout and
-sound pack, toggle a calendar's include switch (the day view should stop/start showing
-that calendar's events), toggle the "Show declined events" switch, and tap the
-"Test alarm" button (snackbar reads "Test alarm rings in 10 seconds"; it fires about
-10 seconds later without touching real calendar data — the test event is excluded from
-"N meetings" counts and alarm armed-counts). The permissions row reflects onboarding
-state and re-enters onboarding when tapped.
+Settings (overflow → Settings): change the lead time, snooze length, auto-timeout and the
+"Alarm sounds" row (All / Bundled only / System only), toggle a calendar's include switch
+(the day view should stop/start showing that calendar's events), toggle the "Show declined
+events" switch, and tap the "Test alarm" button (snackbar reads "Test alarm rings in 10
+seconds"; it fires about 10 seconds later without touching real calendar data — the test
+alarm never appears in the day view's FAB armed count, and its ringing screen has no
+"Open meeting"). The permissions row reflects onboarding state and re-enters onboarding
+when tapped.
 
 Alarms: set one a minute or two out, lock the screen, and confirm the ringing activity
 comes up over the lock screen with the screen woken and a sound playing. Dismiss and
@@ -203,18 +207,27 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   no rooted `date`, so leave the app open and past a real midnight instead. Either way, the
   viewed day and "Today" target should follow.
 - Timezone change: `adb shell settings put global auto_time_zone 0` (not `content
-  update` — that's not how settings are written), then either
-  `adb shell setprop persist.sys.timezone Europe/London` (emulator only, root, and the
-  property name is version-dependent) or the friendlier route: Extended Controls →
-  Settings → Time, or `Settings > System > Date & time` by hand. Scheduled alarms for the
-  day should still fire at the right local time afterwards.
+  update` — that's not how settings are written), then
+  `adb shell cmd alarm set-timezone Europe/London` (AlarmManager's shell command; the
+  shell uid holds `SET_TIME_ZONE`, so no root needed), or on a rooted emulator
+  `adb shell setprop persist.sys.timezone Europe/London`, or by hand via Extended
+  Controls → Settings → Time / `Settings > System > Date & time`. What to look for:
+  `BootReceiver` handles `TIMEZONE_CHANGED`, so `dumpsys alarm` should show every armed
+  alarm re-timed to the new local wall-clock, and the day view's hour gutter and chips
+  should shift with it.
 - Battery optimisation / restricted standby: `adb shell dumpsys deviceidle whitelist -$PKG`
   removes the app from the allowlist so onboarding's battery row shows "Allow"; `adb shell
   am set-standby-bucket $PKG restricted` simulates the "restricted" bucket warning.
 - Dark theme / large font / TalkBack: `adb shell "cmd uimode night yes"` (and `no` after),
-  `adb shell settings put system font_scale 1.5`, and `adb shell settings put secure
-  enabled_accessibility_services com.android.talkback/com.google.android.marvin.talkback.TalkBackService`
-  (revert each afterwards) — walk the day view and onboarding under each.
+  `adb shell settings put system font_scale 1.5`, and for TalkBack first check it's there
+  at all — `adb shell pm list packages | grep -i talkback` — since `google_apis` emulator
+  images usually don't ship it (it's a Play component; use a Play-store image or a real
+  phone). The service component differs between builds
+  (`com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService`
+  on Google builds, `com.android.talkback/…` on AOSP), so use whichever the package list
+  shows in `adb shell settings put secure enabled_accessibility_services <component>`,
+  and also `adb shell settings put secure accessibility_enabled 1` or the service won't
+  start (revert each afterwards) — walk the day view and onboarding under each.
 
 ## Gotchas
 
