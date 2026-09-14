@@ -29,7 +29,7 @@ internal const val CALENDAR_CHANGE_DEBOUNCE_MILLIS = 500L
  * is granted, collect [CalendarChangeSource] — which registers the `ContentObserver` — and
  * turn each debounced burst into [CalendarContentChanged]. When either goes false the
  * collection is cancelled, which unregisters the observer; background changes are the
- * WorkManager trigger's job (PR-11).
+ * WorkManager trigger's job (`monitor/CalendarChangeWorker`).
  *
  * Becoming active also emits one [CalendarContentChanged] straight away: nothing was
  * observing while the UI was away, so the loaded days may be stale.

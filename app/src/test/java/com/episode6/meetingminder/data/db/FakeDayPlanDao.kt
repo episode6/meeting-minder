@@ -15,6 +15,8 @@ internal class FakeDayPlanDao(
     override fun observeDayPlans() = plansFlow
     override fun observeSelectedEvents() = selectionsFlow
 
+    override suspend fun dayPlanOn(date: LocalDate): DayPlanEntity? = plansFlow.value.firstOrNull { it.date == date }
+
     override suspend fun selectedEventsOn(date: LocalDate): List<SelectedEventEntity> =
         selectionsFlow.value.filter { it.date == date }
 

@@ -78,7 +78,8 @@ object ScheduleTextFormatter {
         }
     }
 
-    private fun formatRange(range: BusyRange, zone: ZoneId): String {
+    /** One range as the share text writes it ("9:00 – 9:30 AM"); the schedule-changed notification and banner use it too. */
+    fun formatRange(range: BusyRange, zone: ZoneId): String {
         val begin = LocalDateTime.ofInstant(range.begin, zone)
         val end = LocalDateTime.ofInstant(range.end, zone)
         val beginPeriod = begin.toLocalTime().period()

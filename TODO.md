@@ -237,6 +237,15 @@ leaving the foreground, and only writes the row itself if the service can't be r
 notification's Snooze/Dismiss actions go to the service directly. The service's rules live
 in the Android-free `AlarmRingingSession`.
 
+NB (PR-11): `RunChangeCheck(reason)` is not a store action either. `CalendarChangeWorker`
+calls `monitor/ChangeMonitor.runCheck(reason)` directly (a worker can't await a dispatch,
+like the receivers above), and the foreground check rides on `CalendarContentChanged`
+(`ChangeDetectionSideEffects`). What a check finds is recorded in
+`change_snapshot.changes_json` and streamed into `AppState.scheduleChanges` through
+`SetScheduleChanges`, so the banner shows background findings too. `ShareDay` reads the
+selection and plan from Room (and the day from the provider when the store hasn't loaded
+it) because "Share update" can arrive into a cold process.
+
 Side effects (one file each under `store/sideeffects/`): `ObserveDayPlans`, `LoadCalendars`,
 `LoadDayEvents` (`transformLatest` on `LoadDay`/`CalendarContentChanged`), `ToggleEvent`,
 `ScheduleAlarms`, `RsvpAccept`, `ShareSchedule`, `AlarmRinging`, `ChangeDetection`, `CalendarObserver`
@@ -364,6 +373,11 @@ is armed again at its snooze time (`fire_at`) and counts as armed everywhere `SC
 which keeps a snoozed row for a still-selected event rather than reading its snooze `fire_at`
 as "moved into the past", cancels it if deselected, and re-times it to a fresh `SCHEDULED`
 alarm only when its event has moved far enough that one is due in the future.
+
+NB (PR-11): `change_snapshot` also has `changes_json TEXT NOT NULL DEFAULT '[]'` — what the
+last check found changed since the share, which is how a check tells a change it already
+notified about from a new one; a re-share replaces the row and so empties it. Each
+`events_json` row also stores `allDay` (older rows read as timed). Database version 5.
 
 ### 3.5 Day view UI (Compose)
 
@@ -633,6 +647,31 @@ any lingering notification. A day's notification is cancelled when that day ends
 re-shared. The notification title names the day when it isn't today ("Your Tuesday schedule
 changed since you shared it"). Unselected non-meetings never trigger a change (see the scope
 rule above). No `day_plan` row with `shared_at != null` and `date ≥ today` → nothing runs.
+
+NB (PR-11), where the build settled things this section leaves open:
+- **Three unique works**, all `CalendarChangeWorker`: `calendar-change-trigger` (the content
+  trigger; re-armed from inside its own run with `APPEND_OR_REPLACE`, from anywhere else with
+  `KEEP`), `calendar-change-periodic` (the safety net, `KEEP`, first run one interval out) and
+  `calendar-change-expiry` (the delayed one-time work at the last shared day's midnight,
+  `REPLACE`d on every arm). A shared day is a `change_snapshot` row; a check deletes the rows
+  of ended days and cancels their notifications, then arms for the remaining days or disarms.
+  A worker never cancels its own one-time work.
+- **"Gone" is judged against the whole day's read**, not the rest-of-day window, so a
+  selected event that is still running is never read as cancelled; the window is expressed
+  through the "hasn't started / not over yet" conditions. A selected event moved to another
+  day reads as Cancelled on the shared day. Declined wins over Moved for the same event.
+- **Notification**: tag `schedule_updates`, id = the day's epoch day. A check that finds the
+  same changes as last time does nothing; one where changes only dropped out updates the
+  notification without alerting (and doesn't revive a dismissed one); no changes left cancels
+  it. The weekday names the day within the next six days, a date further out.
+- **Banner**: shown from the recorded changes, and also (lines-free, "Your picks changed since
+  you shared") when the loaded day's selected busy ranges no longer match `shared_snapshot`,
+  per §2. A re-share of a day with either difference sends the `Update:` text.
+- **Deep links** are handled in `Navigation.kt` from the launch intent (once, saved across
+  recreation) and `onNewIntent` (the notifications launch `MainActivity` clear-top +
+  single-top). They are dropped while a required grant is missing.
+- WorkManager's merged `ACCESS_NETWORK_STATE` is removed with `tools:node="remove"`; nothing
+  uses a network constraint.
 
 **Testing**: `ChangeDetector` is plain JVM. Worker tests via `WorkManagerTestInitHelper` +
 `TestDriver.setAllConstraintsMet`. On device: `adb shell content insert/update/delete` on the test
@@ -1012,7 +1051,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 3 — Watch the day
 
-- [ ] **PR-11: Change detection + notification.** `[Opus 5, effort high]` `ChangeDetector` (pure, tested for each row of
+- [x] **PR-11: Change detection + notification.** `[Opus 5, effort high]` `ChangeDetector` (pure, tested for each row of
   the §4.3 table), `change_snapshot` handling, `CalendarChangeWorker` (content-URI-triggered
   one-time work that re-arms itself) + the 30-min periodic safety net, per-shared-day monitoring
   start/stop lifecycle (today and future days), `schedule_updates` notification with Review / Share update deep links

@@ -13,7 +13,8 @@ The app ships with the following libraries, used under the **Apache License 2.0*
   serialization) — © JetBrains s.r.o. and Kotlin contributors —
   <https://kotlinlang.org>
 - **AndroidX / Jetpack** (Activity, Compose UI, Compose Material 3, Core,
-  DataStore, Lifecycle, Navigation, Room, SQLite, Window, and their support artifacts)
+  DataStore, Lifecycle, Navigation, Room, SQLite, Window, WorkManager, and their support
+  artifacts)
   — © The Android Open Source Project — <https://developer.android.com/jetpack>
 - **Compose Multiplatform** runtime and the multiplatform **Lifecycle** / **SavedState**
   artifacts (`org.jetbrains.compose.*`, `org.jetbrains.androidx.*`) — © JetBrains s.r.o.

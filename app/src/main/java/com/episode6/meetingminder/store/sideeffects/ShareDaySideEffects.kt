@@ -1,12 +1,19 @@
 package com.episode6.meetingminder.store.sideeffects
 
+import android.util.Log
+import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.DayPlanDao
+import com.episode6.meetingminder.data.db.decodeBusyRanges
+import com.episode6.meetingminder.data.db.decodeScheduleChanges
 import com.episode6.meetingminder.data.db.encodeBusyRanges
 import com.episode6.meetingminder.data.db.encodeChangeSnapshotEvents
 import com.episode6.meetingminder.model.BusyRange
+import com.episode6.meetingminder.model.CalendarEvent
+import com.episode6.meetingminder.monitor.ChangeMonitor
 import com.episode6.meetingminder.share.ScheduleTextFormatter
+import com.episode6.meetingminder.share.selectedBusyRanges
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.PendingShare
@@ -18,26 +25,37 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesTo
 import dev.zacsweers.metro.IntoSet
 import dev.zacsweers.metro.Provides
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+
+private const val TAG = "MeetingMinderShare"
 
 /**
- * "Share schedule" / "Share again" / "Mark as not shared" (TODO.md §4.2/§4.3). [ShareDay]
- * formats the day's *selected* events into busy-range text with [ScheduleTextFormatter],
- * using each selection's freshly loaded begin/end from `eventsByDay` when the provider
- * still has the event (same re-timing rule as [com.episode6.meetingminder.alarm.reconcileAlarms])
- * and falling back to the stored `selected_event` times otherwise — so a meeting moved
- * after alarms were set still shares its current time, and `change_snapshot`'s baseline
- * (built from the same fresh read) describes the same moment as the text it's shared
- * alongside. Records `day_plan.shared_at`/`shared_snapshot` (the merged ranges) and the
- * `change_snapshot` baseline (every event on the day — selected or not, meeting or
- * not — that PR-11's differ will compare a fresh read against), then hands the text to
- * `Navigation.kt` via [SetPendingShare]: `ShareCompat` needs a real Activity context and
- * must never launch from a receiver (§4.2), so the actual chooser call happens in the UI
- * layer, not here. [MarkNotShared] just clears that bookkeeping back out.
+ * "Share schedule" / "Share again" / "Re-share" / "Share update" / "Mark as not shared"
+ * (TODO.md §4.2/§4.3). [ShareDay] formats the day's *selected* events into busy-range text
+ * with [ScheduleTextFormatter] ([selectedBusyRanges]: each selection's freshly loaded
+ * begin/end when the provider still has the event, its stored `selected_event` times
+ * otherwise), records `day_plan.shared_at`/`shared_snapshot` (the merged ranges) and the
+ * `change_snapshot` baseline (every event on the day — selected or not, meeting or not —
+ * that `monitor/ChangeDetector` compares a fresh read against), restarts monitoring
+ * ([ChangeMonitor.onShareChanged], which also cancels the day's notification), then hands
+ * the text to `Navigation.kt` via [SetPendingShare]: `ShareCompat` needs a real Activity
+ * context and must never launch from a receiver (§4.2), so the chooser call happens in the
+ * UI layer, not here. [MarkNotShared] clears that bookkeeping back out and stops monitoring.
+ *
+ * The selection and plan are read from Room and the day's events from the store only when
+ * they are loaded (otherwise straight from the provider), because "Share update" can arrive
+ * from a notification into a cold process whose store hasn't loaded anything yet. A day that
+ * was already shared and has changed since (recorded changes, or busy ranges that no longer
+ * match the last share) gets the `Update:` text. If the day can't be read at all, the share
+ * still goes out but no baseline is kept, rather than one that would report every meeting
+ * as new.
  *
  * We can't know whether the user actually sent anything from the chooser (§4.2), so
  * "shared" is recorded as soon as the tap is handled, same moment the text is handed off
@@ -47,45 +65,67 @@ import java.time.Clock
 interface ShareDaySideEffects {
     @OptIn(ExperimentalCoroutinesApi::class)
     @Provides @IntoSet
-    fun shareDay(dayPlanDao: DayPlanDao, changeSnapshotDao: ChangeSnapshotDao, clock: Clock): SideEffect<AppState> = sideEffect {
+    fun shareDay(
+        dayPlanDao: DayPlanDao,
+        changeSnapshotDao: ChangeSnapshotDao,
+        repository: CalendarRepository,
+        changeMonitor: ChangeMonitor,
+        clock: Clock,
+    ): SideEffect<AppState> = sideEffect {
         actions.filterIsInstance<ShareDay>().flatMapMerge { action ->
             flow {
-                val state = currentState()
-                val selected = state.dayPlans[action.date]?.selected.orEmpty()
-                val fresh = state.eventsByDay[action.date]?.events.orEmpty().associateBy { it.key }
-                val busyRanges = ScheduleTextFormatter.merge(
-                    selected.values.map { selection ->
-                        val event = fresh[selection.key]
-                        if (event != null) BusyRange(event.begin, event.end) else BusyRange(selection.begin, selection.end)
-                    },
+                val date = action.date
+                val events = currentState().eventsByDay[date]?.events ?: repository.readDay(date)
+                val selections = dayPlanDao.selectedEventsOn(date)
+                val busyRanges = selectedBusyRanges(
+                    selections.associate { it.key to BusyRange(Instant.ofEpochMilli(it.beginMillis), Instant.ofEpochMilli(it.endMillis)) },
+                    events.orEmpty(),
                 )
-                val text = ScheduleTextFormatter.format(action.date, busyRanges, clock.zone)
-                val now = clock.instant()
+                val plan = dayPlanDao.dayPlanOn(date)
+                val isUpdate = plan?.sharedAt != null && (
+                    changeSnapshotDao.forDate(date)?.let { decodeScheduleChanges(date, it.changesJson) }.orEmpty().isNotEmpty() ||
+                        plan.sharedSnapshot?.let(::decodeBusyRanges) != busyRanges
+                    )
+                val text = ScheduleTextFormatter.format(date, busyRanges, clock.zone, isUpdate = isUpdate)
+                val now = clock.instant().toEpochMilli()
 
-                dayPlanDao.markShared(action.date, now.toEpochMilli(), encodeBusyRanges(busyRanges))
-                changeSnapshotDao.upsert(
-                    ChangeSnapshotEntity(
-                        date = action.date,
-                        takenAt = now.toEpochMilli(),
-                        eventsJson = encodeChangeSnapshotEvents(
-                            state.eventsByDay[action.date]?.events.orEmpty(),
-                            selected.keys,
+                dayPlanDao.markShared(date, now, encodeBusyRanges(busyRanges))
+                if (events != null) {
+                    changeSnapshotDao.upsert(
+                        ChangeSnapshotEntity(
+                            date = date,
+                            takenAt = now,
+                            eventsJson = encodeChangeSnapshotEvents(events, selections.mapTo(mutableSetOf()) { it.key }),
                         ),
-                    ),
-                )
-                emit(SetPendingShare(PendingShare.next(action.date, text)))
+                    )
+                } else {
+                    changeSnapshotDao.delete(date)
+                }
+                changeMonitor.onShareChanged(date)
+                emit(SetPendingShare(PendingShare.next(date, text)))
             }
         }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Provides @IntoSet
-    fun markNotShared(dayPlanDao: DayPlanDao, changeSnapshotDao: ChangeSnapshotDao): SideEffect<AppState> = sideEffect {
+    fun markNotShared(dayPlanDao: DayPlanDao, changeSnapshotDao: ChangeSnapshotDao, changeMonitor: ChangeMonitor): SideEffect<AppState> = sideEffect {
         actions.filterIsInstance<MarkNotShared>().flatMapMerge { action ->
             flow<Action> {
                 dayPlanDao.clearShared(action.date)
                 changeSnapshotDao.delete(action.date)
+                changeMonitor.onShareChanged(action.date)
             }
         }
     }
+}
+
+/** The whole day from the provider, or null when it can't be read (calendar access revoked). */
+private suspend fun CalendarRepository.readDay(date: LocalDate): List<CalendarEvent>? = try {
+    eventsOn(date)
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    Log.w(TAG, "could not read $date to share it", e)
+    null
 }

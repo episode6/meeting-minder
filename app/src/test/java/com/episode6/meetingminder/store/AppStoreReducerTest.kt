@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.store
 
+import com.episode6.meetingminder.model.ScheduleChange
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
@@ -174,5 +175,15 @@ class AppStoreReducerTest {
 
         assertThat(second.id).isEqualTo(first.id + 1)
         assertThat(second.formatArgs).isEqualTo(listOf<Any>("arg"))
+    }
+
+    @Test
+    fun setScheduleChanges_replacesEveryDaysChanges() {
+        val change = ScheduleChange.New(today, EventKey(1, 0), Instant.EPOCH, Instant.EPOCH.plusSeconds(1_800))
+
+        val changed = state.reduce(SetScheduleChanges(listOf(change)))
+
+        assertThat(changed.scheduleChanges).isEqualTo(listOf(change))
+        assertThat(changed.reduce(SetScheduleChanges(emptyList())).scheduleChanges).isEqualTo(emptyList<ScheduleChange>())
     }
 }

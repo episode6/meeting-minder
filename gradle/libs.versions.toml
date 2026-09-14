@@ -59,6 +59,7 @@ androidx-room-runtime = { group = "androidx.room", name = "room-runtime", versio
 androidx-runner = { group = "androidx.test", name = "runner", version.ref = "testRunner" }
 androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "testCore" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
+androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "workManager" }
 assertk = { group = "com.willowtreeapps.assertk", name = "assertk", version.ref = "assertk" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }

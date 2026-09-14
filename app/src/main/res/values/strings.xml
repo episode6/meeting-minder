@@ -123,4 +123,27 @@
     <string name="alarm_sound_playing">Sound: “%1$s” (random)</string>
     <string name="alarm_sound_siren">Siren sweep</string>
     <string name="alarm_sound_default">Default alarm</string>
+
+    <!-- schedule-changed notification (render 6, TODO.md §4.3) -->
+    <string name="notification_channel_schedule_updates">Schedule updates</string>
+    <string name="notification_channel_schedule_updates_description">When a day you shared changes: a new meeting, or one you picked moving, being cancelled or being declined.</string>
+    <string name="schedule_changed_title">Your schedule changed since you shared it</string>
+    <!-- %1$s names the shared day when it isn't today, e.g. "Tuesday" -->
+    <string name="schedule_changed_title_on_day">Your %1$s schedule changed since you shared it</string>
+    <!-- one line per change, times only (like the share text), e.g. "Moved: 12:00 – 1:00 PM → 12:30 – 1:30 PM" -->
+    <string name="schedule_change_new">New: %1$s</string>
+    <string name="schedule_change_moved">Moved: %1$s → %2$s</string>
+    <string name="schedule_change_cancelled">Cancelled: %1$s</string>
+    <string name="schedule_change_declined">Declined: %1$s</string>
+    <string name="schedule_change_separator">" · "</string>
+    <string name="schedule_changed_review">Review</string>
+    <string name="schedule_changed_share_update">Share update</string>
+    <!-- the day view's "changed since you shared" banner -->
+    <plurals name="day_banner_changes">
+        <item quantity="one">%d change since you shared</item>
+        <item quantity="other">%d changes since you shared</item>
+    </plurals>
+    <!-- banner when only the selection differs from what was shared -->
+    <string name="day_banner_selection_changed">Your picks changed since you shared</string>
+    <string name="day_banner_reshare">Re-share</string>
 </resources>

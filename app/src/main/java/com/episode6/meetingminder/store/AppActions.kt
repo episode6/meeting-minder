@@ -5,6 +5,7 @@ import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.RingingAlarm
+import com.episode6.meetingminder.model.ScheduleChange
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.redux.Action
 import java.time.LocalDate
@@ -59,6 +60,12 @@ data class ClearPendingShare(val id: Long) : UpdateStateAction
 data class SetRinging(val ringing: RingingAlarm?) : UpdateStateAction
 
 /**
+ * Replaces [AppState.scheduleChanges] with a fresh read of every shared day's recorded
+ * changes (`ChangeDetectionSideEffects`, full-replace like [SetDayPlans]).
+ */
+data class SetScheduleChanges(val changes: List<ScheduleChange>) : UpdateStateAction
+
+/**
  * Requests handled only by side effects under `store/sideeffects/` (never by the
  * reducer); see TODO.md §3.2 for the full list.
  */
@@ -83,7 +90,8 @@ data class LoadDay(val date: LocalDate) : AsyncAction
 /**
  * The Calendar Provider changed (debounced), or the UI just became visible again after
  * changes may have been missed: reload the calendars and the loaded window around
- * [AppState.settledDate].
+ * [AppState.settledDate], and run the change check on every shared day
+ * (`ChangeDetectionSideEffects`, TODO.md §4.3 mechanism 1).
  */
 data object CalendarContentChanged : AsyncAction
 
@@ -131,18 +139,21 @@ sealed interface RsvpResult {
 }
 
 /**
- * The user tapped "Share schedule" or the overflow's "Share again" for [date] (TODO.md
- * §4.2): format the day's selected events into busy-range text, record `shared_at` +
- * `shared_snapshot` on `day_plan` and the `change_snapshot` baseline (§4.3, read by
- * PR-11), and hand the text to `Navigation.kt` via [SetPendingShare] to actually open the
- * share sheet — `ShareDaySideEffects`.
+ * The user tapped "Share schedule", the overflow's "Share again", the "changed since you
+ * shared" banner's "Re-share" or the notification's "Share update" for [date] (TODO.md
+ * §4.2/§4.3): format the day's selected events into busy-range text (an `Update:` when the
+ * day was already shared and has changed since), record `shared_at` + `shared_snapshot` on
+ * `day_plan` and a fresh `change_snapshot` baseline, restart monitoring, and hand the text
+ * to `Navigation.kt` via [SetPendingShare] to actually open the share sheet —
+ * `ShareDaySideEffects`.
  */
 data class ShareDay(val date: LocalDate) : AsyncAction
 
 /**
  * The overflow's "Mark as not shared" for [date]: clears `day_plan.shared_at`/
  * `shared_snapshot` and the `change_snapshot` baseline, for the "I fat-fingered the
- * chooser" case (TODO.md §4.2). Leaves the selection and alarms untouched.
+ * chooser" case (TODO.md §4.2), which also stops monitoring the day and cancels its
+ * notification. Leaves the selection and alarms untouched.
  */
 data class MarkNotShared(val date: LocalDate) : AsyncAction
 

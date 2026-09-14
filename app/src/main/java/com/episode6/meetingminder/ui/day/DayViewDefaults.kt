@@ -103,4 +103,14 @@ object DayViewDefaults {
     val AllDayRowVerticalPadding = 4.dp
     val AllDayChipSpacing = 2.dp
     val AllDayChipHeight = 24.dp
+
+    // the "changed since you shared" banner (render 6)
+    val BannerOuterHorizontalPadding = 12.dp
+    val BannerOuterVerticalPadding = 4.dp
+    val BannerCornerRadius = 12.dp
+    val BannerContentStartPadding = 16.dp
+    val BannerContentEndPadding = 8.dp
+    val BannerContentVerticalPadding = 8.dp
+    val BannerContentSpacing = 12.dp
+    const val BannerDetailMaxLines = 2
 }

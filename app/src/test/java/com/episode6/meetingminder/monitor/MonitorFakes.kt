@@ -1,0 +1,36 @@
+package com.episode6.meetingminder.monitor
+
+import com.episode6.meetingminder.model.ScheduleChange
+import com.episode6.meetingminder.permissions.PermissionChecker
+import com.episode6.meetingminder.permissions.PermissionState
+import java.time.LocalDate
+
+/** Records every [ChangeWorkScheduler.update], in order. */
+internal class FakeChangeWorkScheduler : ChangeWorkScheduler {
+    val updates = mutableListOf<Pair<Set<LocalDate>, ChangeCheckReason>>()
+
+    override fun update(sharedDays: Set<LocalDate>, reason: ChangeCheckReason) {
+        updates += sharedDays to reason
+    }
+}
+
+/** Records what [ScheduleChangeNotifier] was asked to show and cancel, in order. */
+internal class FakeScheduleChangeNotifier : ScheduleChangeNotifier {
+    data class Shown(val date: LocalDate, val changes: List<ScheduleChange>, val alert: Boolean)
+
+    val shown = mutableListOf<Shown>()
+    val cancelled = mutableListOf<LocalDate>()
+
+    override fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean) {
+        shown += Shown(date, changes, alert)
+    }
+
+    override fun cancel(date: LocalDate) {
+        cancelled += date
+    }
+}
+
+/** A [PermissionChecker] reporting calendar access as [calendarGranted] (and nothing else granted). */
+internal class FakeCalendarPermissionChecker(var calendarGranted: Boolean = true) : PermissionChecker {
+    override fun currentState() = PermissionState(calendarGranted = calendarGranted)
+}

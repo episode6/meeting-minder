@@ -2,8 +2,11 @@ package com.episode6.meetingminder.ui.navigation
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.SnackbarHostState
@@ -13,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -20,6 +24,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.core.app.ActivityCompat
+import androidx.core.util.Consumer
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -31,6 +36,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.repeatOnLifecycle
+import com.episode6.meetingminder.DeepLinks
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.permissions.PermissionRequester
 import com.episode6.meetingminder.share.shareSchedule
@@ -44,11 +50,12 @@ import com.episode6.meetingminder.ui.util.ComingSoonScreen
 import com.episode6.meetingminder.ui.util.findActivity
 import com.episode6.meetingminder.ui.util.resolve
 import dev.zacsweers.metrox.viewmodel.metroViewModel
+import java.time.LocalDate
 
 /**
  * The wiring layer: the only place ViewModels are obtained and their state collected,
- * and where one-shot effects (snackbars, activity launchers, later the share sheet and
- * deep links) are handled. Screens below it only take state + callbacks.
+ * and where one-shot effects (snackbars, activity launchers, the share sheet and deep
+ * links) are handled. Screens below it only take state + callbacks.
  */
 @Composable
 fun MeetingMinderNavigation() {
@@ -84,6 +91,40 @@ fun MeetingMinderNavigation() {
                 launchSingleTop = true
             }
         }
+    }
+
+    // Deep links from notifications (TODO.md §4.3): meetingminder://day/{date} shows that day,
+    // meetingminder://share/{date} also opens its share sheet. The launch intent is handled
+    // once per activity (saved across recreation, whose intent is still the old link); a
+    // notification tapped while the app is running arrives through onNewIntent, since the
+    // notifications launch MainActivity single-top.
+    val activity = LocalActivity.current as? ComponentActivity
+    var pendingJumpDate by rememberSaveable { mutableStateOf<LocalDate?>(null) }
+    var launchIntentHandled by rememberSaveable { mutableStateOf(false) }
+    val handleIntent by rememberUpdatedState { intent: Intent? ->
+        val link = DeepLinks.parse(intent?.dataString)
+        if (link != null && navigationViewModel.onDeepLink(link)) {
+            pendingJumpDate = link.date
+            if (navController.currentBackStackEntry?.destination?.hasRoute<Route.Day>() != true &&
+                !navController.popBackStack<Route.Day>(inclusive = false)
+            ) {
+                navController.navigate(Route.Day) {
+                    popUpTo(navController.graph.id) { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        if (!launchIntentHandled) {
+            launchIntentHandled = true
+            handleIntent(activity?.intent)
+        }
+    }
+    DisposableEffect(activity) {
+        val listener = Consumer<Intent> { handleIntent(it) }
+        activity?.addOnNewIntentListener(listener)
+        onDispose { activity?.removeOnNewIntentListener(listener) }
     }
 
     NavHost(navController = navController, startDestination = startDestination) {
@@ -146,6 +187,8 @@ fun MeetingMinderNavigation() {
                     }
                 },
                 onFabClick = viewModel::onFabClick,
+                jumpToDate = pendingJumpDate,
+                onJumpHandled = { pendingJumpDate = null },
             )
         }
         composable<Route.Onboarding> {

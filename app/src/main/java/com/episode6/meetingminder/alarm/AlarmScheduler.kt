@@ -37,8 +37,8 @@ object AlarmUris {
     /** The alarm id in an [alarm] URI; null for anything else. */
     fun alarmIdOf(uri: Uri): Long? = uri.takeIf { it.scheme == SCHEME && it.authority == "alarm" }?.lastPathSegment?.toLongOrNull()
 
-    /** The day view for [date]; PR-11 teaches `Navigation.kt` to deep-link into it. */
-    fun day(date: LocalDate): Uri = Uri.Builder().scheme(SCHEME).authority("day").appendPath(date.toString()).build()
+    /** The day view for [date] (`Navigation.kt` handles it; see [com.episode6.meetingminder.DeepLinks]). */
+    fun day(date: LocalDate): Uri = com.episode6.meetingminder.DeepLinks.day(date)
 }
 
 /**

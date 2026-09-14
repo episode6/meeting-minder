@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Permissions arrive with the features that need them (see TODO.md); every one is
          pinned in app/expected-permissions.txt, which is verified against the merged
@@ -20,8 +21,8 @@
     <uses-permission
         android:name="android.permission.SCHEDULE_EXACT_ALARM"
         android:maxSdkVersion="32" />
-    <!-- The ringing and missed-alarm notifications (and PR-11's schedule-changed
-         notification); a runtime permission on 33+ (onboarding row). -->
+    <!-- The ringing, missed-alarm and schedule-changed notifications; a runtime
+         permission on 33+ (onboarding row). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Alarms never survive a shutdown: BootReceiver re-arms every stored one. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -39,6 +40,13 @@
          before the ringing service exists, so the CPU is kept awake from the receiver
          until the ringing stops. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- WorkManager (change detection, TODO.md §4.3) declares ACCESS_NETWORK_STATE for
+         network constraints. Nothing here ever uses one (the app is offline by spec), so it
+         is stripped from the merge rather than allowlisted. WorkManager's own
+         WAKE_LOCK/RECEIVE_BOOT_COMPLETED/FOREGROUND_SERVICE are already declared above. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
 
     <!-- Package visibility (API 30+) for long-press "open in calendar": lets resolveActivity
          see the calendar app that views content://com.android.calendar/events/… and /time/…
