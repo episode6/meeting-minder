@@ -49,9 +49,11 @@ repeatable; drive it by hand only for one-off visual checks.
 
 ## Core flow to exercise
 
-> **Current state:** until the timeline and pager land (TODO.md PR-5/PR-6) the app launches to
-> an empty day view (date title, Today action, overflow menu with Permissions/Settings
-> placeholders, Check for updates and the license notices), so verifying a change today
+> **Current state:** until the pager and data loading land (TODO.md PR-6) the app launches to
+> an empty day timeline (date title, Today action, all-day row hidden, hour grid with no
+> events, overflow menu with Permissions/Settings placeholders, Check for updates and the
+> license notices). The chip states are reviewed through the Roborazzi previews under
+> `app/src/test/screenshots/` rather than on device, so verifying a change today
 > means confirming it builds, installs, launches to that screen and the overflow routes
 > work. `adb shell setprop log.tag.MeetingMinderStore DEBUG` logs every dispatched
 > store action's type. The flow below is the target; exercise

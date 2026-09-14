@@ -3,12 +3,13 @@ package com.episode6.meetingminder
 import android.Manifest
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import assertk.assertThat
 import assertk.assertions.startsWith
+import com.episode6.meetingminder.ui.day.DAY_TIMELINE_TEST_TAG
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -38,7 +39,7 @@ class AppLaunchTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assertThat(context.packageName).startsWith("com.episode6.meetingminder")
 
-        composeRule.onNodeWithText(context.getString(R.string.day_empty)).assertExists()
+        composeRule.onNodeWithTag(DAY_TIMELINE_TEST_TAG).assertExists()
         composeRule.onNodeWithContentDescription(context.getString(R.string.day_today)).assertExists()
     }
 }

@@ -6,7 +6,15 @@
 
     <string name="day_today">Today</string>
     <string name="day_subtitle_no_meetings">No meetings</string>
-    <string name="day_empty">Nothing on the calendar for this day</string>
+    <string name="day_all_day">all-day</string>
+    <!-- chip time range, e.g. "9:00 – 9:30" -->
+    <string name="event_time_range">%1$s – %2$s</string>
+    <!-- between the parts of a chip's detail line, e.g. "10:00 – 11:00 · Meet" -->
+    <string name="event_detail_separator">" · "</string>
+    <string name="event_state_selected">Selected</string>
+    <string name="event_state_not_selected">Not selected</string>
+    <string name="event_state_alarm_set">Alarm set for %1$s</string>
+    <string name="event_state_declined">Declined</string>
 
     <string name="menu_permissions">Permissions</string>
     <string name="menu_settings">Settings</string>
