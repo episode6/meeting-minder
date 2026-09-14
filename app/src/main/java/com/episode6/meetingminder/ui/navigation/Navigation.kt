@@ -28,7 +28,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.repeatOnLifecycle
 import com.episode6.meetingminder.R
-import com.episode6.meetingminder.data.calendar.openInCalendar
 import com.episode6.meetingminder.permissions.PermissionRequester
 import com.episode6.meetingminder.ui.day.DayScreen
 import com.episode6.meetingminder.ui.day.DayViewModel

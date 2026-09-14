@@ -27,7 +27,9 @@
   snackbar collection is now lifecycle-aware so a backgrounded app releases the observer.
   New tests: the three side effects, the window-pruning reducer, `DayViewModel`'s
   mapping (meeting count, now-line, midnight-ending events, initial scroll), page/date
-  maths, Robolectric tests for the observer and the open-in-calendar intents, and a device
+  maths, Robolectric tests for the observer, the open-in-calendar intents (pure builders in
+  `data/calendar/CalendarIntents`) and their launcher (`ui/navigation/OpenInCalendar`, so
+  `data/` never imports `ui/`), and a device
   test that inserts an event into the real provider before launch and while the day is on
   screen and waits for its chip. New Roborazzi previews: `DayScreenBusyPreview` and
   `DayScreenLoadingPreview`.
