@@ -2,6 +2,16 @@
 
 ### v1.0.0 - Unreleased
 
+- Review fixes on PR-4: the start-destination decision and the `ON_RESUME` permission
+  refresh now go through a new `ui/navigation/NavigationViewModel` instead of
+  `Navigation.kt` reaching `context.appGraph.appStore` directly, per AGENTS.md
+  ("Composables do not see the store"). Revoking calendar access and relaunching from
+  recents (which restores the saved back stack rather than re-evaluating the launch
+  destination) now redirects to Onboarding via a `LaunchedEffect` on `calendarGranted`.
+  The Onboarding "Allow" flow now snapshots `shouldShowRequestPermissionRationale` before
+  `launch()`, so dismissing the very first permission dialog with Back (no denial
+  recorded, rationale already `false`) no longer flips the row to "Open settings" after
+  zero real denials.
 - Calendar permission + minimal onboarding (PR-4): `permissions/PermissionState`,
   `PermissionChecker` (checks `READ_CALENDAR` + `WRITE_CALENDAR` together, since they
   share the `CALENDAR` group and one runtime dialog grants both) and `PermissionRequester`
