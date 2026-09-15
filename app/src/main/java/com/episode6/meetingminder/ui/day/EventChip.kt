@@ -253,23 +253,24 @@ fun EventChip(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (solid) CheckIcon(contentColor)
-                val title: @Composable () -> Unit = {
+                val title: @Composable (Modifier) -> Unit = { titleModifier ->
                     Text(
                         event.title,
                         style = titleStyle,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = titleModifier,
                     )
                 }
                 when {
-                    contentLayout == ChipContentLayout.TitleOnly -> Box(Modifier.weight(1f)) { title() }
+                    contentLayout == ChipContentLayout.TitleOnly -> title(Modifier.weight(1f))
                     // the alarm time is the point of the armed state: it stays, like on the two-line chip
                     event.armed -> {
-                        Box(Modifier.weight(1f)) { title() }
+                        title(Modifier.weight(1f))
                         AlarmTime(alarmText.orEmpty(), detailStyle, Modifier.padding(start = DayViewDefaults.ChipIconSpacing))
                     }
                     else -> TitleWithOptionalTime(
-                        title = title,
+                        title = { title(Modifier) },
                         time = {
                             Text(
                                 timeRange,
@@ -344,9 +345,11 @@ private fun TitleWithOptionalTime(
     Layout(contents = listOf(title, time), modifier = modifier) { (titleMeasurables, timeMeasurables), constraints ->
         val titleMeasurable = titleMeasurables.single()
         val timeMeasurable = timeMeasurables.single()
-        val width = constraints.maxWidth
-        val fits = titleMeasurable.maxIntrinsicWidth(constraints.maxHeight) +
-            timeMeasurable.maxIntrinsicWidth(constraints.maxHeight) <= width
+        val titleWidth = titleMeasurable.maxIntrinsicWidth(constraints.maxHeight)
+        val timeWidth = timeMeasurable.maxIntrinsicWidth(constraints.maxHeight)
+        // fills a bounded width (the chip row's weight), and takes only what it needs otherwise
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else titleWidth + timeWidth
+        val fits = titleWidth + timeWidth <= width
         val timePlaceable = if (fits) timeMeasurable.measure(constraints.copy(minWidth = 0, minHeight = 0)) else null
         val titlePlaceable = titleMeasurable.measure(
             constraints.copy(minWidth = 0, minHeight = 0, maxWidth = width - (timePlaceable?.width ?: 0)),

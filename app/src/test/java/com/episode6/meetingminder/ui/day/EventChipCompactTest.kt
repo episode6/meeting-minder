@@ -63,6 +63,7 @@ class EventChipCompactTest {
         show(PreviewEvents.standup.copy(title = title))
 
         composeRule.onNodeWithText(title, useUnmergedTree = true).assertIsDisplayed()
+        // composed but not placed: the Layout drops it rather than never composing it
         composeRule.onNodeWithText(timeRange, useUnmergedTree = true).assertIsNotDisplayed()
     }
 
@@ -72,6 +73,7 @@ class EventChipCompactTest {
         show(PreviewEvents.standup.copy(title = title, selected = true, alarmAt = LocalTime.of(8, 55)))
 
         composeRule.onNodeWithText("8:55", useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNodeWithText(timeRange, useUnmergedTree = true).assertIsNotDisplayed()
+        // the armed row never composes the range at all, unlike the unplaced one above
+        composeRule.onNodeWithText(timeRange, useUnmergedTree = true).assertDoesNotExist()
     }
 }
