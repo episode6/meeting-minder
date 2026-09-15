@@ -2,6 +2,27 @@
 
 ### v1.0.0 - Unreleased
 
+- Review fixes on PR-4: the start-destination decision and the `ON_RESUME` permission
+  refresh now go through a new `ui/navigation/NavigationViewModel` instead of
+  `Navigation.kt` reaching `context.appGraph.appStore` directly, per AGENTS.md
+  ("Composables do not see the store"). Revoking calendar access and relaunching from
+  recents (which restores the saved back stack rather than re-evaluating the launch
+  destination) now redirects to Onboarding via a `LaunchedEffect` on `calendarGranted`.
+  The Onboarding "Allow" flow now snapshots `shouldShowRequestPermissionRationale` before
+  `launch()`, so dismissing the very first permission dialog with Back (no denial
+  recorded, rationale already `false`) no longer flips the row to "Open settings" after
+  zero real denials.
+- Calendar permission + minimal onboarding (PR-4): `permissions/PermissionState`,
+  `PermissionChecker` (checks `READ_CALENDAR` + `WRITE_CALENDAR` together, since they
+  share the `CALENDAR` group and one runtime dialog grants both) and `PermissionRequester`
+  (the "open app settings" intent). `AppState.permissions` is seeded synchronously in
+  `AppGraph` so launch routing never flashes the wrong screen, and refreshed afterwards by
+  a new `PermissionsMaybeChanged` action dispatched on every `ON_RESUME`. The Onboarding
+  screen (render 1) now has a live calendar row — Allow, Granted, or "Open settings" once
+  Android stops showing the dialog after two denials — with the alarms/notifications/
+  full-screen/battery rows stubbed "coming soon" until PR-8/8b/10/13. Launch now routes to
+  Onboarding first if calendar access isn't granted, else straight to the day view; the
+  overflow's existing "Permissions" entry reaches the same screen with a back button.
 - Calendar repository (PR-3): the `model/` types (`EventKey`, `CalendarEvent` with the
   canonical `isMeeting` rule, `CalendarInfo`), the `CalendarRepository` interface and its
   `ContentResolverCalendarRepository` over the Calendar Provider — every calendar on every

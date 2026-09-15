@@ -9,6 +9,7 @@ internal fun AppState.reduce(action: Action): AppState = when (action) {
 
 private fun AppState.reduceUpdateStateAction(action: UpdateStateAction): AppState = when (action) {
     is SetSettledDate -> copy(settledDate = action.date)
+    is SetPermissions -> copy(permissions = action.permissions)
     is ShowMessage -> copy(transientMessage = action.message)
     is ClearMessage -> if (transientMessage?.id == action.id) copy(transientMessage = null) else this
 }
