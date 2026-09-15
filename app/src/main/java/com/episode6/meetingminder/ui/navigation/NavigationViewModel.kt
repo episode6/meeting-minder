@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
-import com.episode6.meetingminder.store.ShareDay
+import com.episode6.meetingminder.store.startShare
 import com.episode6.redux.mapStore
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
@@ -57,7 +57,7 @@ class NavigationViewModel(private val store: AppStore) : ViewModel() {
      */
     fun onDeepLink(link: DeepLink): Boolean {
         if (!store.state.permissions.allRequiredGranted) return false
-        if (link is DeepLink.Share) store.dispatch(ShareDay(link.date))
+        if (link is DeepLink.Share) store.startShare(link.date)
         return true
     }
 }

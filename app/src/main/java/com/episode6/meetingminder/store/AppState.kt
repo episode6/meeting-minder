@@ -72,6 +72,15 @@ data class AppState(
      */
     val pendingShare: PendingShare? = null,
     /**
+     * A share is under way: from the tap ([ShareStarted], dispatched together with
+     * [ShareDay] by [startShare]) until the chooser it opened has closed ([ShareFinished],
+     * from `Navigation.kt`'s activity result) or the share failed before it could open.
+     * No second share starts while this is set, which is what keeps a fast double tap on
+     * "Share schedule" from opening two choosers: the second tap lands long after
+     * [pendingShare] was taken and cleared, so a guard there would not see it.
+     */
+    val shareInFlight: Boolean = false,
+    /**
      * The alarm ringing right now, or null when nothing is (TODO.md §4.4). Published by
      * `AlarmRingingService` (the owner of the ringing: it holds the queue when alarms fire
      * back to back) through [SetRinging]; `AlarmActivity` renders it and closes when it

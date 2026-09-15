@@ -53,15 +53,17 @@ data class ShowMessage(val message: UiMessage) : UpdateStateAction
 /** Clears the pending message, but only if it is still the one with [id]. */
 data class ClearMessage(val id: Long) : UpdateStateAction
 
-/**
- * Sets [AppState.pendingShare]: the share text is ready for `Navigation.kt` to launch.
- * Ignored while another share is still pending (a fast double tap must not open two
- * choosers); the wiring layer clears each share as it takes it.
- */
+/** Sets [AppState.pendingShare]: the share text is ready for `Navigation.kt` to launch. */
 data class SetPendingShare(val share: PendingShare) : UpdateStateAction
 
 /** Clears [AppState.pendingShare], but only if it is still the one with [id] — like [ClearMessage]. */
 data class ClearPendingShare(val id: Long) : UpdateStateAction
+
+/** A share has started ([AppState.shareInFlight]); dispatched with [ShareDay] by [startShare], never on its own. */
+data object ShareStarted : UpdateStateAction
+
+/** The share sheet has closed, or the share failed before it could open: the next share may start. */
+data object ShareFinished : UpdateStateAction
 
 /**
  * Replaces [AppState.ringing]. Only `AlarmRingingService` dispatches this: it owns the

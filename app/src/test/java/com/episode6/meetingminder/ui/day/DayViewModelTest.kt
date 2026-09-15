@@ -293,6 +293,36 @@ class DayViewModelTest {
     }
 
     @Test
+    fun aSecondShareTap_whileTheSheetIsStillOpening_startsNoSecondShare() {
+        val dispatched = MutableSharedFlow<Action>(replay = 10)
+        val record = SideEffect<AppState> {
+            actions.onEach { if (it is ShareDay) dispatched.emit(it) }.filter { false }
+        }
+        val armed = DayPlan(today, selected = mapOf(standup.key to standup.toSelectedEventForTest()), alarmsSetAt = Instant.EPOCH)
+        runStoreTest(
+            { createAppStore(this, AppState(anchorDate = today, dayPlans = mapOf(today to armed)), setOf(record)) },
+        ) { store ->
+            val viewModel = DayViewModel(store, clock)
+
+            viewModel.onFabClick()
+            // a fast double tap, and "Share again" while the chooser is still coming up
+            viewModel.onFabClick()
+            viewModel.onShareAgainClick()
+
+            assertThat(store.state.shareInFlight).isEqualTo(true)
+            assertThat(dispatched.first()).isEqualTo(ShareDay(today))
+            assertThat(dispatched.replayCache).containsExactly(ShareDay(today))
+
+            // the sheet has closed: the next tap is a new share
+            viewModel.onShareSheetClosed()
+            viewModel.onFabClick()
+
+            assertThat(store.state.shareInFlight).isEqualTo(true)
+            assertThat(dispatched.replayCache).containsExactly(ShareDay(today), ShareDay(today))
+        }
+    }
+
+    @Test
     fun onShareAgainClick_dispatchesShareDayForTheSettledDay() {
         val dispatched = MutableSharedFlow<Action>(replay = 10)
         val record = SideEffect<AppState> {

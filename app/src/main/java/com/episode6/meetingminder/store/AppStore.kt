@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.flow.shareIn
+import java.time.LocalDate
 
 typealias AppStore = StoreFlow<AppState>
 
@@ -61,4 +62,18 @@ fun createAppStore(
         override val state: AppState get() = store.state
         override fun dispatch(action: Action) = store.dispatch(action)
     }
+}
+
+/**
+ * Starts a share of [date] unless one is already in flight ([AppState.shareInFlight]):
+ * [ShareStarted] and then [ShareDay], as one step, so every caller — the FAB, "Share
+ * again", the banner's "Re-share", the notification's "Share update" deep link — gets the
+ * same double-tap guard. Returns whether the share was started. `DayViewModel` ends it
+ * with [ShareFinished] once the chooser has closed.
+ */
+fun AppStore.startShare(date: LocalDate): Boolean {
+    if (state.shareInFlight) return false
+    dispatch(ShareStarted)
+    dispatch(ShareDay(date))
+    return true
 }

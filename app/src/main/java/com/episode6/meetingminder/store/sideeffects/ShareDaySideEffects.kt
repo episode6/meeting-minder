@@ -22,6 +22,7 @@ import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.PendingShare
 import com.episode6.meetingminder.store.SetPendingShare
+import com.episode6.meetingminder.store.ShareFinished
 import com.episode6.meetingminder.store.ShareDay
 import com.episode6.redux.Action
 import com.episode6.redux.sideeffects.SideEffect
@@ -82,43 +83,52 @@ interface ShareDaySideEffects {
         actions.filterIsInstance<ShareDay>().flatMapMerge { action ->
             flow {
                 val date = action.date
-                val events = currentState().eventsByDay[date]?.events ?: run {
-                    val prefs = settings.current()
-                    // computed only when an override exists, same as ChangeMonitor.runCheck
-                    val filter = if (prefs.calendarOverrides.isEmpty()) {
-                        CalendarFilter.Visible
-                    } else {
-                        effectiveCalendarFilter(repository.calendars(), prefs.calendarOverrides)
+                try {
+                    val events = currentState().eventsByDay[date]?.events ?: run {
+                        val prefs = settings.current()
+                        // computed only when an override exists, same as ChangeMonitor.runCheck
+                        val filter = if (prefs.calendarOverrides.isEmpty()) {
+                            CalendarFilter.Visible
+                        } else {
+                            effectiveCalendarFilter(repository.calendars(), prefs.calendarOverrides)
+                        }
+                        repository.readDay(date, filter, prefs.showDeclined)
                     }
-                    repository.readDay(date, filter, prefs.showDeclined)
-                }
-                val selections = dayPlanDao.selectedEventsOn(date)
-                val busyRanges = selectedBusyRanges(
-                    selections.associate { it.key to BusyRange(Instant.ofEpochMilli(it.beginMillis), Instant.ofEpochMilli(it.endMillis)) },
-                    events.orEmpty(),
-                )
-                val plan = dayPlanDao.dayPlanOn(date)
-                val isUpdate = plan?.sharedAt != null && (
-                    changeSnapshotDao.forDate(date)?.let { decodeScheduleChanges(date, it.changesJson) }.orEmpty().isNotEmpty() ||
-                        plan.sharedSnapshot?.let(::decodeBusyRanges) != busyRanges
+                    val selections = dayPlanDao.selectedEventsOn(date)
+                    val busyRanges = selectedBusyRanges(
+                        selections.associate { it.key to BusyRange(Instant.ofEpochMilli(it.beginMillis), Instant.ofEpochMilli(it.endMillis)) },
+                        events.orEmpty(),
                     )
-                val text = ScheduleTextFormatter.format(date, busyRanges, clock.zone, isUpdate = isUpdate)
-                val now = clock.instant().toEpochMilli()
+                    val plan = dayPlanDao.dayPlanOn(date)
+                    val isUpdate = plan?.sharedAt != null && (
+                        changeSnapshotDao.forDate(date)?.let { decodeScheduleChanges(date, it.changesJson) }.orEmpty().isNotEmpty() ||
+                            plan.sharedSnapshot?.let(::decodeBusyRanges) != busyRanges
+                        )
+                    val text = ScheduleTextFormatter.format(date, busyRanges, clock.zone, isUpdate = isUpdate)
+                    val now = clock.instant().toEpochMilli()
 
-                dayPlanDao.markShared(date, now, encodeBusyRanges(busyRanges))
-                if (events != null) {
-                    changeSnapshotDao.upsert(
-                        ChangeSnapshotEntity(
-                            date = date,
-                            takenAt = now,
-                            eventsJson = encodeChangeSnapshotEvents(events, selections.mapTo(mutableSetOf()) { it.key }),
-                        ),
-                    )
-                } else {
-                    changeSnapshotDao.delete(date)
+                    dayPlanDao.markShared(date, now, encodeBusyRanges(busyRanges))
+                    if (events != null) {
+                        changeSnapshotDao.upsert(
+                            ChangeSnapshotEntity(
+                                date = date,
+                                takenAt = now,
+                                eventsJson = encodeChangeSnapshotEvents(events, selections.mapTo(mutableSetOf()) { it.key }),
+                            ),
+                        )
+                    } else {
+                        changeSnapshotDao.delete(date)
+                    }
+                    changeMonitor.onShareChanged(date)
+                    emit(SetPendingShare(PendingShare.next(date, text)))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // nothing was handed to the UI, so nothing will close a sheet: end the
+                    // share in flight here or the FAB stays dead until the process dies
+                    Log.w(TAG, "could not share $date", e)
+                    emit(ShareFinished)
                 }
-                changeMonitor.onShareChanged(date)
-                emit(SetPendingShare(PendingShare.next(date, text)))
             }
         }
     }

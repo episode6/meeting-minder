@@ -99,7 +99,8 @@ adb shell content query --uri content://com.android.calendar/events --where "ori
 
 The chip shows a small tick after its alarm time once the write went through. A solo
 block, an event you organise, one you already accepted or declined, or one the organizer
-cancelled gets no RSVP and no mark; a
+cancelled gets no RSVP and no mark (a declined or cancelled one gets no alarm either: the
+snackbar reads "1 set, 1 skipped (declined or cancelled)"); a
 calendar with `calendar_access_level` below 300, or an invite whose attendee rows don't
 include `ownerAccount` (an alias), shows the "couldn't RSVP" hint instead. On a real
 Google account the response should appear on calendar.google.com within a minute or so

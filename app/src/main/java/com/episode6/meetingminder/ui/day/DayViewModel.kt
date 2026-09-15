@@ -20,10 +20,11 @@ import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.PendingShare
 import com.episode6.meetingminder.store.SetAlarms
 import com.episode6.meetingminder.store.SetSettledDate
-import com.episode6.meetingminder.store.ShareDay
+import com.episode6.meetingminder.store.ShareFinished
 import com.episode6.meetingminder.store.ShowMessage
 import com.episode6.meetingminder.store.ToggleEvent
 import com.episode6.meetingminder.store.UiMessage
+import com.episode6.meetingminder.store.startShare
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
@@ -99,20 +100,25 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
     /**
      * The FAB was tapped: "Set alarms (N)" (or "Clear alarms", the same state with nothing
      * selected) reconciles the settled day's alarms against its selection ([SetAlarms]);
-     * "Share schedule" formats and shares the day's busy ranges ([ShareDay], TODO.md §4.2).
+     * "Share schedule" formats and shares the day's busy ranges ([startShare], TODO.md §4.2).
      */
     fun onFabClick() {
         val state = store.state
         when (state.dayPlans[state.settledDate].toFabState()) {
             is FabState.SetAlarms -> store.dispatch(SetAlarms(state.settledDate))
-            FabState.Share -> store.dispatch(ShareDay(state.settledDate))
+            FabState.Share -> store.startShare(state.settledDate)
             FabState.Hidden -> Unit
         }
     }
 
-    /** Overflow → "Share again" for the settled day: re-sends the current busy ranges. */
+    /** Overflow → "Share again" (and the banner's "Re-share") for the settled day: re-sends the current busy ranges. */
     fun onShareAgainClick() {
-        store.dispatch(ShareDay(store.state.settledDate))
+        store.startShare(store.state.settledDate)
+    }
+
+    /** The share sheet `Navigation.kt` opened has closed (or couldn't open): the next share may start. */
+    fun onShareSheetClosed() {
+        store.dispatch(ShareFinished)
     }
 
     /** Overflow → "Mark as not shared" for the settled day. */

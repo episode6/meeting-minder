@@ -786,6 +786,15 @@ temporary allowlist that permits starting a foreground service from the backgrou
   alarm. A cancelled row clears its selection's alarm pointer and puts its day back to
   "Set alarms" (the armed set no longer matches the selection, so a later re-accept can be
   re-armed from the FAB); a re-time the OS refuses is marked `CANCELLED` and does the same.
+  For that to rest, the explicit "Set alarms" reconcile follows the same rule: a selection
+  whose event is now `STATUS_CANCELED` or declined by me is **never armed** (it lands in
+  `AlarmReconciliation.notAttending`, counted in the snackbar as "skipped, declined or
+  cancelled", its selection kept), and the reconcile reads the day from **every** calendar
+  with declined events included — the same read `MaintainAlarms` makes, falling back to the
+  loaded window only when the provider can't be read — so neither a hidden calendar nor
+  "show declined" off can make a since-declined selection look like a live meeting. Before
+  this (PR-8b), "Set alarms" still armed such a selection, which the next maintenance then
+  cancelled again, with the day bouncing between the two.
   `BootReceiver` re-arms from Room first and maintains second, so a slow provider can't eat
   the re-arm's broadcast budget. Timezone changes need nothing else: `fire_at` is an
   instant, and `di/DeviceClock` keeps every holder of the graph's `Clock` in the new zone.

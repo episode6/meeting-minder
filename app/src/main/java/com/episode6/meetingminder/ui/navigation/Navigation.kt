@@ -35,7 +35,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.repeatOnLifecycle
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.permissions.PermissionRequester
-import com.episode6.meetingminder.share.shareSchedule
+import com.episode6.meetingminder.share.shareScheduleIntent
 import com.episode6.meetingminder.ui.day.DayScreen
 import com.episode6.meetingminder.ui.day.DayViewModel
 import com.episode6.meetingminder.ui.licenses.LicensesScreen
@@ -139,12 +139,22 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
 
             // ShareCompat needs a real Activity context and must never launch from a
             // receiver (TODO.md §4.2), so the actual chooser call lives here, not in the
-            // side effect that formats the text and records the share.
+            // side effect that formats the text and records the share. It is launched for
+            // a result only to hear the sheet close: that ends the share in flight
+            // (AppState.shareInFlight), which is what keeps a second tap from opening a
+            // second chooser while the first is still coming up.
+            val shareSheet = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                viewModel.onShareSheetClosed()
+            }
             LaunchedEffect(viewModel, entryLifecycleOwner) {
                 entryLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     viewModel.pendingShare.collect { share ->
                         viewModel.onShareLaunched(share)
-                        dayContext.shareSchedule(share.text)
+                        try {
+                            shareSheet.launch(dayContext.shareScheduleIntent(share.text))
+                        } catch (_: ActivityNotFoundException) {
+                            viewModel.onShareSheetClosed()
+                        }
                     }
                 }
             }
