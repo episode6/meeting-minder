@@ -169,7 +169,8 @@ fun EventChip(
     val stateDescription = when {
         declined -> stringResource(R.string.event_state_declined)
         !selectable -> null
-        event.armed -> stringResource(R.string.event_state_alarm_set, alarmText.orEmpty())
+        // spoken, so the full "9:00 AM" rather than the chip's "9a"
+        event.armed -> stringResource(R.string.event_state_alarm_set, event.alarmAt?.let(timeFormat::timeWithPeriod).orEmpty())
         event.selected -> stringResource(R.string.event_state_selected)
         else -> stringResource(R.string.event_state_not_selected)
     }?.let { state -> if (selectable && rsvpText != null) stringResource(R.string.event_state_with_rsvp, state, rsvpText) else state }
