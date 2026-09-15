@@ -4,12 +4,18 @@ import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
+import assertk.assertions.isNull
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
+import com.episode6.meetingminder.data.db.FakeDayPlanDao
+import com.episode6.meetingminder.data.db.toSelectedEventEntity
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.EventResponse
+import com.episode6.meetingminder.model.RsvpState
+import com.episode6.meetingminder.model.SelfStatus
 import com.episode6.meetingminder.model.testCalendarEvent
 import com.episode6.meetingminder.store.CalendarContentChanged
+import com.episode6.meetingminder.store.PermissionsMaybeChanged
 import com.episode6.meetingminder.store.RespondToEvent
 import com.episode6.meetingminder.store.RsvpAccepted
 import com.episode6.meetingminder.store.RsvpResult
@@ -30,8 +36,9 @@ class RespondToEventSideEffectsTest {
     )
 
     private val repository = FakeCalendarRepository()
+    private val dao = FakeDayPlanDao()
 
-    private fun respondToEvent() = object : RespondToEventSideEffects {}.respondToEvent(repository)
+    private fun respondToEvent(dao: FakeDayPlanDao = this.dao) = object : RespondToEventSideEffects {}.respondToEvent(repository, dao)
 
     @Test
     fun aNo_writesTheAnswer_confirms_andReloadsTheDay() = runTest {
@@ -64,6 +71,40 @@ class RespondToEventSideEffectsTest {
     }
 
     @Test
+    fun aNoOrMaybe_onASelectionArmedWithTheAutomaticYes_dropsItsSentTick() = runTest {
+        // the standup was armed and its "Yes, going" went through (and synced); the user now declines it from the menu
+        val armed = standup.toSelectedEventEntity(today).copy(alarmId = 1, rsvpState = RsvpState.SYNCED, rsvpEventId = 555)
+        val dao = FakeDayPlanDao(selections = listOf(armed))
+
+        respondToEvent(dao).output(RespondToEvent(today, standup.key, EventResponse.NO), state = stateWithEvents).toList()
+
+        val row = dao.selectedEventsOn(today).single()
+        assertThat(row.rsvpState).isEqualTo(RsvpState.NOT_APPLICABLE)
+        assertThat(row.rsvpEventId).isNull()
+        // the selection and its alarm are untouched here: MaintainAlarms cancels the alarm on the reload
+        assertThat(row.alarmId).isEqualTo(1)
+    }
+
+    @Test
+    fun aNo_onAnUnselectedEvent_selectsNothing() = runTest {
+        respondToEvent().output(RespondToEvent(today, standup.key, EventResponse.NO), state = stateWithEvents).toList()
+
+        assertThat(dao.selectedEventsOn(today)).isEmpty()
+    }
+
+    @Test
+    fun theAnswerTheCalendarAlreadyHolds_isConfirmedWithoutWriting() = runTest {
+        val accepted = standup.copy(selfStatus = SelfStatus.ACCEPTED)
+        val state = TestAppState.copy(eventsByDay = mapOf(today to DayEvents(today, listOf(accepted), Instant.EPOCH)))
+
+        val output = respondToEvent().output(RespondToEvent(today, accepted.key, EventResponse.YES), state = state).toList()
+
+        assertThat(repository.responses).isEmpty()
+        assertThat(output.map { it::class }).containsExactly(ShowMessage::class)
+        assertThat((output.single() as ShowMessage).message.text).isEqualTo(R.string.respond_sent_yes)
+    }
+
+    @Test
     fun anEventTheMenuShouldNotHaveOffered_isRefusedWithoutWriting() = runTest {
         // a solo block has no self-attendee row: the exception insert would crash the provider
         val output = respondToEvent().output(RespondToEvent(today, soloBlock.key, EventResponse.YES), state = stateWithEvents).toList()
@@ -83,11 +124,21 @@ class RespondToEventSideEffectsTest {
 
     @Test
     fun aProviderFailure_isOneSnackbar_andNoReload() = runTest {
-        repository.acceptError = SecurityException("WRITE_CALENDAR revoked")
+        repository.acceptError = IllegalStateException("attendee update touched 0 rows")
 
         val output = respondToEvent().output(RespondToEvent(today, standup.key, EventResponse.NO), state = stateWithEvents).toList()
 
         assertThat(output.map { it::class }).containsExactly(ShowMessage::class)
         assertThat((output.single() as ShowMessage).message.text).isEqualTo(R.string.respond_failed)
+    }
+
+    @Test
+    fun revokedCalendarAccess_alsoRechecksPermissions() = runTest {
+        repository.acceptError = SecurityException("WRITE_CALENDAR revoked")
+
+        val output = respondToEvent().output(RespondToEvent(today, standup.key, EventResponse.NO), state = stateWithEvents).toList()
+
+        assertThat(output.map { it::class }).containsExactly(ShowMessage::class, PermissionsMaybeChanged::class)
+        assertThat((output.first() as ShowMessage).message.text).isEqualTo(R.string.respond_failed)
     }
 }

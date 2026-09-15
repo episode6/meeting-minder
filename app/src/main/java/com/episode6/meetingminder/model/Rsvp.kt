@@ -70,6 +70,15 @@ fun rsvpDecision(event: CalendarEvent): RsvpState = when {
  */
 enum class EventResponse { YES, NO, MAYBE }
 
+/** The [EventResponse] the calendar already holds for you, or null while the invite is unanswered. */
+val SelfStatus.response: EventResponse?
+    get() = when (this) {
+        SelfStatus.ACCEPTED -> EventResponse.YES
+        SelfStatus.DECLINED -> EventResponse.NO
+        SelfStatus.TENTATIVE -> EventResponse.MAYBE
+        SelfStatus.NEEDS_ACTION, SelfStatus.NONE -> null
+    }
+
 /**
  * Whether the long-press menu offers the "Respond …" items for [event]: only an invite we
  * can actually answer through our own attendee row. The rows this shares with

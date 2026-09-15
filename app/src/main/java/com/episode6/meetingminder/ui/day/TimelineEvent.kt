@@ -9,6 +9,7 @@ import com.episode6.meetingminder.model.EventStatus
 import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.SelfStatus
 import com.episode6.meetingminder.model.canRespond
+import com.episode6.meetingminder.model.response
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -115,11 +116,6 @@ fun CalendarEvent.toTimelineEvent(
         alarmAt = alarmAt,
         rsvp = rsvp,
         respondable = canRespond(this),
-        response = when (selfStatus) {
-            SelfStatus.ACCEPTED -> EventResponse.YES
-            SelfStatus.DECLINED -> EventResponse.NO
-            SelfStatus.TENTATIVE -> EventResponse.MAYBE
-            SelfStatus.NEEDS_ACTION, SelfStatus.NONE -> null
-        },
+        response = selfStatus.response,
     )
 }

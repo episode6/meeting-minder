@@ -956,10 +956,13 @@ self-attendee row, not the organizer, not cancelled, a calendar at `CAL_ACCESS_R
 above — which is the skip table below minus the "already answered" rows: changing an answer is
 the point. `RespondToEvent(date, key, response)` → `RespondToEventSideEffects` re-checks the
 gate against the loaded window (the menu may have outlived a reload), calls
-`respondToInstance(event, response)`, confirms with a snackbar and dispatches
-`CalendarContentChanged` so the chip updates at once. A "Yes" also reports `RsvpAccepted`, so an
-armed selection gets its tick; a "No" leaves the selection and alarm alone, exactly as a decline
-made in Google Calendar would (the next reconcile or `MaintainAlarms` clears the alarm).
+`respondToInstance(event, response)` (skipped when the calendar already holds that answer),
+confirms with a snackbar and dispatches `CalendarContentChanged` so the chip updates at once — and
+since `MaintainAlarms` runs on that same action, a "No" on an armed selection has its alarm
+cancelled in the same reload, exactly as a decline made in Google Calendar would. A "Yes" also
+reports `RsvpAccepted`, so an armed selection gets its tick; a "No" or "Maybe" resets the row's
+`rsvp_state` to `NOT_APPLICABLE` so an earlier automatic Yes's tick doesn't outlive the answer.
+The selection itself is never touched.
 
 **The write** (verified against AOSP `CalendarProvider2` and the AOSP/Etar calendar app):
 
