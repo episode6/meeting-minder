@@ -67,7 +67,8 @@ enum class ChipContentLayout {
 
     /**
      * One line: title on the left, time (or bell + alarm time) on the right. The time range
-     * is dropped when the whole title wouldn't fit beside it (the alarm time never is).
+     * gives way to the start time alone, and then to nothing, when the whole title wouldn't
+     * fit beside it (the alarm time never gives way).
      */
     Compact,
 
@@ -271,15 +272,8 @@ fun EventChip(
                     }
                     else -> TitleWithOptionalTime(
                         title = { title(Modifier) },
-                        time = {
-                            Text(
-                                timeRange,
-                                style = detailStyle,
-                                maxLines = 1,
-                                softWrap = false,
-                                modifier = Modifier.padding(start = DayViewDefaults.ChipIconSpacing),
-                            )
-                        },
+                        time = { ChipTime(timeRange, detailStyle) },
+                        shorterTime = { ChipTime(timeFormat.time(event.begin.toLocalTime()), detailStyle) },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -330,27 +324,43 @@ fun EventChip(
     }
 }
 
+@Composable
+private fun ChipTime(text: String, style: TextStyle) {
+    Text(
+        text,
+        style = style,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier.padding(start = DayViewDefaults.ChipIconSpacing),
+    )
+}
+
 /**
- * The compact row's title with its time range on the right, shown only when the whole
- * title fits beside it. The chip's place on the hour grid already says when the event
- * is, but nothing else says what it is, so an ellipsized title always wins the space
- * over the range: the range is dropped rather than the title shortened.
+ * The compact row's title with a time on the right: the full [time] range when the whole
+ * title fits beside it, the [shorterTime] (start only) when only that fits, and nothing
+ * otherwise. The chip's place on the hour grid already says when the event is, but nothing
+ * else says what it is, so an ellipsized title always wins the space over either time: the
+ * time is dropped rather than the title shortened.
  */
 @Composable
 private fun TitleWithOptionalTime(
     title: @Composable () -> Unit,
     time: @Composable () -> Unit,
+    shorterTime: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Layout(contents = listOf(title, time), modifier = modifier) { (titleMeasurables, timeMeasurables), constraints ->
+    Layout(contents = listOf(title, time, shorterTime), modifier = modifier) { (titleMeasurables, timeMeasurables, shorterTimeMeasurables), constraints ->
         val titleMeasurable = titleMeasurables.single()
-        val timeMeasurable = timeMeasurables.single()
         val titleWidth = titleMeasurable.maxIntrinsicWidth(constraints.maxHeight)
-        val timeWidth = timeMeasurable.maxIntrinsicWidth(constraints.maxHeight)
+        // longest first: the first candidate that fits beside the whole title is the one shown
+        val timeCandidates = listOf(timeMeasurables.single(), shorterTimeMeasurables.single())
+            .map { it to it.maxIntrinsicWidth(constraints.maxHeight) }
         // fills a bounded width (the chip row's weight), and takes only what it needs otherwise
-        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else titleWidth + timeWidth
-        val fits = titleWidth + timeWidth <= width
-        val timePlaceable = if (fits) timeMeasurable.measure(constraints.copy(minWidth = 0, minHeight = 0)) else null
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else titleWidth + timeCandidates.first().second
+        val timePlaceable = timeCandidates
+            .firstOrNull { (_, timeWidth) -> titleWidth + timeWidth <= width }
+            ?.first
+            ?.measure(constraints.copy(minWidth = 0, minHeight = 0))
         val titlePlaceable = titleMeasurable.measure(
             constraints.copy(minWidth = 0, minHeight = 0, maxWidth = width - (timePlaceable?.width ?: 0)),
         )
@@ -491,6 +501,7 @@ private fun EventChipStates() {
                     base.copy(title = "Compact"),
                     base.copy(title = "Compact armed", selected = true, alarmAt = LocalTime.of(8, 55)),
                     base.copy(title = "Compact armed, RSVP sent", selected = true, alarmAt = LocalTime.of(8, 55), rsvp = ChipRsvp.Sent),
+                    base.copy(title = "Compact with room for the start time only"),
                     base.copy(title = "Compact with a title too long to share the line with its time range"),
                 ).forEach { event ->
                     EventChip(

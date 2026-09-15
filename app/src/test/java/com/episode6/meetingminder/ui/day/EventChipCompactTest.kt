@@ -19,9 +19,10 @@ import java.time.LocalTime
 
 /**
  * The compact (one-line) chip gives the whole line to the title when title and time range
- * can't share it: the hour grid already says when the event is, only the chip says what.
- * Runs with native graphics so text is measured with real font metrics (legacy graphics
- * measure every glyph at about a pixel, and everything fits).
+ * can't share it, falling back to the start time alone first: the hour grid already says
+ * when the event is, only the chip says what. Runs with native graphics so text is
+ * measured with real font metrics (legacy graphics measure every glyph at about a pixel,
+ * and everything fits).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "en-rUS")
@@ -31,7 +32,8 @@ class EventChipCompactTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    private val timeRange = "9:00 – 9:30"
+    private val timeRange = "9a – 9:30"
+    private val startTime = "9a"
 
     private fun show(event: TimelineEvent, width: Int = 200) {
         composeRule.setContent {
@@ -55,6 +57,17 @@ class EventChipCompactTest {
 
         composeRule.onNodeWithText("Standup", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText(timeRange, useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText(startTime, useUnmergedTree = true).assertIsNotDisplayed()
+    }
+
+    @Test
+    fun aTitleThatOnlyLeavesRoomForTheStartTime_showsThatAlone() {
+        val title = "Platform team standup"
+        show(PreviewEvents.standup.copy(title = title))
+
+        composeRule.onNodeWithText(title, useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText(timeRange, useUnmergedTree = true).assertIsNotDisplayed()
+        composeRule.onNodeWithText(startTime, useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test
@@ -63,8 +76,9 @@ class EventChipCompactTest {
         show(PreviewEvents.standup.copy(title = title))
 
         composeRule.onNodeWithText(title, useUnmergedTree = true).assertIsDisplayed()
-        // composed but not placed: the Layout drops it rather than never composing it
+        // composed but not placed: the Layout drops them rather than never composing them
         composeRule.onNodeWithText(timeRange, useUnmergedTree = true).assertIsNotDisplayed()
+        composeRule.onNodeWithText(startTime, useUnmergedTree = true).assertIsNotDisplayed()
     }
 
     @Test
