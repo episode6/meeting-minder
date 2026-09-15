@@ -35,8 +35,9 @@ Not on Google Play; distributed as APKs from GitHub releases like headache-track
 to use `USE_EXACT_ALARM` and full-screen intents without Play policy review.
 
 ### Non-goals (v1)
-- Editing the calendar beyond RSVP (creating/moving events, declining, responding to a whole
-  series). Long-press opens the event in the calendar app for anything else.
+- Editing the calendar beyond RSVP (creating/moving events, responding to a whole series). The
+  RSVP itself is the automatic "Yes, going" of §4.6 plus the Yes / No / Maybe a chip's long-press
+  menu offers for one occurrence; the same menu's "Open in calendar" covers anything else.
 - Multiple *apps* as sources. Calendar Provider only (Google Calendar, Samsung Calendar, Outlook w/ sync all land there).
 - Week/month views, a settings-heavy UI, cloud sync, widgets. (Widget is a plausible v2.)
 - Tablet/foldable-specific layouts beyond "don't look broken."
@@ -46,7 +47,7 @@ to use `USE_EXACT_ALARM` and full-screen intents without Play policy review.
 | # | Render | Screen | Notes |
 |---|--------|--------|-------|
 | 1 | ![](docs/renders/1-onboarding.png) | **Onboarding / permissions** | Calendar row covers read and RSVP write (one dialog). Checklist of grants; rows flip to "Granted" as they come back. Continue enabled once required ones are granted. Reachable later from overflow → "Permissions". |
-| 2 | ![](docs/renders/2-day-view-selecting.png) | **Day view, selecting** | Top bar: date + subtitle ("3 meetings · 2 selected"), Today button, overflow. All-day row. Timeline. Outlined chip = not selected, filled chip + check = selected, dashed + strikethrough = declined. Red now-line on today. FAB "Set alarms (N)". |
+| 2 | ![](docs/renders/2-day-view-selecting.png) | **Day view, selecting** | Top bar: date + subtitle ("3 meetings · 2 selected"), Refresh and Today buttons, overflow. All-day row. Timeline. Outlined chip = not selected, filled chip + check = selected, dashed + strikethrough = declined. Red now-line on today. FAB "Set alarms (N)". Long-press a chip for its menu: "Open in calendar", then "Respond Yes / No / Maybe" for an invite the app can answer (§4.6). |
 | 3 | ![](docs/renders/3-alarms-set.png) | **Alarms set** | Selected chips show a bell + the alarm time. Subtitle "3 alarms set · not shared yet". Snackbar confirms. FAB becomes primary-filled "Share schedule". |
 | 4 | ![](docs/renders/4-share-schedule.png) | **Share sheet** | System sharesheet; our text is plain, times only. |
 | 5 | ![](docs/renders/5-alarm-ringing.png) | **Alarm ringing** | Full-screen, dark, over lock screen. Big clock, meeting title, time, Dismiss / Snooze. Shows which random sound is playing (debug aid, keep it subtle). |
@@ -54,7 +55,11 @@ to use `USE_EXACT_ALARM` and full-screen intents without Play policy review.
 
 Interaction rules:
 - Tapping a chip toggles selection with a haptic tick. Declined/cancelled chips are not selectable
-  (tap does nothing; long-press still opens the calendar).
+  (tap does nothing; long-press still opens the menu, so a declined invite can be re-accepted
+  from here).
+- "Refresh calendars" in the app bar asks the sync framework to sync every account's calendars
+  (`ContentResolver.requestSync`, so the app itself still never uses the network) and reloads the
+  shown days at once; the snackbar says "Refreshing calendars…".
 - Changing selection **after** alarms are set puts the day back into the "Set alarms" state (the
   FAB label reverts) because the alarm set no longer matches. Re-tapping "Set alarms" reconciles:
   cancels alarms for deselected events, schedules for newly selected.
@@ -533,7 +538,7 @@ both read as "moved"; only a whole series shifted by its organizer reads as "gon
 is acceptable (the user re-selects). Recurring occurrences are recognised by a non-null `RRULE`
 or `RDATE` on the instance, or a non-null `ORIGINAL_ID`.
 
-**Open in calendar** (long-press): `ACTION_VIEW` on
+**Open in calendar** (the long-press menu's first item): `ACTION_VIEW` on
 `content://com.android.calendar/events/{eventId}` with `EXTRA_EVENT_BEGIN_TIME`/`END_TIME` set to
 the *instance* times so Google Calendar opens the right occurrence; fallback to
 `content://com.android.calendar/time/{begin}`. Manifest `<queries>` entry for the `content`
@@ -944,6 +949,18 @@ hard rules from the product side: **we only ever answer one event instance at a 
 whole recurring series, never a bulk "respond to all"), and **we never decline or un-respond on
 your behalf**; deselecting an event just cancels its alarm.
 
+**Explicit responses** (the chip's long-press menu: "Respond Yes / No / Maybe") are the one
+place a No or Maybe is written, and only because the user picked it for that occurrence. The
+menu offers them only for an event `canRespond(event)` passes — full attendee data, a
+self-attendee row, not the organizer, not cancelled, a calendar at `CAL_ACCESS_RESPOND` or
+above — which is the skip table below minus the "already answered" rows: changing an answer is
+the point. `RespondToEvent(date, key, response)` → `RespondToEventSideEffects` re-checks the
+gate against the loaded window (the menu may have outlived a reload), calls
+`respondToInstance(event, response)`, confirms with a snackbar and dispatches
+`CalendarContentChanged` so the chip updates at once. A "Yes" also reports `RsvpAccepted`, so an
+armed selection gets its tick; a "No" leaves the selection and alarm alone, exactly as a decline
+made in Google Calendar would (the next reconcile or `MaintainAlarms` clears the alarm).
+
 **The write** (verified against AOSP `CalendarProvider2` and the AOSP/Etar calendar app):
 
 - `Events.SELF_ATTENDEE_STATUS` cannot be updated by anyone; the provider throws. The correct
@@ -965,7 +982,9 @@ your behalf**; deselecting an event just cancels its alarm.
   occurrences. The plain-event update goes straight to the row:
   `update(Attendees.CONTENT_URI/{selfAttendeeId}, {ATTENDEE_STATUS = ACCEPTED})`. The exception
   insert uses `CONTENT_EXCEPTION_URI/{eventId}` with `ORIGINAL_INSTANCE_TIME = begin`. So the
-  repository method is `acceptInstance(event: CalendarEvent)`, not `acceptInstance(key)`.
+  repository method is `respondToInstance(event: CalendarEvent, response)`, not one taking a key;
+  the automatic path passes `YES`, the menu whichever answer was picked (`DECLINED`/`TENTATIVE`
+  for No/Maybe, the exception's `STATUS` staying `CONFIRMED` as in AOSP's calendar app).
 - `selected_event.rsvp_event_id` stores the event id we wrote to (the new exception's id, or the
   plain event's own id). Its job is the later `Events.DIRTY` check on the right row; the
   `EventKey` mapping of the new exception back to this selection already works through
@@ -998,9 +1017,10 @@ day reloads with the chip now showing the accepted state. Chips show a small "se
 `rsvp_event_id` whose event reads `DIRTY == 0` is synced, no share required. The provider's
 `Instances` view does **not** expose `Events.DIRTY` (querying it throws `Invalid column dirty`),
 so the check is one batched `CalendarRepository.syncedEventIds(ids)` query on `Events` for the
-ids that were written to, made only while a row is actually waiting. We don't call
-`ContentResolver.requestSync` (the provider's own change notification already nudges Google's
-sync adapter); it's a one-liner to add if sync proves lazy.
+ids that were written to, made only while a row is actually waiting. The write itself doesn't
+call `ContentResolver.requestSync` (the provider's own change notification already nudges
+Google's sync adapter); the app bar's "Refresh calendars" button does (`CalendarSyncRequester`),
+for the user who wants the sync now.
 
 The decision is recorded on the selection row only while that row is still unanswered
 (`DayPlanDao.recordRsvpDecision`, a guarded update): a row re-armed on a later tap after its

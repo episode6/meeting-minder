@@ -4,6 +4,9 @@
     <string name="more_options">More options</string>
 
     <string name="day_today">Today</string>
+    <!-- app bar action: a calendar sync request plus a reload of the shown days -->
+    <string name="day_refresh">Refresh calendars</string>
+    <string name="refresh_started">Refreshing calendars…</string>
     <string name="day_subtitle_no_meetings">No meetings</string>
     <!-- app bar subtitle: how many meetings (not solo blocks) are on the shown day -->
     <plurals name="day_subtitle_meetings">
@@ -83,7 +86,18 @@
     <!-- TalkBack action labels: "double tap to select", "double tap and hold to open in calendar" -->
     <string name="event_action_select">select</string>
     <string name="event_action_deselect">deselect</string>
-    <string name="event_action_open_in_calendar">open in calendar</string>
+    <string name="event_action_more">show options</string>
+    <!-- the chip's long-press menu: open the event, or answer its invite for this one occurrence (TODO.md §4.6) -->
+    <string name="event_menu_open_in_calendar">Open in calendar</string>
+    <string name="event_menu_respond_yes">Respond Yes</string>
+    <string name="event_menu_respond_no">Respond No</string>
+    <string name="event_menu_respond_maybe">Respond Maybe</string>
+    <string name="event_menu_current_response">Your current response</string>
+    <!-- snackbars after a long-press menu response -->
+    <string name="respond_sent_yes">Responded Yes</string>
+    <string name="respond_sent_no">Responded No</string>
+    <string name="respond_sent_maybe">Responded Maybe</string>
+    <string name="respond_failed">Couldn\'t send your response</string>
 
     <string name="menu_permissions">Permissions</string>
     <string name="menu_settings">Settings</string>

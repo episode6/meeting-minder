@@ -13,6 +13,7 @@ import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import assertk.assertions.isFalse
 import assertk.assertions.isTrue
+import com.episode6.meetingminder.model.EventResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
@@ -28,7 +29,8 @@ import java.time.ZoneId
  * The two RSVP write shapes of TODO.md §4.6 against [FakeCalendarProvider]: a plain event
  * updates our own `attendees/{id}` row, a recurring occurrence inserts an
  * `exception/{eventId}` with `ORIGINAL_INSTANCE_TIME = begin`. Every write is addressed by
- * the occurrence's own `eventId`, never the series id in its key.
+ * the occurrence's own `eventId`, never the series id in its key. A "No" or "Maybe" from
+ * the long-press menu takes the same shapes with a different status.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -66,7 +68,7 @@ class ContentResolverCalendarRepositoryRsvpTest {
         seedInvite(eventId = 10, selfAttendeeId = 7)
         val event = repository.eventsOn(today).single()
 
-        val written = repository.acceptInstance(event)
+        val written = repository.respondToInstance(event, EventResponse.YES)
 
         assertThat(written).isEqualTo(10)
         provider.updates.single().let { (uri, values) ->
@@ -87,7 +89,7 @@ class ContentResolverCalendarRepositoryRsvpTest {
         val event = repository.eventsOn(today).single()
         assertThat(event.isRecurringInstance).isTrue()
 
-        val written = repository.acceptInstance(event)
+        val written = repository.respondToInstance(event, EventResponse.YES)
 
         assertThat(written).isEqualTo(555)
         provider.inserts.single().let { (uri, values) ->
@@ -108,7 +110,7 @@ class ContentResolverCalendarRepositoryRsvpTest {
         assertThat(event.key.eventId).isEqualTo(20)
         assertThat(event.isRecurringInstance).isFalse()
 
-        val written = repository.acceptInstance(event)
+        val written = repository.respondToInstance(event, EventResponse.YES)
 
         assertThat(written).isEqualTo(21)
         provider.updates.single().let { (uri, _) ->
@@ -118,12 +120,41 @@ class ContentResolverCalendarRepositoryRsvpTest {
     }
 
     @Test
+    fun aNo_onAPlainEvent_writesDeclinedToOurOwnRow() = runTest {
+        seedInvite(eventId = 10, selfAttendeeId = 7)
+        val event = repository.eventsOn(today).single()
+
+        val written = repository.respondToInstance(event, EventResponse.NO)
+
+        assertThat(written).isEqualTo(10)
+        assertThat(provider.updates.single().second.getAsInteger(Attendees.ATTENDEE_STATUS)).isEqualTo(Attendees.ATTENDEE_STATUS_DECLINED)
+        assertThat(provider.attendeeStatus(7)).isEqualTo(Attendees.ATTENDEE_STATUS_DECLINED)
+    }
+
+    @Test
+    fun aMaybe_onARecurringOccurrence_insertsATentativeException_stillConfirmed() = runTest {
+        seedInvite(eventId = 20, selfAttendeeId = 7, rrule = "FREQ=DAILY")
+        provider.nextExceptionId = 556
+        val event = repository.eventsOn(today).single()
+
+        val written = repository.respondToInstance(event, EventResponse.MAYBE)
+
+        assertThat(written).isEqualTo(556)
+        provider.inserts.single().let { (uri, values) ->
+            assertThat(uri).isEqualTo(ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, 20))
+            assertThat(values.getAsInteger(Events.SELF_ATTENDEE_STATUS)).isEqualTo(Attendees.ATTENDEE_STATUS_TENTATIVE)
+            // the occurrence's own status, not our answer: AOSP's calendar app writes it the same way for a decline
+            assertThat(values.getAsInteger(Events.STATUS)).isEqualTo(Events.STATUS_CONFIRMED)
+        }
+    }
+
+    @Test
     fun plainEvent_whoseAttendeeRowIsGone_throwsInsteadOfReportingSuccess() = runTest {
         seedInvite(eventId = 10, selfAttendeeId = 7)
         val event = repository.eventsOn(today).single()
 
-        assertFailure { repository.acceptInstance(event.copy(selfAttendeeId = 99)) }.hasClass(IllegalStateException::class)
-        assertFailure { repository.acceptInstance(event.copy(selfAttendeeId = null)) }.hasClass(IllegalStateException::class)
+        assertFailure { repository.respondToInstance(event.copy(selfAttendeeId = 99), EventResponse.YES) }.hasClass(IllegalStateException::class)
+        assertFailure { repository.respondToInstance(event.copy(selfAttendeeId = null), EventResponse.YES) }.hasClass(IllegalStateException::class)
     }
 
     @Test

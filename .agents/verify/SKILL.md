@@ -112,8 +112,13 @@ a `LOCAL` calendar.
 The full v1.0 flow (TODO.md PR-1 through PR-13) is implemented, so every step below should
 work end to end. The app launches to today's page of the day pager with the device's
 visible calendars loaded — swipe between days (the app-bar date and "N meetings" subtitle
-follow the settled page), Today scrolls back, long-press a chip to open it in the calendar
-app, and an event inserted with `content insert` (see "Seeding calendar data") appears
+follow the settled page), Today scrolls back, long-press a chip for its menu ("Open in
+calendar" opens it in the calendar app; "Respond Yes / No / Maybe" appear only for an invite
+with a self-attendee row and write that answer for the one occurrence, with a "Responded …"
+snackbar and the chip updating at once — a No makes it dashed and unselectable), the Refresh
+button shows "Refreshing calendars…" and reloads the shown days (on an emulator with only a
+`LOCAL` calendar there is no sync adapter, so nothing else happens), and an event inserted
+with `content insert` (see "Seeding calendar data") appears
 within a second or two while the day is on screen. Tap chips to select them, tap
 "Set alarms (N)" (chips gain a bell + alarm time, the subtitle reads
 "N alarms set · not shared yet" in orange with a bell, the FAB flips to a solid orange

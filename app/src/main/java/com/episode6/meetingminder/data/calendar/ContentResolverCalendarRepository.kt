@@ -12,6 +12,7 @@ import com.episode6.meetingminder.model.Availability
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.model.EventStatus
 import com.episode6.meetingminder.model.SelfStatus
 import kotlinx.coroutines.CoroutineDispatcher
@@ -57,21 +58,24 @@ class ContentResolverCalendarRepository(
      * addressed by the occurrence's **own** id ([CalendarEvent.eventId]), never by
      * `key.eventId` (the series id for a recurring occurrence):
      *  - a recurring occurrence → `insert(Events.CONTENT_EXCEPTION_URI/{eventId})` with
-     *    `ORIGINAL_INSTANCE_TIME = begin` and `SELF_ATTENDEE_STATUS = ACCEPTED`. That is the
+     *    `ORIGINAL_INSTANCE_TIME = begin` and `SELF_ATTENDEE_STATUS` = [response]. That is the
      *    one place `SELF_ATTENDEE_STATUS` is app-writable: the provider clones the event as
      *    an exception (with `ORIGINAL_ID`, so it keeps the same [EventKey]) and updates the
      *    clone's self-attendee row. Google syncs it as a per-instance response.
      *  - anything else → `update(Attendees.CONTENT_URI/{selfAttendeeId})` with
-     *    `ATTENDEE_STATUS = ACCEPTED`; the provider mirrors it into `SELF_ATTENDEE_STATUS`.
+     *    `ATTENDEE_STATUS` = [response]; the provider mirrors it into `SELF_ATTENDEE_STATUS`.
      * Either way the provider marks the event `DIRTY` and the account's sync adapter
-     * uploads the response on its next upload sync.
+     * uploads the response on its next upload sync. The exception's `STATUS` is
+     * `CONFIRMED` whatever the answer, as in AOSP's calendar app: it is the occurrence's
+     * status, not ours.
      */
-    override suspend fun acceptInstance(event: CalendarEvent): Long = withContext(ioDispatcher) {
+    override suspend fun respondToInstance(event: CalendarEvent, response: EventResponse): Long = withContext(ioDispatcher) {
+        val attendeeStatus = response.attendeeStatus
         if (event.isRecurringInstance) {
             val uri = ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, event.eventId)
             val values = ContentValues().apply {
                 put(Events.ORIGINAL_INSTANCE_TIME, event.begin.toEpochMilli())
-                put(Events.SELF_ATTENDEE_STATUS, Attendees.ATTENDEE_STATUS_ACCEPTED)
+                put(Events.SELF_ATTENDEE_STATUS, attendeeStatus)
                 put(Events.STATUS, Events.STATUS_CONFIRMED)
             }
             val inserted = contentResolver.insert(uri, values) ?: error("exception insert on $uri returned no row")
@@ -79,7 +83,7 @@ class ContentResolverCalendarRepository(
         } else {
             val selfAttendeeId = event.selfAttendeeId ?: error("event ${event.eventId} has no self-attendee row to answer through")
             val uri = ContentUris.withAppendedId(Attendees.CONTENT_URI, selfAttendeeId)
-            val values = ContentValues().apply { put(Attendees.ATTENDEE_STATUS, Attendees.ATTENDEE_STATUS_ACCEPTED) }
+            val values = ContentValues().apply { put(Attendees.ATTENDEE_STATUS, attendeeStatus) }
             val updated = contentResolver.update(uri, values, null, null)
             check(updated == 1) { "attendee update on $uri touched $updated rows" }
             event.eventId
@@ -375,6 +379,14 @@ class ContentResolverCalendarRepository(
         fun placeholders(count: Int): String = List(count) { "?" }.joinToString(",")
     }
 }
+
+/** The `Attendees.ATTENDEE_STATUS_*` value an [EventResponse] is written as. */
+private val EventResponse.attendeeStatus: Int
+    get() = when (this) {
+        EventResponse.YES -> Attendees.ATTENDEE_STATUS_ACCEPTED
+        EventResponse.NO -> Attendees.ATTENDEE_STATUS_DECLINED
+        EventResponse.MAYBE -> Attendees.ATTENDEE_STATUS_TENTATIVE
+    }
 
 /** Julian day number of 1970-01-01, the epoch of `Instances.START_DAY`/`END_DAY`. */
 private const val EPOCH_JULIAN_DAY = 2440588

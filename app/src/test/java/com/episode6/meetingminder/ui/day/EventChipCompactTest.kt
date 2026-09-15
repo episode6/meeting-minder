@@ -40,7 +40,8 @@ class EventChipCompactTest {
                 EventChip(
                     event = event,
                     onClick = {},
-                    onLongClick = {},
+                    onOpenClick = {},
+                    onRespond = {},
                     contentLayout = ChipContentLayout.Compact,
                     modifier = Modifier
                         .width(width.dp)

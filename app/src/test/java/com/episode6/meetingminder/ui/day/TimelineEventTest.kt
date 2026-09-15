@@ -9,6 +9,7 @@ import assertk.assertions.prop
 import com.episode6.meetingminder.model.Availability
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.model.EventStatus
 import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.SelfStatus
@@ -37,6 +38,9 @@ class TimelineEventTest {
                 status = ChipStatus.Normal,
                 selected = true,
                 alarmAt = LocalTime.of(8, 55),
+                // an accepted invite with a self-attendee row: the menu offers the answers, with "Yes" ticked
+                respondable = true,
+                response = EventResponse.YES,
             ),
         )
         assertThat(chip.armed).isTrue()
