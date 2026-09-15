@@ -4,6 +4,7 @@ import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.model.RingingAlarm
 import com.episode6.meetingminder.model.ScheduleChange
 import com.episode6.meetingminder.permissions.PermissionState
@@ -110,6 +111,14 @@ data class LoadDay(val date: LocalDate) : AsyncAction
 data object CalendarContentChanged : AsyncAction
 
 /**
+ * The app bar's "Refresh" button: ask the sync framework to sync every account's
+ * calendars now (`CalendarSyncRequester`) and reload the loaded window straight away
+ * ([CalendarContentChanged]) — `RefreshCalendarsSideEffects`. Whatever the sync then
+ * writes arrives through the provider's change notification like any other change.
+ */
+data object RefreshCalendars : AsyncAction
+
+/**
  * The user tapped an event chip on [date]: flip its selection ("I'm going to this") and
  * persist the change to `selected_event` (`ToggleEventSideEffects`). [key] alone doesn't
  * say which page's chip was tapped, since the same occurrence can appear on two adjacent
@@ -128,7 +137,7 @@ data class SetAlarms(val date: LocalDate) : AsyncAction
 
 /**
  * Mark [key]'s occurrence on [date] "Yes, going" on the calendar
- * (`RsvpAcceptSideEffects` → `CalendarRepository.acceptInstance`), then report back with
+ * (`RsvpAcceptSideEffects` → `CalendarRepository.respondToInstance`), then report back with
  * [RsvpAccepted]. Only ever dispatched by the "Set alarms" reconcile, for an event it just
  * armed; alarm scheduling never waits on it. Carries [date] like [ToggleEvent] does, since
  * the event is looked up in that day's loaded events and the state lands on that day's
@@ -142,6 +151,19 @@ data class RsvpAccept(val date: LocalDate, val key: EventKey) : AsyncAction
  * back so the chip shows its "sent" tick or "couldn't RSVP" hint).
  */
 data class RsvpAccepted(val date: LocalDate, val key: EventKey, val result: RsvpResult) : AsyncAction
+
+/**
+ * The user picked "Respond Yes / No / Maybe" from [key]'s long-press menu on [date]: write
+ * [response] for that one occurrence (`RespondToEventSideEffects` →
+ * `CalendarRepository.respondToInstance`), confirm with a snackbar and reload the day
+ * ([CalendarContentChanged]). The selection itself is left alone; a "No" leaves the chip
+ * declined and unselectable, and that same reload's `MaintainAlarms` cancels its alarm at
+ * once, exactly as a decline made in Google Calendar would. A successful "Yes" also
+ * reports [RsvpAccepted] so an armed selection gets its "sent" tick; a "No" or "Maybe"
+ * resets the row's `rsvp_state` so an earlier automatic Yes's tick doesn't outlive it.
+ * Picking the answer the calendar already holds is confirmed without a write.
+ */
+data class RespondToEvent(val date: LocalDate, val key: EventKey, val response: EventResponse) : AsyncAction
 
 /** The outcome of one RSVP write; failures are per event and never retried automatically. */
 sealed interface RsvpResult {

@@ -2,6 +2,7 @@ package com.episode6.meetingminder.data.calendar
 
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.CalendarInfo
+import com.episode6.meetingminder.model.EventResponse
 import java.time.LocalDate
 
 /** Which calendars an [CalendarRepository.eventsOn] query draws from. */
@@ -14,8 +15,9 @@ sealed interface CalendarFilter {
 }
 
 /**
- * Read access to every calendar on every account (TODO.md §4.1), plus the one write the
- * app ever makes: the RSVP of [acceptInstance] (§4.6).
+ * Read access to every calendar on every account (TODO.md §4.1), plus the one kind of write
+ * the app ever makes: the RSVP of [respondToInstance] (§4.6) — "Yes, going" when alarms are
+ * set, or the answer picked from a chip's long-press menu.
  *
  * The reads need `READ_CALENDAR` and the write `WRITE_CALENDAR`; without them the
  * provider throws `SecurityException`, so callers gate on the permission state first.
@@ -33,18 +35,20 @@ interface CalendarRepository {
     suspend fun eventsOn(date: LocalDate, filter: CalendarFilter = CalendarFilter.Visible): List<CalendarEvent>
 
     /**
-     * Marks this one occurrence of [event] "Yes, going" on the calendar (TODO.md §4.6) —
-     * never a whole series, never a decline. A recurring occurrence is answered by
-     * inserting an exception for it; a plain event (or an occurrence that already is an
-     * exception) by updating our own `Attendees` row. Only call it for an event whose
-     * [rsvpDecision][com.episode6.meetingminder.model.rsvpDecision] is `PENDING`: the
-     * exception insert crashes the provider for an event without a self-attendee row.
+     * Answers this one occurrence of [event] with [response] on the calendar (TODO.md §4.6)
+     * — never a whole series. A recurring occurrence is answered by inserting an exception
+     * for it; a plain event (or an occurrence that already is an exception) by updating our
+     * own `Attendees` row. Only call it for an event that has a self-attendee row
+     * ([CalendarEvent.selfAttendeeId]; the automatic path checks
+     * [rsvpDecision][com.episode6.meetingminder.model.rsvpDecision] and the menu
+     * [canRespond][com.episode6.meetingminder.model.canRespond]): the exception insert
+     * crashes the provider for an event without one.
      *
-     * Returns the id of the event whose attendee row now says accepted: the new
+     * Returns the id of the event whose attendee row now carries the response: the new
      * exception's id, or [CalendarEvent.eventId]. Throws when the provider refuses the
      * write (missing `WRITE_CALENDAR`, no row updated, insert returned nothing).
      */
-    suspend fun acceptInstance(event: CalendarEvent): Long
+    suspend fun respondToInstance(event: CalendarEvent, response: EventResponse): Long
 
     /**
      * Which of [eventIds] exist in `Events` with `DIRTY = 0`: their last local write (our

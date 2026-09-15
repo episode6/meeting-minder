@@ -37,7 +37,8 @@ class DayTimelineSemanticsTest {
                     state = state,
                     scrollState = rememberTimelineScrollState(PreviewEvents.FIRST_VISIBLE_HOUR),
                     onEventClick = {},
-                    onEventLongClick = {},
+                    onEventOpenClick = {},
+                    onEventRespond = { _, _ -> },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -70,7 +71,7 @@ class DayTimelineSemanticsTest {
         node.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox))
         val semantics = node.fetchSemanticsNode().config
         assertThat(semantics.getOrNull(SemanticsActions.OnClick)?.label).isEqualTo("select")
-        assertThat(semantics.getOrNull(SemanticsActions.OnLongClick)?.label).isEqualTo("open in calendar")
+        assertThat(semantics.getOrNull(SemanticsActions.OnLongClick)?.label).isEqualTo("show options")
     }
 
     @Test

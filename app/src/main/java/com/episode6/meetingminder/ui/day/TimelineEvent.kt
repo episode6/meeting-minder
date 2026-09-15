@@ -4,9 +4,12 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.model.EventStatus
 import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.SelfStatus
+import com.episode6.meetingminder.model.canRespond
+import com.episode6.meetingminder.model.response
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -61,8 +64,12 @@ data class TimelineEvent(
     val alarmAt: LocalTime? = null,
     /** The outcome of the RSVP sent when the alarm was set. */
     val rsvp: ChipRsvp = ChipRsvp.None,
+    /** Whether the long-press menu offers "Respond Yes / No / Maybe" ([canRespond]). */
+    val respondable: Boolean = false,
+    /** Your answer on the calendar as it stands, marked in the long-press menu; null while unanswered. */
+    val response: EventResponse? = null,
 ) {
-    /** Declined and cancelled chips ignore taps; long-press (open in calendar) still works. */
+    /** Declined and cancelled chips ignore taps; long-press (the menu) still works. */
     val toggleable: Boolean get() = status != ChipStatus.Declined
 
     val armed: Boolean get() = selected && alarmAt != null
@@ -108,5 +115,7 @@ fun CalendarEvent.toTimelineEvent(
         selected = selected,
         alarmAt = alarmAt,
         rsvp = rsvp,
+        respondable = canRespond(this),
+        response = selfStatus.response,
     )
 }

@@ -163,6 +163,7 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                 state = state,
                 snackbarHostState = snackbarHostState,
                 onPageSettled = viewModel::onPageSettled,
+                onRefreshClick = viewModel::onRefreshClick,
                 onPermissionsClick = { navController.navigate(Route.Onboarding) },
                 onSettingsClick = { navController.navigate(Route.Settings) },
                 onLicensesClick = { navController.navigate(Route.Licenses) },
@@ -178,11 +179,12 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                 onShareAgainClick = viewModel::onShareAgainClick,
                 onMarkNotSharedClick = viewModel::onMarkNotSharedClick,
                 onEventClick = viewModel::onEventToggle,
-                onEventLongClick = { event ->
+                onEventOpenClick = { event ->
                     viewModel.calendarEventFor(event.key)?.let { calendarEvent ->
                         if (!dayContext.openInCalendar(calendarEvent)) viewModel.onOpenInCalendarFailed()
                     }
                 },
+                onEventRespond = viewModel::onEventRespond,
                 onFabClick = viewModel::onFabClick,
                 jumpToDate = pendingJumpDate,
                 onJumpHandled = { pendingJumpDate = null },

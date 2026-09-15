@@ -5,6 +5,7 @@ import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.db.DayPlanDao
 import com.episode6.meetingminder.data.db.promoteSyncedRsvps
 import com.episode6.meetingminder.model.CalendarEvent
+import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.RsvpAccept
@@ -28,7 +29,7 @@ private const val TAG = "MeetingMinderRsvp"
 
 /**
  * The RSVP write and its bookkeeping (TODO.md §4.6). [rsvpAccept] answers each
- * [RsvpAccept] through [CalendarRepository.acceptInstance] — every event its own write, so
+ * [RsvpAccept] through [CalendarRepository.respondToInstance] — every event its own write, so
  * failures are per event — and reports with [RsvpAccepted]; [rsvpState] records that on
  * the selection row, and promotes `ACCEPTED_LOCALLY` to `SYNCED` when, on a reload of
  * the day ([SetDayEvents], which is what our own `ContentObserver` triggers once the sync
@@ -74,7 +75,7 @@ interface RsvpAcceptSideEffects {
 
 /** Catches what the provider throws, never a cancellation of our own scope. */
 private suspend fun CalendarRepository.accept(event: CalendarEvent): RsvpResult = try {
-    RsvpResult.Accepted(acceptInstance(event))
+    RsvpResult.Accepted(respondToInstance(event, EventResponse.YES))
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {

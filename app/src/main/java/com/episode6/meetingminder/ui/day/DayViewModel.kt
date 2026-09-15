@@ -8,6 +8,7 @@ import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.model.SelectedEvent
 import com.episode6.meetingminder.monitor.toLine
 import com.episode6.meetingminder.share.selectedBusyRanges
@@ -18,6 +19,8 @@ import com.episode6.meetingminder.store.ClearPendingShare
 import com.episode6.meetingminder.store.LoadDay
 import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.PendingShare
+import com.episode6.meetingminder.store.RefreshCalendars
+import com.episode6.meetingminder.store.RespondToEvent
 import com.episode6.meetingminder.store.SetAlarms
 import com.episode6.meetingminder.store.SetSettledDate
 import com.episode6.meetingminder.store.ShareFinished
@@ -97,6 +100,16 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
         store.dispatch(ToggleEvent(date, event.key))
     }
 
+    /** "Respond Yes / No / Maybe" from a chip's long-press menu on [date]'s page (TODO.md §4.6). */
+    fun onEventRespond(date: LocalDate, event: TimelineEvent, response: EventResponse) {
+        store.dispatch(RespondToEvent(date, event.key, response))
+    }
+
+    /** The app bar's "Refresh": a calendar sync request plus a reload of the shown days. */
+    fun onRefreshClick() {
+        store.dispatch(RefreshCalendars)
+    }
+
     /**
      * The FAB was tapped: "Set alarms (N)" (or "Clear alarms", the same state with nothing
      * selected) reconciles the settled day's alarms against its selection ([SetAlarms]);
@@ -138,7 +151,7 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
     fun calendarEventFor(key: EventKey): CalendarEvent? =
         store.state.eventsByDay.values.firstNotNullOfOrNull { day -> day.events.firstOrNull { it.key == key } }
 
-    /** No app on the device can open the long-pressed event. */
+    /** No app on the device can open the event ("Open in calendar" from a chip's long-press menu). */
     fun onOpenInCalendarFailed() {
         store.dispatch(ShowMessage(UiMessage.next(R.string.open_in_calendar_failed)))
     }

@@ -16,16 +16,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.QuestionMark
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -57,6 +66,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import java.time.LocalTime
 
@@ -120,14 +130,17 @@ internal fun chipContentLayout(chipHeight: Dp, density: Density): ChipContentLay
  * - [past] (ended, on today): the whole chip at 60% alpha.
  *
  * Tapping toggles selection with a haptic tick ([onClick]; null makes the chip
- * non-selectable, as in the all-day row) and long-press opens the event ([onLongClick]).
+ * non-selectable, as in the all-day row) and long-press opens the [EventMenu]: "Open in
+ * calendar" ([onOpenClick]) first, then — for a [TimelineEvent.respondable] event — "Respond
+ * Yes / No / Maybe" ([onRespond], TODO.md §4.6).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EventChip(
     event: TimelineEvent,
     onClick: (() -> Unit)?,
-    onLongClick: () -> Unit,
+    onOpenClick: () -> Unit,
+    onRespond: (EventResponse) -> Unit,
     modifier: Modifier = Modifier,
     past: Boolean = false,
     contentLayout: ChipContentLayout = ChipContentLayout.TwoLine,
@@ -197,7 +210,8 @@ fun EventChip(
         event.selected -> stringResource(R.string.event_action_deselect)
         else -> stringResource(R.string.event_action_select)
     }
-    val longClickLabel = stringResource(R.string.event_action_open_in_calendar)
+    val longClickLabel = stringResource(R.string.event_action_more)
+    var menuExpanded by remember { mutableStateOf(false) }
 
     Box(
         modifier
@@ -224,7 +238,10 @@ fun EventChip(
                         onClick()
                     }
                 },
-                onLongClick = onLongClick,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    menuExpanded = true
+                },
             )
             .semantics(mergeDescendants = true) {
                 // TalkBack speaks this instead of the merged text, which stays in the tree for tests
@@ -322,8 +339,72 @@ fun EventChip(
                 }
             }
         }
+        EventMenu(
+            expanded = menuExpanded,
+            onDismiss = { menuExpanded = false },
+            respondable = event.respondable,
+            response = event.response,
+            onOpenClick = onOpenClick,
+            onRespond = onRespond,
+        )
     }
 }
+
+/**
+ * The chip's long-press menu, anchored to the chip: "Open in calendar" first (what a
+ * long-press used to do on its own), then, only while [respondable], the three answers
+ * with the calendar's current one ([response]) ticked.
+ */
+@Composable
+private fun EventMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    respondable: Boolean,
+    response: EventResponse?,
+    onOpenClick: () -> Unit,
+    onRespond: (EventResponse) -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.event_menu_open_in_calendar)) },
+            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null) },
+            onClick = {
+                onDismiss()
+                onOpenClick()
+            },
+        )
+        if (!respondable) return@DropdownMenu
+        EventResponse.entries.forEach { candidate ->
+            DropdownMenuItem(
+                text = { Text(stringResource(candidate.menuLabel)) },
+                leadingIcon = { Icon(candidate.icon, contentDescription = null) },
+                trailingIcon = if (candidate == response) {
+                    { Icon(Icons.Outlined.Done, contentDescription = stringResource(R.string.event_menu_current_response)) }
+                } else {
+                    null
+                },
+                onClick = {
+                    onDismiss()
+                    onRespond(candidate)
+                },
+            )
+        }
+    }
+}
+
+private val EventResponse.menuLabel: Int
+    get() = when (this) {
+        EventResponse.YES -> R.string.event_menu_respond_yes
+        EventResponse.NO -> R.string.event_menu_respond_no
+        EventResponse.MAYBE -> R.string.event_menu_respond_maybe
+    }
+
+private val EventResponse.icon
+    get() = when (this) {
+        EventResponse.YES -> Icons.Outlined.Check
+        EventResponse.NO -> Icons.Outlined.Close
+        EventResponse.MAYBE -> Icons.Outlined.QuestionMark
+    }
 
 @Composable
 private fun ChipTime(text: String, style: TextStyle) {
@@ -487,7 +568,8 @@ private fun EventChipStates() {
                     EventChip(
                         event = event,
                         onClick = {},
-                        onLongClick = {},
+                        onOpenClick = {},
+                        onRespond = {},
                         past = past,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -504,7 +586,8 @@ private fun EventChipStates() {
                     EventChip(
                         event = event,
                         onClick = {},
-                        onLongClick = {},
+                        onOpenClick = {},
+                        onRespond = {},
                         contentLayout = ChipContentLayout.Compact,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -514,7 +597,8 @@ private fun EventChipStates() {
                 EventChip(
                     event = PreviewEvents.planningWeek,
                     onClick = null,
-                    onLongClick = {},
+                    onOpenClick = {},
+                    onRespond = {},
                     contentLayout = ChipContentLayout.TitleOnly,
                     modifier = Modifier
                         .fillMaxWidth()

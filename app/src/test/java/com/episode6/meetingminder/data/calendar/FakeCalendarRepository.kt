@@ -2,15 +2,16 @@ package com.episode6.meetingminder.data.calendar
 
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.CalendarInfo
+import com.episode6.meetingminder.model.EventResponse
 import java.time.LocalDate
 
 /**
  * In-memory [CalendarRepository] for store and side-effect tests: seed [calendars] and
  * [events] per day, then assert on [eventQueries] to see what was loaded. Set [error] to
  * make every call throw it (e.g. a `SecurityException` for revoked calendar access).
- * [acceptInstance] records each event in [accepted] and answers with [rsvpEventIdFor]
- * (the event's own id by default, as for a plain event), or throws [acceptError];
- * [syncedEventIds] answers from [syncedIds].
+ * [respondToInstance] records each event and answer in [responses] (the "Yes" ones also
+ * in [accepted]) and answers with [rsvpEventIdFor] (the event's own id by default, as for
+ * a plain event), or throws [acceptError]; [syncedEventIds] answers from [syncedIds].
  */
 class FakeCalendarRepository(
     var calendars: List<CalendarInfo> = emptyList(),
@@ -20,16 +21,19 @@ class FakeCalendarRepository(
     /** Every `eventsOn` call, in order. */
     val eventQueries = mutableListOf<Pair<LocalDate, CalendarFilter>>()
 
-    /** Every `acceptInstance` call, in order. */
-    val accepted = mutableListOf<CalendarEvent>()
+    /** Every `respondToInstance` call, in order. */
+    val responses = mutableListOf<Pair<CalendarEvent, EventResponse>>()
+
+    /** The events answered [EventResponse.YES], in order (the automatic "Yes, going" writes). */
+    val accepted: List<CalendarEvent> get() = responses.filter { it.second == EventResponse.YES }.map { it.first }
 
     /** Thrown from every call while non-null. */
     var error: Exception? = null
 
-    /** Thrown from [acceptInstance] while non-null (the provider refusing the write). */
+    /** Thrown from [respondToInstance] while non-null (the provider refusing the write). */
     var acceptError: Exception? = null
 
-    /** The id [acceptInstance] reports the write went to; override to simulate a new exception's id. */
+    /** The id [respondToInstance] reports the write went to; override to simulate a new exception's id. */
     var rsvpEventIdFor: (CalendarEvent) -> Long = { it.eventId }
 
     /** Event ids whose last local write the (pretend) sync adapter has uploaded. */
@@ -55,8 +59,8 @@ class FakeCalendarRepository(
         }
     }
 
-    override suspend fun acceptInstance(event: CalendarEvent): Long {
-        accepted += event
+    override suspend fun respondToInstance(event: CalendarEvent, response: EventResponse): Long {
+        responses += event to response
         error?.let { throw it }
         acceptError?.let { throw it }
         return rsvpEventIdFor(event)

@@ -42,7 +42,9 @@ class DayScreenRolloverTest {
                     onShareAgainClick = {},
                     onMarkNotSharedClick = {},
                     onEventClick = { _, _ -> },
-                    onEventLongClick = {},
+                    onRefreshClick = {},
+                    onEventOpenClick = {},
+                    onEventRespond = { _, _, _ -> },
                     onFabClick = {},
                 )
             }
@@ -76,7 +78,9 @@ class DayScreenRolloverTest {
                     onShareAgainClick = {},
                     onMarkNotSharedClick = {},
                     onEventClick = { _, _ -> },
-                    onEventLongClick = {},
+                    onRefreshClick = {},
+                    onEventOpenClick = {},
+                    onEventRespond = { _, _, _ -> },
                     onFabClick = {},
                 )
             }

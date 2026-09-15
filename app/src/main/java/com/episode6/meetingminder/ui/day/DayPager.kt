@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import com.episode6.meetingminder.model.CalendarEvent
+import com.episode6.meetingminder.model.EventResponse
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -61,7 +62,8 @@ fun DayPager(
     pagerState: PagerState,
     scrollState: ScrollState,
     onEventClick: (LocalDate, TimelineEvent) -> Unit,
-    onEventLongClick: (TimelineEvent) -> Unit,
+    onEventOpenClick: (TimelineEvent) -> Unit,
+    onEventRespond: (LocalDate, TimelineEvent, EventResponse) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     HorizontalPager(
@@ -75,7 +77,8 @@ fun DayPager(
             state = state.timelineFor(date),
             scrollState = scrollState,
             onEventClick = { event -> onEventClick(date, event) },
-            onEventLongClick = onEventLongClick,
+            onEventOpenClick = onEventOpenClick,
+            onEventRespond = { event, response -> onEventRespond(date, event, response) },
             modifier = Modifier.fillMaxSize(),
         )
     }

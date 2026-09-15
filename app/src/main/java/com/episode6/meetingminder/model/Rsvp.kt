@@ -62,3 +62,35 @@ fun rsvpDecision(event: CalendarEvent): RsvpState = when {
     event.humanAttendees >= 1 && event.selfAttendeeId == null -> RsvpState.UNRESPONDABLE
     else -> RsvpState.PENDING
 }
+
+/**
+ * A response the user picks by hand from a chip's long-press menu ("Respond Yes / No /
+ * Maybe"), as opposed to the automatic "Yes, going" of [rsvpDecision]. Written through
+ * `CalendarRepository.respondToInstance`, one occurrence at a time like every other write.
+ */
+enum class EventResponse { YES, NO, MAYBE }
+
+/** The [EventResponse] the calendar already holds for you, or null while the invite is unanswered. */
+val SelfStatus.response: EventResponse?
+    get() = when (this) {
+        SelfStatus.ACCEPTED -> EventResponse.YES
+        SelfStatus.DECLINED -> EventResponse.NO
+        SelfStatus.TENTATIVE -> EventResponse.MAYBE
+        SelfStatus.NEEDS_ACTION, SelfStatus.NONE -> null
+    }
+
+/**
+ * Whether the long-press menu offers the "Respond …" items for [event]: only an invite we
+ * can actually answer through our own attendee row. The rows this shares with
+ * [rsvpDecision] are the ones that would crash or be rejected — no attendee data, no
+ * self-attendee row (the exception insert's "Status update WTF"), a cancelled occurrence,
+ * a calendar below `CAL_ACCESS_RESPOND` — plus the organizer, whose response Google
+ * already has. Unlike the automatic path, an event already accepted or declined stays
+ * respondable: changing your answer is the point of the menu.
+ */
+fun canRespond(event: CalendarEvent): Boolean =
+    event.hasAttendeeData &&
+        event.selfAttendeeId != null &&
+        !event.isOrganizer &&
+        event.status != EventStatus.CANCELED &&
+        event.calendarAccessLevel >= CALENDAR_ACCESS_RESPOND

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.AlarmOff
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material3.DropdownMenu
@@ -53,6 +54,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -99,10 +101,13 @@ private val TitleFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
 private val SharedDateFormatter = DateTimeFormatter.ofPattern("MMM d")
 
 /**
- * The day view (render 2): date + subtitle app bar with the Today action and the overflow
- * menu over the [DayPager]. Reports each settled page through [onPageSettled] (a fling
- * reports only where it stops); "Today" scrolls the pager back to its anchor page, which
- * then settles like any swipe. All pages share [scrollState], which jumps once to
+ * The day view (render 2): date + subtitle app bar with the Refresh and Today actions and
+ * the overflow menu over the [DayPager]. Reports each settled page through [onPageSettled]
+ * (a fling reports only where it stops); "Today" scrolls the pager back to its anchor page,
+ * which then settles like any swipe; "Refresh" ([onRefreshClick]) asks for a calendar sync
+ * and reloads the shown days. A chip's long-press menu reports "Open in calendar" through
+ * [onEventOpenClick] and "Respond Yes / No / Maybe" through [onEventRespond] with the
+ * page's date, like a tap does. All pages share [scrollState], which jumps once to
  * [DayUiState.initialFirstVisibleHour] when it arrives, unless the user has already scrolled.
  * A shared day that has changed since shows the [ScheduleChangeBanner] above the pager, whose
  * "Re-share" is [onShareAgainClick]. [jumpToDate] (a notification's deep link) scrolls the
@@ -114,6 +119,7 @@ private val SharedDateFormatter = DateTimeFormatter.ofPattern("MMM d")
 fun DayScreen(
     state: DayUiState,
     onPageSettled: (LocalDate) -> Unit,
+    onRefreshClick: () -> Unit,
     onPermissionsClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onLicensesClick: () -> Unit,
@@ -121,7 +127,8 @@ fun DayScreen(
     onShareAgainClick: () -> Unit,
     onMarkNotSharedClick: () -> Unit,
     onEventClick: (LocalDate, TimelineEvent) -> Unit,
-    onEventLongClick: (TimelineEvent) -> Unit,
+    onEventOpenClick: (TimelineEvent) -> Unit,
+    onEventRespond: (LocalDate, TimelineEvent, EventResponse) -> Unit,
     onFabClick: () -> Unit,
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -165,6 +172,9 @@ fun DayScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onRefreshClick) {
+                        Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.day_refresh))
+                    }
                     IconButton(
                         onClick = { scope.launch { pagerState.animateScrollToPage(DayViewDefaults.PagerAnchorPage) } },
                         enabled = !state.isToday,
@@ -199,7 +209,8 @@ fun DayScreen(
                 pagerState = pagerState,
                 scrollState = scrollState,
                 onEventClick = onEventClick,
-                onEventLongClick = onEventLongClick,
+                onEventOpenClick = onEventOpenClick,
+                onEventRespond = onEventRespond,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -392,6 +403,7 @@ private fun DayScreenPreviewFrame(state: DayUiState) {
         DayScreen(
             state = state,
             onPageSettled = {},
+            onRefreshClick = {},
             onPermissionsClick = {},
             onSettingsClick = {},
             onLicensesClick = {},
@@ -399,7 +411,8 @@ private fun DayScreenPreviewFrame(state: DayUiState) {
             onShareAgainClick = {},
             onMarkNotSharedClick = {},
             onEventClick = { _, _ -> },
-            onEventLongClick = {},
+            onEventOpenClick = {},
+            onEventRespond = { _, _, _ -> },
             onFabClick = {},
             scrollState = rememberTimelineScrollState(PreviewEvents.FIRST_VISIBLE_HOUR),
         )

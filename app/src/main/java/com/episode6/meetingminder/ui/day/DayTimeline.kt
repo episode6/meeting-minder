@@ -39,6 +39,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import kotlin.math.ceil
 import kotlin.math.max
@@ -57,22 +58,24 @@ private val MinChipMinutes = ceil(DayViewDefaults.MinChipHeight / DayViewDefault
  * [NowLine] on today.
  *
  * Stateless and data-free: [scrollState] is hoisted so [DayPager] can share one across
- * its pages and the callbacks only report which event was tapped. All-day chips
- * aren't selectable (all-day events are never meetings, never alarmed and never shared);
- * they only answer long-press. Needs a bounded height.
+ * its pages and the callbacks only report which event was tapped, opened
+ * ([onEventOpenClick], the long-press menu's first item) or answered ([onEventRespond]).
+ * All-day chips aren't selectable (all-day events are never meetings, never alarmed and
+ * never shared); they only answer long-press. Needs a bounded height.
  */
 @Composable
 fun DayTimeline(
     state: DayTimelineState,
     scrollState: ScrollState,
     onEventClick: (TimelineEvent) -> Unit,
-    onEventLongClick: (TimelineEvent) -> Unit,
+    onEventOpenClick: (TimelineEvent) -> Unit,
+    onEventRespond: (TimelineEvent, EventResponse) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val timeFormat = rememberTimelineTimeFormat()
     Column(modifier.testTag(DAY_TIMELINE_TEST_TAG)) {
         if (state.allDayEvents.isNotEmpty()) {
-            AllDayRow(state.allDayEvents, onEventLongClick, timeFormat)
+            AllDayRow(state.allDayEvents, onEventOpenClick, onEventRespond, timeFormat)
             HorizontalDivider(thickness = DayViewDefaults.GridLineThickness, color = MaterialTheme.colorScheme.outlineVariant)
         }
         Row(
@@ -85,7 +88,7 @@ fun DayTimeline(
             HourGutter(timeFormat, Modifier.width(DayViewDefaults.GutterWidth))
             Box(Modifier.weight(1f)) {
                 HourGrid(Modifier.matchParentSize())
-                TimedEvents(state, timeFormat, onEventClick, onEventLongClick)
+                TimedEvents(state, timeFormat, onEventClick, onEventOpenClick, onEventRespond)
                 state.now?.let { now ->
                     val nowHours = now.toSecondOfDay() / 3600f
                     NowLine(
@@ -114,7 +117,8 @@ fun rememberTimelineScrollState(
 @Composable
 private fun AllDayRow(
     events: List<TimelineEvent>,
-    onEventLongClick: (TimelineEvent) -> Unit,
+    onEventOpenClick: (TimelineEvent) -> Unit,
+    onEventRespond: (TimelineEvent, EventResponse) -> Unit,
     timeFormat: TimelineTimeFormat,
 ) {
     Row(
@@ -151,7 +155,8 @@ private fun AllDayRow(
                     EventChip(
                         event = event,
                         onClick = null,
-                        onLongClick = { onEventLongClick(event) },
+                        onOpenClick = { onEventOpenClick(event) },
+                        onRespond = { response -> onEventRespond(event, response) },
                         contentLayout = ChipContentLayout.TitleOnly,
                         timeFormat = timeFormat,
                         modifier = Modifier
@@ -229,7 +234,8 @@ private fun TimedEvents(
     state: DayTimelineState,
     timeFormat: TimelineTimeFormat,
     onEventClick: (TimelineEvent) -> Unit,
-    onEventLongClick: (TimelineEvent) -> Unit,
+    onEventOpenClick: (TimelineEvent) -> Unit,
+    onEventRespond: (TimelineEvent, EventResponse) -> Unit,
 ) {
     val spans = remember(state.date, state.timedEvents) {
         state.timedEvents.map { minuteSpanOn(state.date, it.begin, it.end) }
@@ -245,7 +251,8 @@ private fun TimedEvents(
                 EventChip(
                     event = event,
                     onClick = { onEventClick(event) },
-                    onLongClick = { onEventLongClick(event) },
+                    onOpenClick = { onEventOpenClick(event) },
+                    onRespond = { response -> onEventRespond(event, response) },
                     past = nowMinute != null && span.end <= nowMinute,
                     contentLayout = chipContentLayout(DayViewDefaults.chipHeight(span), density),
                     timeFormat = timeFormat,
@@ -268,7 +275,8 @@ private fun DayTimelinePreviewFrame(
                 state = state,
                 scrollState = rememberTimelineScrollState(firstVisibleHour),
                 onEventClick = {},
-                onEventLongClick = {},
+                onEventOpenClick = {},
+                onEventRespond = { _, _ -> },
                 modifier = Modifier.fillMaxSize(),
             )
         }
