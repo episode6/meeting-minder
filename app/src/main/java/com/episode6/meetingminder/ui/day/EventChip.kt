@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import android.content.res.Configuration
@@ -64,7 +65,10 @@ enum class ChipContentLayout {
     /** All-day row: just the title. */
     TitleOnly,
 
-    /** One line: title on the left, time (or bell + alarm time) on the right. */
+    /**
+     * One line: title on the left, time (or bell + alarm time) on the right. The time range
+     * is dropped when the whole title wouldn't fit beside it (the alarm time never is).
+     */
     Compact,
 
     /** Title line, then "time range · location" (or "· bell alarm time"). */
@@ -249,27 +253,36 @@ fun EventChip(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (solid) CheckIcon(contentColor)
-                Text(
-                    event.title,
-                    style = titleStyle,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                if (contentLayout == ChipContentLayout.Compact) {
-                    if (event.armed) {
-                        AlarmTime(alarmText.orEmpty(), detailStyle, Modifier.padding(start = DayViewDefaults.ChipIconSpacing))
-                    } else {
-                        Text(
-                            timeRange,
-                            style = detailStyle,
-                            maxLines = 1,
-                            softWrap = false,
-                            modifier = Modifier.padding(start = DayViewDefaults.ChipIconSpacing),
-                        )
-                    }
-                    RsvpMark(event.rsvp, detailStyle, withLabel = false)
+                val title: @Composable () -> Unit = {
+                    Text(
+                        event.title,
+                        style = titleStyle,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
+                when {
+                    contentLayout == ChipContentLayout.TitleOnly -> Box(Modifier.weight(1f)) { title() }
+                    // the alarm time is the point of the armed state: it stays, like on the two-line chip
+                    event.armed -> {
+                        Box(Modifier.weight(1f)) { title() }
+                        AlarmTime(alarmText.orEmpty(), detailStyle, Modifier.padding(start = DayViewDefaults.ChipIconSpacing))
+                    }
+                    else -> TitleWithOptionalTime(
+                        title = title,
+                        time = {
+                            Text(
+                                timeRange,
+                                style = detailStyle,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(start = DayViewDefaults.ChipIconSpacing),
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (contentLayout == ChipContentLayout.Compact) RsvpMark(event.rsvp, detailStyle, withLabel = false)
             }
 
             ChipContentLayout.TwoLine, ChipContentLayout.Tall -> Column(
@@ -312,6 +325,36 @@ fun EventChip(
                     RsvpMark(event.rsvp, detailStyle, withLabel = true)
                 }
             }
+        }
+    }
+}
+
+/**
+ * The compact row's title with its time range on the right, shown only when the whole
+ * title fits beside it. The chip's place on the hour grid already says when the event
+ * is, but nothing else says what it is, so an ellipsized title always wins the space
+ * over the range: the range is dropped rather than the title shortened.
+ */
+@Composable
+private fun TitleWithOptionalTime(
+    title: @Composable () -> Unit,
+    time: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Layout(contents = listOf(title, time), modifier = modifier) { (titleMeasurables, timeMeasurables), constraints ->
+        val titleMeasurable = titleMeasurables.single()
+        val timeMeasurable = timeMeasurables.single()
+        val width = constraints.maxWidth
+        val fits = titleMeasurable.maxIntrinsicWidth(constraints.maxHeight) +
+            timeMeasurable.maxIntrinsicWidth(constraints.maxHeight) <= width
+        val timePlaceable = if (fits) timeMeasurable.measure(constraints.copy(minWidth = 0, minHeight = 0)) else null
+        val titlePlaceable = titleMeasurable.measure(
+            constraints.copy(minWidth = 0, minHeight = 0, maxWidth = width - (timePlaceable?.width ?: 0)),
+        )
+        val height = maxOf(titlePlaceable.height, timePlaceable?.height ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(width, height) {
+            titlePlaceable.placeRelative(0, (height - titlePlaceable.height) / 2)
+            timePlaceable?.placeRelative(width - timePlaceable.width, (height - timePlaceable.height) / 2)
         }
     }
 }
@@ -445,6 +488,7 @@ private fun EventChipStates() {
                     base.copy(title = "Compact"),
                     base.copy(title = "Compact armed", selected = true, alarmAt = LocalTime.of(8, 55)),
                     base.copy(title = "Compact armed, RSVP sent", selected = true, alarmAt = LocalTime.of(8, 55), rsvp = ChipRsvp.Sent),
+                    base.copy(title = "Compact with a title too long to share the line with its time range"),
                 ).forEach { event ->
                     EventChip(
                         event = event,
