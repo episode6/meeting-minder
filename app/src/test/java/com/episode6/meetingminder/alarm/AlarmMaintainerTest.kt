@@ -216,6 +216,8 @@ class AlarmMaintainerTest {
         assertThat(alarms.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
         assertThat(scheduler.cancelled).containsExactly(1L)
         assertThat(plans.selectionsFlow.value.single().alarmId).isNull()
+        // the armed set no longer matches the selection: back to "Set alarms", so a re-accept can be re-armed
+        assertThat(plans.plansFlow.value.single().alarmsSetAt).isNull()
     }
 
     @Test

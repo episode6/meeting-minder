@@ -35,7 +35,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.repeatOnLifecycle
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.permissions.PermissionRequester
-import com.episode6.meetingminder.share.shareSchedule
+import com.episode6.meetingminder.share.shareScheduleIntent
 import com.episode6.meetingminder.ui.day.DayScreen
 import com.episode6.meetingminder.ui.day.DayViewModel
 import com.episode6.meetingminder.ui.licenses.LicensesScreen
@@ -79,10 +79,14 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
     // synchronous seed above only covers the very first frame. Revoking calendar access in
     // system Settings kills the process; relaunching from recents must still land on
     // Onboarding (TODO.md §4.5: shown whenever a required grant is missing at launch), so
-    // also react whenever a required grant turns false and we are not already there.
+    // also react whenever a required grant turns false and we are not already there. The
+    // entry is still null on the first frame (its collector hasn't delivered yet); the
+    // synchronous seed covers that frame, and acting on null would pop the start
+    // destination and push a second Onboarding over it, discarding its restored state.
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     LaunchedEffect(requiredPermissionsGranted, currentBackStackEntry) {
-        if (!requiredPermissionsGranted && currentBackStackEntry?.destination?.hasRoute<Route.Onboarding>() != true) {
+        val entry = currentBackStackEntry ?: return@LaunchedEffect
+        if (!requiredPermissionsGranted && !entry.destination.hasRoute<Route.Onboarding>()) {
             navController.navigate(Route.Onboarding) {
                 popUpTo(navController.graph.id) { inclusive = true }
                 launchSingleTop = true
@@ -135,12 +139,22 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
 
             // ShareCompat needs a real Activity context and must never launch from a
             // receiver (TODO.md §4.2), so the actual chooser call lives here, not in the
-            // side effect that formats the text and records the share.
+            // side effect that formats the text and records the share. It is launched for
+            // a result only to hear the sheet close: that ends the share in flight
+            // (AppState.shareInFlight), which is what keeps a second tap from opening a
+            // second chooser while the first is still coming up.
+            val shareSheet = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+                viewModel.onShareSheetClosed()
+            }
             LaunchedEffect(viewModel, entryLifecycleOwner) {
                 entryLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     viewModel.pendingShare.collect { share ->
                         viewModel.onShareLaunched(share)
-                        dayContext.shareSchedule(share.text)
+                        try {
+                            shareSheet.launch(dayContext.shareScheduleIntent(share.text))
+                        } catch (_: ActivityNotFoundException) {
+                            viewModel.onShareSheetClosed()
+                        }
                     }
                 }
             }
@@ -177,16 +191,21 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
         composable<Route.Onboarding> {
             val viewModel: OnboardingViewModel = metroViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
+            val requestedPermissions by viewModel.requestedPermissions.collectAsStateWithLifecycle()
             val screenContext = LocalContext.current
             val uriHandler = LocalUriHandler.current
             val calendarRequest = rememberRuntimePermissionRequest(
                 permissions = arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR),
                 granted = state.calendarGranted,
+                requestedPermissions = requestedPermissions,
+                onRequested = viewModel::onPermissionRequested,
                 onResult = viewModel::onPermissionsMaybeChanged,
             )
             val notificationsRequest = rememberRuntimePermissionRequest(
                 permissions = arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                 granted = state.notificationsGranted,
+                requestedPermissions = requestedPermissions,
+                onRequested = viewModel::onPermissionRequested,
                 onResult = viewModel::onPermissionsMaybeChanged,
             )
             // Notifications have no runtime dialog on 12/12L, and none that helps once the
@@ -297,35 +316,47 @@ private class RuntimePermissionRequest(val permanentlyDenied: Boolean, val launc
 
 /**
  * Wraps `RequestMultiplePermissions` for [permissions] with the "two denials → Open
- * settings" detection (TODO.md §4.1). Rationale is also false before the user has ever
- * made a choice, so a bare "not shown after" check would flip to "permanently denied" on
- * a first-ever Back-dismissal; snapshotting it right before `launch()` tells that apart
- * from a real two-denials rationale→false transition. [granted] turning true (a fresh
- * grant, or one made in system Settings) resets the flag.
+ * settings" detection (TODO.md §4.1): a result that isn't a grant and comes back with no
+ * rationale to show means the system won't ask again. Rationale is also false before the
+ * user has ever made a choice, so a bare "no rationale after" check would flip to
+ * "permanently denied" on a first-ever Back-dismissal. The request is therefore only
+ * counted when the user had already been asked before it — the rationale was showing
+ * (one denial so far), or [requestedPermissions] (persisted through [onRequested]) says a
+ * request happened in some earlier session. That persisted half is what catches a
+ * permission denied for good before the process died: the system auto-denies its next
+ * request without a dialog, and without it that request would look like a first-ever
+ * dismissal and leave the user tapping a dead "Allow" for ever. The one thing it can't
+ * tell apart is a user who dismisses the dialog with Back twice, who is offered
+ * "Open settings" although the dialog would still show; that fails in the safe direction.
+ * [granted] turning true (a fresh grant, or one made in system Settings) resets the flag.
  */
 @Composable
 private fun rememberRuntimePermissionRequest(
     permissions: Array<String>,
     granted: Boolean,
+    requestedPermissions: Set<String>,
+    onRequested: (String) -> Unit,
     onResult: () -> Unit,
 ): RuntimePermissionRequest {
     val context = LocalContext.current
     val key = permissions.first()
     var permanentlyDenied by rememberSaveable(key) { mutableStateOf(false) }
-    var rationaleShownBeforeRequest by rememberSaveable(key) { mutableStateOf(false) }
+    var askedBeforeRequest by rememberSaveable(key) { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
         onResult()
         permanentlyDenied = if (results.values.all { it }) {
             false
         } else {
-            rationaleShownBeforeRequest && !context.rationaleShownFor(key)
+            askedBeforeRequest && !context.rationaleShownFor(key)
         }
     }
     LaunchedEffect(granted) {
         if (granted) permanentlyDenied = false
     }
     return RuntimePermissionRequest(permanentlyDenied) {
-        rationaleShownBeforeRequest = context.rationaleShownFor(key)
+        // snapshot first: this request must not count as the earlier one
+        askedBeforeRequest = key in requestedPermissions || context.rationaleShownFor(key)
+        onRequested(key)
         launcher.launch(permissions)
     }
 }

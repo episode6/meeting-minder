@@ -4,6 +4,8 @@ import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
 import com.episode6.meetingminder.data.db.SelectedEventEntity
 import com.episode6.meetingminder.model.CalendarEvent
+import com.episode6.meetingminder.model.EventStatus
+import com.episode6.meetingminder.model.SelfStatus
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -18,7 +20,12 @@ fun alarmTimeFor(beginMillis: Long, leadTime: Duration): Long = beginMillis - le
 data class AlarmReconciliation(
     /** New rows (`alarmId = 0`, assigned on insert) to insert and arm. */
     val schedule: List<ScheduledAlarmEntity> = emptyList(),
-    /** Existing rows whose event moved (or was retitled/relocated): update the row and re-arm it. */
+    /**
+     * Existing rows whose event moved (or, for a `SCHEDULED` row, was retitled/relocated):
+     * update the row and re-arm it. A `SNOOZED` row is only re-timed for a move; retitled
+     * or relocated but unmoved it is kept with its old copy (see [keep]) until the
+     * automatic `MaintainAlarms` refreshes it.
+     */
     val retime: List<ScheduledAlarmEntity> = emptyList(),
     /** Existing rows to disarm and mark `CANCELLED`: deselected, or moved into the past. */
     val cancel: List<ScheduledAlarmEntity> = emptyList(),
@@ -30,17 +37,24 @@ data class AlarmReconciliation(
      * updated all the same.
      */
     val skipped: List<SelectedEventEntity> = emptyList(),
+    /**
+     * Selections whose event the provider now reports as cancelled, or declined by me:
+     * never armed (the automatic `MaintainAlarms` cancels exactly these, so arming them
+     * here would only bounce), and any row they still had is in [cancel]. Counted in the
+     * snackbar; kept as selections so the change banner can explain.
+     */
+    val notAttending: List<SelectedEventEntity> = emptyList(),
 ) {
     /** How many alarms are armed for the day once this is applied. */
     val armedCount: Int get() = schedule.size + retime.size + keep.size
 
     /**
      * Nothing on the day is selected any more, so applying this only cancels: every
-     * selection lands in exactly one of [schedule]/[retime]/[keep]/[skipped], so all four
-     * empty means an empty selection. The day then goes back to "nothing picked" rather
-     * than "alarms set".
+     * selection lands in exactly one of [schedule]/[retime]/[keep]/[skipped]/[notAttending],
+     * so all five empty means an empty selection. The day then goes back to "nothing
+     * picked" rather than "alarms set".
      */
-    val clearsTheDay: Boolean get() = armedCount == 0 && skipped.isEmpty()
+    val clearsTheDay: Boolean get() = armedCount == 0 && skipped.isEmpty() && notAttending.isEmpty()
 }
 
 /**
@@ -48,6 +62,9 @@ data class AlarmReconciliation(
  * alarm time is the event's begin (taken from [freshEvents] when the provider still has
  * the event — so a *moved* event is re-timed — and from the stored selection otherwise)
  * minus [leadTime]. Then:
+ *  - the event is `STATUS_CANCELED` or declined by me: never armed, whatever its row
+ *    (which is cancelled) — the same rule `MaintainAlarms` applies to armed rows, so the two
+ *    reconciles can't fight over it; counted as [AlarmReconciliation.notAttending];
  *  - no armed row for the key: schedule one, unless the alarm time is already past
  *    (`≤ now`) — those are skipped and counted, never silently dropped;
  *  - a row with the same time, title and location: keep it;
@@ -81,6 +98,7 @@ fun reconcileAlarms(
     val cancel = mutableListOf<ScheduledAlarmEntity>()
     val keep = mutableListOf<ScheduledAlarmEntity>()
     val skipped = mutableListOf<SelectedEventEntity>()
+    val notAttending = mutableListOf<SelectedEventEntity>()
 
     for (selection in selected) {
         val event = fresh[selection.key]
@@ -90,6 +108,11 @@ fun reconcileAlarms(
             selection
         }
         val row = existing[selection.key]
+        if (event != null && (event.status == EventStatus.CANCELED || event.selfStatus == SelfStatus.DECLINED)) {
+            notAttending += current
+            if (row != null) cancel += row
+            continue
+        }
         // the provider's location when it still has the event; otherwise whatever the row saved
         val location = if (event != null) event.location else row?.location
         val fireAt = alarmTimeFor(current.beginMillis, leadTime)
@@ -130,5 +153,5 @@ fun reconcileAlarms(
     }
     cancel += scheduled.filter { it.key !in selectedKeys }
 
-    return AlarmReconciliation(schedule = schedule, retime = retime, cancel = cancel, keep = keep, skipped = skipped)
+    return AlarmReconciliation(schedule = schedule, retime = retime, cancel = cancel, keep = keep, skipped = skipped, notAttending = notAttending)
 }

@@ -1,11 +1,18 @@
 package com.episode6.meetingminder.store.sideeffects
 
+import android.Manifest
+import android.app.Application
+import android.app.NotificationManager
+import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
+import com.episode6.meetingminder.R
+import com.episode6.meetingminder.alarm.AlarmNotifications
 import com.episode6.meetingminder.alarm.AlarmRinger
 import com.episode6.meetingminder.alarm.AlarmRingingCommands
+import com.episode6.meetingminder.alarm.AlarmScheduler
 import com.episode6.meetingminder.alarm.FakeAlarmScheduler
 import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.FakeScheduledAlarmDao
@@ -19,20 +26,34 @@ import com.episode6.meetingminder.store.SetRinging
 import com.episode6.meetingminder.store.SnoozeAlarm
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
+import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
+/** Robolectric only for the "missed alarm" notification the undeliverable-snooze fallback posts. */
+@RunWith(RobolectricTestRunner::class)
 class AlarmRingingSideEffectsTest {
 
+    private val context = ApplicationProvider.getApplicationContext<Application>()
+    private val notificationManager = context.getSystemService(NotificationManager::class.java)
     private val today = LocalDate.of(2026, 9, 14)
     private val now = Instant.parse("2026-09-14T08:55:00Z")
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
     private val dao = FakeScheduledAlarmDao(listOf(firedRow(3)))
     private val ringingState = TestAppState.copy(ringing = ringing(3))
+
+    @Before
+    fun setUp() {
+        shadowOf(context).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        AlarmNotifications.createChannels(context)
+    }
 
     private fun firedRow(id: Long) = ScheduledAlarmEntity(
         alarmId = id, date = today, eventId = id, instanceTime = 0, fireAt = now.toEpochMilli(), title = "Standup",
@@ -53,8 +74,8 @@ class AlarmRingingSideEffectsTest {
         override fun dismiss(alarmId: Long): Boolean = deliver.also { sent += "dismiss:$alarmId" }
     }
 
-    private fun effect(commands: AlarmRingingCommands) =
-        object : AlarmRingingSideEffects {}.alarmRinging(commands, AlarmRinger(dao, FakeAlarmScheduler(), FakeSettingsRepository(), clock))
+    private fun effect(commands: AlarmRingingCommands, scheduler: AlarmScheduler = FakeAlarmScheduler()) =
+        object : AlarmRingingSideEffects {}.alarmRinging(commands, AlarmRinger(dao, scheduler, FakeSettingsRepository(), clock), context, clock)
 
     @Test
     fun snooze_isHandedToTheRingingService() = runTest {
@@ -92,6 +113,18 @@ class AlarmRingingSideEffectsTest {
 
         assertThat(output).containsExactly(SetRinging(null))
         assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.SNOOZED)
+        assertThat(shadowOf(notificationManager).allNotifications).isEmpty()
+    }
+
+    @Test
+    fun anUndeliverableSnooze_theOsRefusesToArm_isReportedAsMissed_likeTheServiceWould() = runTest {
+        val output = effect(FakeCommands(deliver = false), FakeAlarmScheduler(refuse = true))
+            .output(SnoozeAlarm(3), state = ringingState).toList()
+
+        assertThat(output).containsExactly(SetRinging(null))
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.CANCELLED)
+        val missed = shadowOf(notificationManager).allNotifications.single()
+        assertThat(shadowOf(missed).contentTitle.toString()).isEqualTo(context.getString(R.string.alarm_missed_title, "Standup"))
     }
 
     @Test

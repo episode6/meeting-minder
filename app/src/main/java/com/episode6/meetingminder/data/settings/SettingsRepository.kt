@@ -17,7 +17,7 @@ import java.time.Duration
  * generated in-app, so it belongs to the in-app pool: [BUNDLED_ONLY] keeps the bundled OGGs
  * and the siren, [SYSTEM_ONLY] only the device's alarm ringtones.
  */
-enum class SoundPool { ALL, BUNDLED_ONLY, SYSTEM_ONLY }
+enum class AlarmSoundPool { ALL, BUNDLED_ONLY, SYSTEM_ONLY }
 
 /**
  * The user's preferences (TODO.md §6 item 8 for the defaults, §5 PR-12 for the screen that
@@ -36,7 +36,7 @@ data class Settings(
     val snoozeLength: Duration = SettingsDefaults.SnoozeLength,
     /** How long an alarm rings unanswered before it snoozes itself (once) and then gives up. */
     val autoTimeout: Duration = SettingsDefaults.AutoTimeout,
-    val soundPool: SoundPool = SoundPool.ALL,
+    val soundPool: AlarmSoundPool = AlarmSoundPool.ALL,
     /** Whether events you declined in Google Calendar still show (dashed/strikethrough) in the itinerary. */
     val showDeclined: Boolean = true,
     /** Per-calendar include override; see the class doc. Empty means "respect `VISIBLE` for every calendar". */
@@ -59,11 +59,24 @@ interface SettingsRepository {
     suspend fun setLeadTime(leadTime: Duration)
     suspend fun setSnoozeLength(snoozeLength: Duration)
     suspend fun setAutoTimeout(autoTimeout: Duration)
-    suspend fun setSoundPool(soundPool: SoundPool)
+    suspend fun setSoundPool(soundPool: AlarmSoundPool)
     suspend fun setShowDeclined(showDeclined: Boolean)
 
     /** Sets [Settings.calendarOverrides] for [calendarId]: `true`/`false` to force it, or null to clear the override. */
     suspend fun setCalendarOverride(calendarId: Long, included: Boolean?)
+
+    /**
+     * The runtime permissions (`Manifest.permission` names) this app has asked the system
+     * for at least once, ever. Not a preference, but it has to outlive the process: the
+     * "two denials → Open settings" detection (TODO.md §4.1) can't tell a permanently denied
+     * permission from a never-requested one — both report no rationale — except by knowing a
+     * request already happened, and a permanently denied user who relaunches the app would
+     * otherwise be stuck on an "Allow" button whose dialog the system silently refuses.
+     */
+    val requestedPermissions: Flow<Set<String>>
+
+    /** Records that [permission] has been requested; see [requestedPermissions]. */
+    suspend fun markPermissionRequested(permission: String)
 }
 
 /** [SettingsRepository] over the app's preferences DataStore (bound in `di/SettingsModule.kt`). */
@@ -83,8 +96,8 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         dataStore.edit { it[Keys.AutoTimeoutMinutes] = autoTimeout.toMinutes().toInt() }
     }
 
-    override suspend fun setSoundPool(soundPool: SoundPool) {
-        dataStore.edit { it[Keys.SoundPool] = soundPool.name }
+    override suspend fun setSoundPool(soundPool: AlarmSoundPool) {
+        dataStore.edit { it[Keys.AlarmSoundPool] = soundPool.name }
     }
 
     override suspend fun setShowDeclined(showDeclined: Boolean) {
@@ -107,11 +120,17 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         }
     }
 
+    override val requestedPermissions: Flow<Set<String>> = dataStore.data.map { it[Keys.RequestedPermissions].orEmpty() }
+
+    override suspend fun markPermissionRequested(permission: String) {
+        dataStore.edit { it[Keys.RequestedPermissions] = it[Keys.RequestedPermissions].orEmpty() + permission }
+    }
+
     private fun Preferences.toSettings() = Settings(
         leadTime = minutes(Keys.LeadTimeMinutes) ?: SettingsDefaults.LeadTime,
         snoozeLength = minutes(Keys.SnoozeMinutes) ?: SettingsDefaults.SnoozeLength,
         autoTimeout = minutes(Keys.AutoTimeoutMinutes) ?: SettingsDefaults.AutoTimeout,
-        soundPool = this[Keys.SoundPool]?.let { name -> SoundPool.entries.firstOrNull { it.name == name } } ?: SoundPool.ALL,
+        soundPool = this[Keys.AlarmSoundPool]?.let { name -> AlarmSoundPool.entries.firstOrNull { it.name == name } } ?: AlarmSoundPool.ALL,
         showDeclined = this[Keys.ShowDeclined] ?: true,
         calendarOverrides = calendarOverrides(),
     )
@@ -129,9 +148,10 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         val LeadTimeMinutes = intPreferencesKey("lead_time_minutes")
         val SnoozeMinutes = intPreferencesKey("snooze_minutes")
         val AutoTimeoutMinutes = intPreferencesKey("auto_timeout_minutes")
-        val SoundPool = stringPreferencesKey("sound_pool")
+        val AlarmSoundPool = stringPreferencesKey("sound_pool")
         val ShowDeclined = booleanPreferencesKey("show_declined")
         val CalendarOverridesIncluded = stringSetPreferencesKey("calendar_overrides_included")
         val CalendarOverridesExcluded = stringSetPreferencesKey("calendar_overrides_excluded")
+        val RequestedPermissions = stringSetPreferencesKey("requested_permissions")
     }
 }

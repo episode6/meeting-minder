@@ -99,7 +99,8 @@ adb shell content query --uri content://com.android.calendar/events --where "ori
 
 The chip shows a small tick after its alarm time once the write went through. A solo
 block, an event you organise, one you already accepted or declined, or one the organizer
-cancelled gets no RSVP and no mark; a
+cancelled gets no RSVP and no mark (a declined or cancelled one gets no alarm either: the
+snackbar reads "1 set, 1 skipped (declined or cancelled)"); a
 calendar with `calendar_access_level` below 300, or an invite whose attendee rows don't
 include `ownerAccount` (an alias), shows the "couldn't RSVP" hint instead. On a real
 Google account the response should appear on calendar.google.com within a minute or so
@@ -127,8 +128,11 @@ full-screen intent brings up the dark ringing screen (clock, countdown, Dismiss 
 the lock screen — or a heads-up with Snooze/Dismiss while the phone is in use. Unanswered
 for 3 minutes it snoozes itself once, then gives up with a "Missed alarm" notification.
 Onboarding needs calendar, notifications, exact alarms and full-screen alarms granted
-before the day view shows (battery-optimisation and background-restriction rows are
-shown but optional). The chip states are also reviewed through the Roborazzi previews
+before the day view shows. Two optional rows are conditional, so a fresh emulator shows
+neither: "Ignore battery optimization" appears only while the app isn't exempt, and the
+"Background use restricted" warning only while Android restricts the app (the restricted
+standby bucket, or battery usage set to Restricted — see "Robustness checks" for how to
+force each). The chip states are also reviewed through the Roborazzi previews
 under `app/src/test/screenshots/`. `adb shell setprop log.tag.MeetingMinderStore DEBUG`
 logs every dispatched store action's type.
 
@@ -139,13 +143,14 @@ alarm time, the RSVP goes to "Yes, going" in the calendar) → FAB becomes
 Then move or add an event in Google Calendar and confirm the "changed since you shared"
 notification and in-app banner arrive.
 
-Settings (overflow → Settings): change the lead time, snooze length, auto-timeout and
-sound pack, toggle a calendar's include switch (the day view should stop/start showing
-that calendar's events), toggle the "Show declined events" switch, and tap the
-"Test alarm" button (snackbar reads "Test alarm rings in 10 seconds"; it fires about
-10 seconds later without touching real calendar data — the test event is excluded from
-"N meetings" counts and alarm armed-counts). The permissions row reflects onboarding
-state and re-enters onboarding when tapped.
+Settings (overflow → Settings): change the lead time, snooze length, auto-timeout and the
+"Alarm sounds" row (All / Bundled only / System only), toggle a calendar's include switch
+(the day view should stop/start showing that calendar's events), toggle the "Show declined
+events" switch, and tap the "Test alarm" button (snackbar reads "Test alarm rings in 10
+seconds"; it fires about 10 seconds later without touching real calendar data — the test
+alarm never appears in the day view's FAB armed count, and its ringing screen has no
+"Open meeting"). The permissions row reflects onboarding state and re-enters onboarding
+when tapped.
 
 Alarms: set one a minute or two out, lock the screen, and confirm the ringing activity
 comes up over the lock screen with the screen woken and a sound playing. Dismiss and
@@ -193,28 +198,46 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   `adb shell dumpsys package $PKG | grep -B1 -A3 CalendarProviderChangedReceiver`, which
   shows the component under `enabledComponents`/`disabledComponents` once
   `CalendarProviderChangedReceiver.kt`'s `setComponentEnabledSetting` has run; `pm list
-  receivers` isn't a real `pm` subcommand). `PROVIDER_CHANGED` is a protected broadcast, so
-  from the shell uid `am broadcast` throws a `SecurityException` on a user build — run
-  `adb root` first (emulator only), the same thing the `BOOT_COMPLETED` broadcast above
-  silently relies on.
-- Midnight rollover / anchor date: on an emulator, `adb root && adb shell settings put
-  global auto_time 0 && adb shell date MMDDhhmmYYYY.ss` (or `adb shell date @<epoch>`) sets
-  the clock directly; Extended Controls also has a clock control. On a real device there's
-  no rooted `date`, so leave the app open and past a real midnight instead. Either way, the
-  viewed day and "Today" target should follow.
+  receivers` isn't a real `pm` subcommand). `PROVIDER_CHANGED` is a protected broadcast,
+  but the shell uid is one of the callers allowed to send those, so no `adb root` is
+  needed: on an API 36 `user` (Play-store) image the command reports
+  `Broadcast completed: result=0` and the receiver's work is enqueued.
+- Midnight rollover / anchor date: `adb shell settings put global auto_time 0` then
+  `adb shell cmd alarm set-time <epochMillis>` (AlarmManager's shell command; the shell
+  uid holds `SET_TIME`, so it works on any build — verified on the API 36 Play-store
+  image, where `adb root` is refused and `adb shell date MMDDhhmmYYYY.ss` fails with
+  "Operation not permitted"). On a rootable image (`google_apis`, not `_playstore`)
+  `adb root && adb shell date MMDDhhmmYYYY.ss` also works; Extended Controls has a clock
+  control too. Put `auto_time` back to 1 afterwards. Either way, the viewed day and "Today"
+  target should follow.
 - Timezone change: `adb shell settings put global auto_time_zone 0` (not `content
-  update` — that's not how settings are written), then either
-  `adb shell setprop persist.sys.timezone Europe/London` (emulator only, root, and the
-  property name is version-dependent) or the friendlier route: Extended Controls →
-  Settings → Time, or `Settings > System > Date & time` by hand. Scheduled alarms for the
-  day should still fire at the right local time afterwards.
+  update` — that's not how settings are written), then
+  `adb shell cmd alarm set-timezone Europe/London` (AlarmManager's shell command; the
+  shell uid holds `SET_TIME_ZONE`, so no root needed — verified on the API 36 Play-store
+  image, `persist.sys.timezone` flips at once), or on a rootable image
+  `adb shell setprop persist.sys.timezone Europe/London`, or by hand via Extended
+  Controls → Settings → Time / `Settings > System > Date & time`. What to look for:
+  `BootReceiver` handles `TIMEZONE_CHANGED`, so `dumpsys alarm` should show every armed
+  alarm re-timed to the new local wall-clock, and the day view's hour gutter and chips
+  should shift with it.
 - Battery optimisation / restricted standby: `adb shell dumpsys deviceidle whitelist -$PKG`
   removes the app from the allowlist so onboarding's battery row shows "Allow"; `adb shell
   am set-standby-bucket $PKG restricted` simulates the "restricted" bucket warning.
 - Dark theme / large font / TalkBack: `adb shell "cmd uimode night yes"` (and `no` after),
-  `adb shell settings put system font_scale 1.5`, and `adb shell settings put secure
-  enabled_accessibility_services com.android.talkback/com.google.android.marvin.talkback.TalkBackService`
-  (revert each afterwards) — walk the day view and onboarding under each.
+  `adb shell settings put system font_scale 1.5`, and for TalkBack first check it's there
+  at all — `adb shell pm list packages | grep -i talkback` — since plain `google_apis`
+  emulator images usually don't ship it (it's a Play component; the
+  `google_apis_playstore` image does, as `com.google.android.marvin.talkback`, or use a
+  real phone). The service component differs between builds
+  (`com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService`
+  on Google builds, `com.android.talkback/…` on AOSP), so use whichever the package list
+  shows in `adb shell settings put secure enabled_accessibility_services <component>`,
+  and also `adb shell settings put secure accessibility_enabled 1` or the service won't
+  start (verified on the API 36 Play-store image: `dumpsys accessibility` then lists
+  TalkBack under "Enabled services" and its `ServiceRecord` is running). Revert with
+  `settings put secure accessibility_enabled 0` and
+  `settings delete secure enabled_accessibility_services` — walk the day view and
+  onboarding under each.
 
 ## Gotchas
 

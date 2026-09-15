@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.data.settings.SettingsRepository
-import com.episode6.meetingminder.data.settings.SoundPool
+import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.meetingminder.store.AppStore
@@ -62,7 +62,7 @@ data class SettingsUiState(
     val leadTime: Duration = Duration.ZERO,
     val snoozeLength: Duration = Duration.ZERO,
     val autoTimeout: Duration = Duration.ZERO,
-    val soundPool: SoundPool = SoundPool.ALL,
+    val soundPool: AlarmSoundPool = AlarmSoundPool.ALL,
     val showDeclined: Boolean = true,
     val calendars: List<CalendarRow> = emptyList(),
     val permissionsStatus: PermissionsStatus = PermissionsStatus.AllGranted,
@@ -110,7 +110,7 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
 
     fun onAutoTimeoutSelected(autoTimeout: Duration) = viewModelScope.launch { settings.setAutoTimeout(autoTimeout) }
 
-    fun onSoundPoolSelected(soundPool: SoundPool) = viewModelScope.launch { settings.setSoundPool(soundPool) }
+    fun onSoundPoolSelected(soundPool: AlarmSoundPool) = viewModelScope.launch { settings.setSoundPool(soundPool) }
 
     fun onShowDeclinedToggle(showDeclined: Boolean) = viewModelScope.launch {
         settings.setShowDeclined(showDeclined)

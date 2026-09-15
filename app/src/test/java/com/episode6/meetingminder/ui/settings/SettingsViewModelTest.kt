@@ -5,7 +5,7 @@ import assertk.assertThat
 import assertk.assertions.isEqualTo
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
-import com.episode6.meetingminder.data.settings.SoundPool
+import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.CalendarContentChanged
@@ -133,9 +133,9 @@ class SettingsViewModelTest {
         val settings = FakeSettingsRepository()
         val viewModel = SettingsViewModel(store, settings)
 
-        viewModel.onSoundPoolSelected(SoundPool.BUNDLED_ONLY)
+        viewModel.onSoundPoolSelected(AlarmSoundPool.BUNDLED_ONLY)
 
-        assertThat(settings.settings.value.soundPool).isEqualTo(SoundPool.BUNDLED_ONLY)
+        assertThat(settings.settings.value.soundPool).isEqualTo(AlarmSoundPool.BUNDLED_ONLY)
     }
 
     @Test

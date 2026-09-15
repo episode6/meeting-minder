@@ -8,6 +8,8 @@ import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
 import com.episode6.meetingminder.data.db.SelectedEventEntity
 import com.episode6.meetingminder.data.db.toSelectedEventEntity
+import com.episode6.meetingminder.model.EventStatus
+import com.episode6.meetingminder.model.SelfStatus
 import com.episode6.meetingminder.model.testCalendarEvent
 import org.junit.Test
 import java.time.Duration
@@ -88,6 +90,30 @@ class AlarmReconcilerTest {
 
         assertThat(result.schedule).isEmpty()
         assertThat(result.skipped).containsExactly(selection(standup))
+    }
+
+    @Test
+    fun declinedOrCancelledSelection_isNeverArmed_andCountedAsNotAttending() {
+        // selected, then declined by me / cancelled by the organizer in Google Calendar
+        val declined = standup.copy(selfStatus = SelfStatus.DECLINED)
+        val cancelled = designReview.copy(status = EventStatus.CANCELED)
+
+        val result = reconcile(listOf(selection(standup), selection(designReview)), fresh = listOf(declined, cancelled))
+
+        assertThat(result.schedule).isEmpty()
+        assertThat(result.notAttending).containsExactly(selection(standup), selection(designReview))
+        assertThat(result.clearsTheDay).isEqualTo(false)
+    }
+
+    @Test
+    fun declinedSelection_withAnArmedRow_hasItCancelled_asMaintainAlarmsWould() {
+        val row = scheduledRow(standup, alarmId = 1)
+
+        val result = reconcile(listOf(selection(standup)), fresh = listOf(standup.copy(selfStatus = SelfStatus.DECLINED)), scheduled = listOf(row))
+
+        assertThat(result.cancel).containsExactly(row)
+        assertThat(result.notAttending).containsExactly(selection(standup))
+        assertThat(result.armedCount).isEqualTo(0)
     }
 
     @Test

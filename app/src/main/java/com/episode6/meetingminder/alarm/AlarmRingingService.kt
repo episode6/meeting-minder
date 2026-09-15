@@ -56,7 +56,13 @@ class AlarmRingingService : Service(), RingingOutputs {
         lastStartId = startId
         val alarmId = intent?.data?.let(AlarmUris::alarmIdOf) ?: NO_ALARM
         when (intent?.action) {
-            ACTION_FIRE -> session.fire(alarmId)
+            ACTION_FIRE -> {
+                // the receiver's lock may already have been released by a previous alarm's
+                // stop() (the lock isn't reference counted); hold it from here, not only
+                // from showRinging, so the row and settings reads can't run without it
+                AlarmWakeLock.acquire(this, RINGING_WAKE_LOCK_MILLIS)
+                session.fire(alarmId)
+            }
             ACTION_SNOOZE -> session.snooze(alarmId)
             else -> session.dismiss(alarmId)
         }

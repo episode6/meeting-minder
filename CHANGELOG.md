@@ -2,33 +2,17 @@
 
 ### v1.0.0 - Unreleased
 
-- Release prep (PR-14): README gained a "Screenshots" section with a real day-view-selecting
-  and alarms-set pair (captured on-device and hosted in episode6/screenshots, via the
-  `publish-screenshots` skill) and an updated status line reflecting the completed feature
-  set through PR-13. The `verify` skill's "Core flow to exercise" section no longer hedges
-  on "current state" (everything through PR-13 is live) and gained Settings-screen steps
-  and a "Robustness checks (PR-13)" section (`PROVIDER_CHANGED` broadcast, timezone/midnight
-  rollover, battery optimisation/restricted-standby, dark theme/large font/TalkBack). The
-  launcher icon (`ic_launcher_foreground.xml`/`ic_launcher_background*.xml`) and
-  `project-icon.svg` were reviewed against the brand and app concept and found already
-  finished (a day sheet + alarm clock in episode6 orange, with distinct debug/snapshot
-  colours) — no change needed. `THIRD_PARTY_LICENSES.md` was checked against a freshly
-  regenerated `app/expected-dependencies.txt` (`:app:writeExpectedDependencies`); they
-  already agree, so no changes were needed there either. Cutting the first
-  `release/v1.0.0` branch is deliberately **not** part of this PR — see the PR body — and
-  happens from `main` once the whole PR-1..PR-14 stack has merged, per
-  `RELEASE_CHECKLIST.md`.
-- Release prep (PR-14) review fixes: corrected three `verify` skill adb recipes that didn't
-  actually work (`PROVIDER_CHANGED`'s enabled-receiver check now uses `dumpsys package`
-  instead of the nonexistent `pm list receivers`, plus a note that the broadcast needs
-  `adb root` on user builds; the midnight-rollover and timezone bullets now give working
-  `adb shell settings put`/`date` commands instead of a fictitious `adb emu geo` clock
-  control and a `content update` settings write that isn't how Settings is written), fixed
-  the Settings-screen walkthrough's button label and wording ("Test alarm" rings ~10 seconds
-  later, per the actual snackbar text, not "Send test alarm" rings immediately), dropped the
-  stale "Placeholder launcher art" comment from `ic_launcher_foreground.xml` now that the
-  icon is finished work, and reworded TODO.md's PR-14 bullet so it no longer lists cutting
-  `release/v1.0.0` as part of this PR.
+- Stack review fixes (the outstanding `@claude review` findings on PR-4 through PR-14, in one follow-up PR):
+  - **Permissions:** a calendar or notification permission denied for good before the app was relaunched no longer leaves onboarding on a dead "Allow" button: the app remembers which permissions it has ever asked for (`SettingsRepository.requestedPermissions`, in the preferences DataStore), so the system's silent auto-deny is recognised and the row flips to "Open settings". The launch-time redirect to onboarding also no longer re-creates the onboarding screen on every ungranted launch.
+  - **Sharing:** a fast double tap on "Share schedule" (or "Share again"/"Re-share" while the chooser is still coming up) opens one chooser, not two: a share is "in flight" (`AppState.shareInFlight`) from the tap until the share sheet closes, and no second one starts meanwhile. The app-bar subtitle names the day when a schedule was shared on a different day ("shared Sep 13, 9:00 PM" on tomorrow's page), so a bare time can't read as that day's evening.
+  - **Ringing:** dismissing or snoozing an alarm in the same instant its auto-timeout fired no longer leaves the ringing notification and foreground service behind; the sound player releases a `MediaPlayer`/`AudioTrack` whose playback fails to start (and closes the ringtone-list cursor); the wake lock is held from the moment a fire reaches the service, so back-to-back alarms can't drop it; a snooze written by the app because the service couldn't be reached, and then refused by the OS, posts the same "Missed alarm" notification the service would; the ringing screen's "Open meeting" toasts when no calendar app can open the event. `SoundPool` is renamed `AlarmSoundPool` (it collided with `android.media.SoundPool`).
+  - **Automatic alarm maintenance:** an alarm cancelled because its meeting was declined or cancelled now also puts its day back to "Set alarms", so re-accepting the meeting can be re-armed from the FAB — and "Set alarms" itself no longer arms a selection whose meeting has since been declined or cancelled (the snackbar counts it: "1 set, 1 skipped (declined or cancelled)"), reading the day from every calendar with declined events included, as the maintenance does, so the two can't bounce a day between "alarms set" and "Set alarms". The Settings duration and "Alarm sounds" chips announce as radio buttons, the "changed since you shared" banner's live region sits on its text, and the `PROVIDER_CHANGED` receiver skips the package-manager write a fresh install doesn't need.
+  - **CI:** `record-screenshots.yml` pins both checkouts to the PR head's SHA (a push mid-run can't split the recording and the commit), lists a renamed preview as one deleted plus one added PNG, reports `target` failures on the PR, and documents that a manual run records in main's image.
+  - **Docs:** the `verify` skill's Settings walkthrough and Robustness checks now match the app (conditional onboarding rows, "Alarm sounds", the test alarm's real special-casing, a working timezone recipe, TalkBack availability on emulator images); TODO.md §4.4 records the in-progress-move rule and the day-crossing-move limit; AGENTS.md lists the PR-9 fakes and tests and the record-on-head vs verify-on-merge-ref caveat.
+- Release prep (PR-14):
+  - README gained a "Screenshots" section (a day-view-selecting and alarms-set pair, hosted in episode6/screenshots) and a status line reflecting the completed feature set through PR-13.
+  - The `verify` skill's "Core flow to exercise" no longer hedges on "current state", and gained Settings-screen steps and a "Robustness checks (PR-13)" section; three of its adb recipes that didn't work (`pm list receivers`, an `adb emu geo` clock control, a `content update` settings write) were replaced with working ones, and the Settings walkthrough's button label and timing ("Test alarm", rings after 10 seconds) corrected.
+  - Launcher icon, `project-icon.svg` and `THIRD_PARTY_LICENSES.md` were reviewed and needed no change; the stale "Placeholder launcher art" comment was dropped. Cutting the first `release/v1.0.0` branch happens from `main` once the whole PR-1..PR-14 stack has merged (`RELEASE_CHECKLIST.md`), not in this PR.
 - Robustness (PR-13):
   - **Change monitoring accelerator:** the calendar provider's `PROVIDER_CHANGED` broadcast now triggers a change check a few seconds after a sync (`monitor/CalendarProviderChangedReceiver`, a new `calendar-change-broadcast` unique work). The receiver is enabled only while some day is shared.
   - **Battery optimisation onboarding row:** the "Ignore battery optimization" row is live. It is optional and shown only while the app isn't exempt (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` added to the manifest and `expected-permissions.txt`).
@@ -42,7 +26,7 @@
   - **TalkBack pass:** chips read "title, start to end, place" with their selected/alarm/declined state and labelled select and "open in calendar" actions. Hour gutter and all-day labels are cleared from semantics. App bar, onboarding and Settings sections are headings, Settings' switch rows toggle as a whole, and the change banner is a polite live region.
   - **New tests:** `AnchorDateSideEffectsTest`, `DeviceClockTest`, `DayScreenRolloverTest`, `DayTimelineSemanticsTest`, `AlarmMaintainerTest`, `CalendarProviderChangedReceiverTest`, `SleepyManufacturerTest`, `PermissionsStatusTest`, and new `PermissionCheckerTest`/`OnboardingViewModelTest`/`AppStoreReducerTest` cases.
 - Settings screen (PR-12): a new Settings screen, reachable from the day view's overflow
-  menu, makes lead time, snooze length, auto-timeout and the alarm sound pack ("all",
+  menu, makes lead time, snooze length, auto-timeout and the alarm sound pool (the "Alarm sounds" row: "all",
   "bundled only", "system only") editable for the first time — `SettingsRepository` gained
   setters for all four alongside the existing lead time one — plus a "Test alarm" button
   that arms a real exact alarm ten seconds out (`TestAlarm`/`TestAlarmSideEffects`,
@@ -63,7 +47,7 @@
   `LoadDayEventsSideEffectsTest`/`ChangeMonitorTest` for the calendar filter and declined
   wiring. `ui/util/ComingSoonScreen.kt` is gone now that nothing routes to it.
 - Settings screen fixes (PR-12 review): selected `FilterChip`s (lead time, snooze,
-  auto-timeout, sound pack) now render in episode6 orange (`primaryContainer`) instead of
+  auto-timeout, alarm sounds) now render in episode6 orange (`primaryContainer`) instead of
   M3's default lavender `secondaryContainer`, which the theme never defined; those chip
   rows wrap in a `FlowRow` instead of scrolling horizontally, so no chip is clipped at the
   screen edge at any font scale; the Permissions row now shows a status subtitle ("All

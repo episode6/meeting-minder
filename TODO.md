@@ -778,14 +778,32 @@ temporary allowlist that permits starting a foreground service from the backgrou
   occurrence across midnight) from **every** calendar, whatever the Settings filter says, and
   skips Settings' test alarm. Two refinements of the rules above: an event moved so that its
   new alarm time has already passed is still re-timed (it rings at once — the automatic path
-  can't ask, and a meeting pulled forward mustn't be missed), except a `SNOOZED` row, which
+  can't ask, and a meeting pulled forward mustn't be missed; this includes a meeting dragged
+  so that it is *already in progress*, which "Set alarms" would skip as past — a deliberate
+  difference: a late nudge beats silence), except a `SNOOZED` row, which
   keeps its snooze as in the "Set alarms" reconcile; and since the repository never returns
   `STATUS_CANCELED` occurrences, an organizer's cancellation reads as "vanished" and keeps its
-  alarm. A cancelled row clears its selection's alarm pointer; a re-time the OS refuses is
-  marked `CANCELLED` and its day goes back to "Set alarms". `BootReceiver` re-arms from Room
-  first and maintains second, so a slow provider can't eat the re-arm's broadcast budget.
-  Timezone changes need nothing else: `fire_at` is an instant, and `di/DeviceClock` keeps
-  every holder of the graph's `Clock` in the new zone.
+  alarm. A cancelled row clears its selection's alarm pointer and puts its day back to
+  "Set alarms" (the armed set no longer matches the selection, so a later re-accept can be
+  re-armed from the FAB); a re-time the OS refuses is marked `CANCELLED` and does the same.
+  For that to rest, the explicit "Set alarms" reconcile follows the same rule: a selection
+  whose event is now `STATUS_CANCELED` or declined by me is **never armed** (it lands in
+  `AlarmReconciliation.notAttending`, counted in the snackbar as "skipped, declined or
+  cancelled", its selection kept), and the reconcile reads the day from **every** calendar
+  with declined events included — the same read `MaintainAlarms` makes, falling back to the
+  loaded window only when the provider can't be read — so neither a hidden calendar nor
+  "show declined" off can make a since-declined selection look like a live meeting. Before
+  this (PR-8b), "Set alarms" still armed such a selection, which the next maintenance then
+  cancelled again, with the day bouncing between the two.
+  `BootReceiver` re-arms from Room first and maintains second, so a slow provider can't eat
+  the re-arm's broadcast budget. Timezone changes need nothing else: `fire_at` is an
+  instant, and `di/DeviceClock` keeps every holder of the graph's `Clock` in the new zone.
+  Known limit of the day-either-side read: a meeting moved *across midnight* (today 16:00 →
+  tomorrow 10:00) is found and re-timed, but its `scheduled_alarm` and `selected_event` rows
+  stay keyed on the day it was selected on. Today's page then keeps a selection whose event
+  is no longer drawn there, and selecting the same occurrence on tomorrow's page and tapping
+  "Set alarms" inserts a second row (the reconcile reads one date's rows), so it rings twice.
+  Accepted for v1.0 — a day-crossing move is rare — and not to be rediscovered as a bug.
 - Force-stop (and some OEM task-swipes) cancels all alarms and blocks broadcasts until the app is
   opened again. Nothing fixes that in code; the onboarding OEM card explains it.
 

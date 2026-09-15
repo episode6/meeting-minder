@@ -48,14 +48,16 @@ data class AlarmMaintenance(
  *    ends — a stale alarm after a sync hiccup is cheaper than a missed meeting, and the
  *    change banner still reports it;
  *  - cancelled or declined by me: cancel the alarm (the selection is kept, so the banner can
- *    explain);
+ *    explain), and put the day back to "Set alarms": its armed set no longer matches its
+ *    selection, so a later re-accept in Google Calendar can be re-armed from the FAB;
  *  - over already: nothing;
  *  - same times: refresh a changed title or location only;
  *  - moved: re-time it to the new begin − [leadTime], as a fresh `SCHEDULED` alarm. A new
- *    alarm time already past (the meeting was pulled forward to start within the lead time)
- *    still arms, and so rings at once: the user can't be asked from here. A `SNOOZED` row
- *    keeps its snooze while its new alarm time has passed (only its copy is refreshed), as
- *    the "Set alarms" reconcile does.
+ *    alarm time already past (the meeting was pulled forward to start within the lead time,
+ *    or dragged so that it is already in progress — `begin < now < end` — which "Set alarms"
+ *    would skip as past) still arms, and so rings at once: the user can't be asked from
+ *    here. A `SNOOZED` row keeps its snooze while its new alarm time has passed (only its
+ *    copy is refreshed), as the "Set alarms" reconcile does.
  *
  * Settings' test alarm ([TEST_ALARM_EVENT_ID]) is never touched.
  */
@@ -109,8 +111,9 @@ fun maintainAlarms(
  * alarm was armed on purpose, and hiding its calendar later mustn't read as the event
  * vanishing. Without calendar access nothing is read or changed. The reads can be
  * cancelled; the writes can't, so a cancelled run never leaves a row re-timed in Room but
- * not in `AlarmManager`. A re-timed row the OS refuses to arm is marked `CANCELLED` and its
- * day goes back to "Set alarms", as the reconcile does.
+ * not in `AlarmManager`. A cancelled row and a re-timed row the OS refuses to arm (marked
+ * `CANCELLED`) both clear their day's `alarms_set_at`, so it goes back to "Set alarms", as
+ * the reconcile does whenever the armed set stops matching the selection.
  */
 @Inject
 @SingleIn(AppScope::class)
@@ -150,6 +153,7 @@ class AlarmMaintainer(
             scheduler.cancel(row.alarmId)
             alarmDao.setState(row.alarmId, AlarmState.CANCELLED)
             pointSelectionAt(row, armed = false)
+            dayPlanDao.setAlarmsSetAt(row.date, null)
         }
         for (row in plan.refresh) alarmDao.update(row)
         for (row in plan.retime) {

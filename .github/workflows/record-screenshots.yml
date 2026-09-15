@@ -10,7 +10,16 @@ name: Record Screenshots
 #
 # Trigger: apply the 'record-screenshots' label to a PR (the label is removed
 # when the run starts, so re-applying it records again), or, once this file
-# is on main, run it by hand with the PR number.
+# is on main, run it by hand with the PR number. Prefer the label: the reusable
+# ci-image.yml checks out the ref the run was started from, which on the label
+# path is the PR's merge ref (the same image build-installers.yml verifies in)
+# but on a manual run is the branch the workflow was dispatched from, usually
+# main — so a PR that changes the Dockerfile or the gradle wrapper must be
+# recorded via the label, or it records in an image its own CI won't use.
+#
+# Both checkouts below pin the PR head's SHA rather than its branch name, so a
+# push to the PR while a run is in flight can't leave the PNGs rendered from
+# one commit and committed on top of another.
 #
 # The screenshots branch (screenshots/<pr-branch>) belongs to this workflow and
 # is rebuilt from the PR head on every run. Pushes and PRs made with
@@ -41,6 +50,7 @@ jobs:
     outputs:
       pr: ${{ steps.pr.outputs.pr }}
       head-ref: ${{ steps.pr.outputs.head-ref }}
+      head-sha: ${{ steps.pr.outputs.head-sha }}
     steps:
       - name: Resolve the PR branch
         id: pr
@@ -48,8 +58,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
         run: |
-          read -r head_ref head_repo state < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" \
-            --jq '"\(.head.ref) \(.head.repo.full_name) \(.state)"')
+          # first, so a failure below still reaches the PR through report-failure
+          echo "pr=$PR" >> "$GITHUB_OUTPUT"
+          read -r head_ref head_sha head_repo state < <(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" \
+            --jq '"\(.head.ref) \(.head.sha) \(.head.repo.full_name) \(.state)"')
           if [ "$head_repo" != "$GITHUB_REPOSITORY" ]; then
             echo "::error::PR #$PR comes from $head_repo; only branches in this repo can receive a screenshots PR"
             exit 1
@@ -61,8 +73,8 @@ jobs:
           case "$head_ref" in
             screenshots/*) echo "::error::refusing to record onto a screenshots PR"; exit 1 ;;
           esac
-          echo "pr=$PR" >> "$GITHUB_OUTPUT"
           echo "head-ref=$head_ref" >> "$GITHUB_OUTPUT"
+          echo "head-sha=$head_sha" >> "$GITHUB_OUTPUT"
           gh pr edit "$PR" -R "$GITHUB_REPOSITORY" --remove-label record-screenshots || true
 
   # not named 'image': check runs are listed by name, and build-installers.yml
@@ -91,7 +103,7 @@ jobs:
       # full history: snapshot versionCodes derive from the git commit count
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.target.outputs.head-ref }}
+          ref: ${{ needs.target.outputs.head-sha }}
           fetch-depth: 0
       # see build-installers.yml for why cache-overwrite-existing is required
       - name: Setup Gradle
@@ -128,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.target.outputs.head-ref }}
+          ref: ${{ needs.target.outputs.head-sha }}
       - uses: actions/download-artifact@v8
         with:
           name: screenshots
@@ -151,7 +163,9 @@ jobs:
             exit 0
           fi
 
-          changes=$(git diff --cached --name-status | awk -F'\t' '{
+          # --no-renames: a renamed preview is one deleted plus one added PNG, both to
+          # be looked at, not a single "changed" line naming the old path
+          changes=$(git diff --cached --no-renames --name-status | awk -F'\t' '{
             s = $1 == "A" ? "added" : $1 == "D" ? "deleted" : "changed"
             printf "- %s `%s`\n", s, $2
           }')
@@ -191,6 +205,8 @@ jobs:
       - name: Comment the failure on the PR
         env:
           GH_TOKEN: ${{ github.token }}
+          PR: ${{ needs.target.outputs.pr }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          gh pr comment "${{ needs.target.outputs.pr }}" -R "$GITHUB_REPOSITORY" \
-            --body "📸 Recording reference screenshots failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh pr comment "$PR" -R "$GITHUB_REPOSITORY" \
+            --body "📸 Recording reference screenshots failed: $RUN_URL"

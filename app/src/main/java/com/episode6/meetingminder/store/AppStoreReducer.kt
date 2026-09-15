@@ -19,6 +19,8 @@ private fun AppState.reduceUpdateStateAction(action: UpdateStateAction): AppStat
     is ClearMessage -> if (transientMessage?.id == action.id) copy(transientMessage = null) else this
     is SetPendingShare -> copy(pendingShare = action.share)
     is ClearPendingShare -> if (pendingShare?.id == action.id) copy(pendingShare = null) else this
+    is ShareStarted -> copy(shareInFlight = true)
+    is ShareFinished -> copy(shareInFlight = false)
     is SetRinging -> copy(ringing = action.ringing)
     is SetScheduleChanges -> copy(scheduleChanges = action.changes)
 }

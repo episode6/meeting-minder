@@ -59,6 +59,12 @@ data class SetPendingShare(val share: PendingShare) : UpdateStateAction
 /** Clears [AppState.pendingShare], but only if it is still the one with [id] — like [ClearMessage]. */
 data class ClearPendingShare(val id: Long) : UpdateStateAction
 
+/** A share has started ([AppState.shareInFlight]); dispatched with [ShareDay] by [startShare], never on its own. */
+data object ShareStarted : UpdateStateAction
+
+/** The share sheet has closed, or the share failed before it could open: the next share may start. */
+data object ShareFinished : UpdateStateAction
+
 /**
  * Replaces [AppState.ringing]. Only `AlarmRingingService` dispatches this: it owns the
  * ringing (the sound, the foreground notification and the queue of alarms that fired back

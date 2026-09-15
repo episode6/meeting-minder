@@ -42,6 +42,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
@@ -50,7 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.episode6.meetingminder.R
-import com.episode6.meetingminder.data.settings.SoundPool
+import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import java.time.Duration
@@ -77,7 +78,7 @@ fun SettingsScreen(
     onLeadTimeSelected: (Duration) -> Unit,
     onSnoozeLengthSelected: (Duration) -> Unit,
     onAutoTimeoutSelected: (Duration) -> Unit,
-    onSoundPoolSelected: (SoundPool) -> Unit,
+    onSoundPoolSelected: (AlarmSoundPool) -> Unit,
     onTestAlarmClick: () -> Unit,
     onCalendarToggle: (CalendarInfo, Boolean) -> Unit,
     onShowDeclinedToggle: (Boolean) -> Unit,
@@ -192,6 +193,7 @@ private fun DurationPickerRow(title: String, options: List<Long>, selectedMinute
                     onClick = { onSelected(Duration.ofMinutes(minutes)) },
                     label = { Text(stringResource(R.string.settings_minutes_value, minutes)) },
                     colors = SettingsChipColors(),
+                    modifier = Modifier.singleChoiceChip(),
                 )
             }
         }
@@ -199,7 +201,7 @@ private fun DurationPickerRow(title: String, options: List<Long>, selectedMinute
 }
 
 @Composable
-private fun SoundPoolRow(selected: SoundPool, onSelected: (SoundPool) -> Unit) {
+private fun SoundPoolRow(selected: AlarmSoundPool, onSelected: (AlarmSoundPool) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         Text(stringResource(R.string.settings_sound_pool), style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(8.dp))
@@ -208,17 +210,25 @@ private fun SoundPoolRow(selected: SoundPool, onSelected: (SoundPool) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            SoundPool.entries.forEach { pool ->
+            AlarmSoundPool.entries.forEach { pool ->
                 FilterChip(
                     selected = pool == selected,
                     onClick = { onSelected(pool) },
                     label = { Text(pool.label()) },
                     colors = SettingsChipColors(),
+                    modifier = Modifier.singleChoiceChip(),
                 )
             }
         }
     }
 }
+
+/**
+ * The chips in a [selectableGroup] row are radio buttons in all but widget: exactly one is
+ * ever selected. `FilterChip` reports `Role.Checkbox`, which TalkBack would read as
+ * independent toggles; the outer semantics win, so this overrides the role.
+ */
+private fun Modifier.singleChoiceChip(): Modifier = semantics { role = Role.RadioButton }
 
 /**
  * Selected chips use episode6 orange (`primaryContainer`), not M3's default lavender
@@ -232,10 +242,10 @@ private fun SettingsChipColors() = FilterChipDefaults.filterChipColors(
 )
 
 @Composable
-private fun SoundPool.label(): String = when (this) {
-    SoundPool.ALL -> stringResource(R.string.settings_sound_pool_all)
-    SoundPool.BUNDLED_ONLY -> stringResource(R.string.settings_sound_pool_bundled)
-    SoundPool.SYSTEM_ONLY -> stringResource(R.string.settings_sound_pool_system)
+private fun AlarmSoundPool.label(): String = when (this) {
+    AlarmSoundPool.ALL -> stringResource(R.string.settings_sound_pool_all)
+    AlarmSoundPool.BUNDLED_ONLY -> stringResource(R.string.settings_sound_pool_bundled)
+    AlarmSoundPool.SYSTEM_ONLY -> stringResource(R.string.settings_sound_pool_system)
 }
 
 @Composable
@@ -400,7 +410,7 @@ private val previewState = SettingsUiState(
     leadTime = Duration.ofMinutes(5),
     snoozeLength = Duration.ofMinutes(2),
     autoTimeout = Duration.ofMinutes(3),
-    soundPool = SoundPool.ALL,
+    soundPool = AlarmSoundPool.ALL,
     showDeclined = true,
     calendars = listOf(CalendarRow(previewWork, included = true), CalendarRow(previewFamily, included = false)),
     permissionsStatus = PermissionsStatus.AllGranted,

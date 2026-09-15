@@ -31,7 +31,7 @@ class DataStoreSettingsRepositoryTest {
                 leadTime = Duration.ofMinutes(5),
                 snoozeLength = Duration.ofMinutes(2),
                 autoTimeout = Duration.ofMinutes(3),
-                soundPool = SoundPool.ALL,
+                soundPool = AlarmSoundPool.ALL,
             ),
         )
     }
@@ -55,11 +55,11 @@ class DataStoreSettingsRepositoryTest {
         dataStore.edit {
             it[DataStoreSettingsRepository.Keys.SnoozeMinutes] = 4
             it[DataStoreSettingsRepository.Keys.AutoTimeoutMinutes] = 1
-            it[DataStoreSettingsRepository.Keys.SoundPool] = "BUNDLED_ONLY"
+            it[DataStoreSettingsRepository.Keys.AlarmSoundPool] = "BUNDLED_ONLY"
         }
 
         assertThat(repository.current()).isEqualTo(
-            Settings(snoozeLength = Duration.ofMinutes(4), autoTimeout = Duration.ofMinutes(1), soundPool = SoundPool.BUNDLED_ONLY),
+            Settings(snoozeLength = Duration.ofMinutes(4), autoTimeout = Duration.ofMinutes(1), soundPool = AlarmSoundPool.BUNDLED_ONLY),
         )
     }
 
@@ -69,14 +69,14 @@ class DataStoreSettingsRepositoryTest {
 
         repository.setSnoozeLength(Duration.ofMinutes(10))
         repository.setAutoTimeout(Duration.ofMinutes(1))
-        repository.setSoundPool(SoundPool.SYSTEM_ONLY)
+        repository.setSoundPool(AlarmSoundPool.SYSTEM_ONLY)
         repository.setShowDeclined(false)
 
         assertThat(repository.current()).isEqualTo(
             Settings(
                 snoozeLength = Duration.ofMinutes(10),
                 autoTimeout = Duration.ofMinutes(1),
-                soundPool = SoundPool.SYSTEM_ONLY,
+                soundPool = AlarmSoundPool.SYSTEM_ONLY,
                 showDeclined = false,
             ),
         )
@@ -100,13 +100,28 @@ class DataStoreSettingsRepositoryTest {
     }
 
     @Test
+    fun markPermissionRequested_persistsEveryPermissionAsked_withoutTouchingTheSettings() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-permissions-test"))
+
+        assertThat(repository.requestedPermissions.first()).isEqualTo(emptySet())
+
+        repository.markPermissionRequested("android.permission.READ_CALENDAR")
+        repository.markPermissionRequested("android.permission.POST_NOTIFICATIONS")
+        repository.markPermissionRequested("android.permission.READ_CALENDAR")
+
+        assertThat(repository.requestedPermissions.first())
+            .isEqualTo(setOf("android.permission.READ_CALENDAR", "android.permission.POST_NOTIFICATIONS"))
+        assertThat(repository.current()).isEqualTo(Settings())
+    }
+
+    @Test
     fun unreadableValues_fallBackToTheDefaults() = runTest {
         val dataStore = dataStore("settings-garbage-test")
         val repository = DataStoreSettingsRepository(dataStore)
 
         dataStore.edit {
             it[DataStoreSettingsRepository.Keys.SnoozeMinutes] = 0
-            it[DataStoreSettingsRepository.Keys.SoundPool] = "LOUDEST_ONLY"
+            it[DataStoreSettingsRepository.Keys.AlarmSoundPool] = "LOUDEST_ONLY"
         }
 
         assertThat(repository.current()).isEqualTo(Settings())

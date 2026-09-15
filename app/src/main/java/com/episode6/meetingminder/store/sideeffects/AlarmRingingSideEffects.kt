@@ -1,7 +1,10 @@
 package com.episode6.meetingminder.store.sideeffects
 
+import android.content.Context
+import com.episode6.meetingminder.alarm.AlarmNotifications
 import com.episode6.meetingminder.alarm.AlarmRinger
 import com.episode6.meetingminder.alarm.AlarmRingingCommands
+import com.episode6.meetingminder.alarm.SnoozeResult
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.DismissAlarm
 import com.episode6.meetingminder.store.SetRinging
@@ -15,6 +18,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
+import java.time.Clock
 
 /**
  * The ringing screen's [SnoozeAlarm]/[DismissAlarm] (TODO.md §4.4). `AlarmRingingService`
@@ -22,20 +26,28 @@ import kotlinx.coroutines.flow.flow
  * the foreground — so the command is handed to it ([AlarmRingingCommands]) and the service
  * publishes the outcome back as `SetRinging`. Should the OS refuse to deliver it, the
  * snooze/dismiss is written to the row here instead and the screen cleared, so a tap is
- * never silently lost.
+ * never silently lost — and a snooze the OS then refuses to arm gets the same "missed
+ * alarm" notification the service would post, rather than a row quietly `CANCELLED`.
  */
 @ContributesTo(AppScope::class)
 interface AlarmRingingSideEffects {
     @OptIn(ExperimentalCoroutinesApi::class)
     @Provides @IntoSet
-    fun alarmRinging(commands: AlarmRingingCommands, ringer: AlarmRinger): SideEffect<AppState> = sideEffect {
+    fun alarmRinging(commands: AlarmRingingCommands, ringer: AlarmRinger, context: Context, clock: Clock): SideEffect<AppState> = sideEffect {
         actions.filter { it is SnoozeAlarm || it is DismissAlarm }.flatMapMerge { action ->
             flow {
                 val alarmId = if (action is SnoozeAlarm) action.alarmId else (action as DismissAlarm).alarmId
                 val delivered = if (action is SnoozeAlarm) commands.snooze(alarmId) else commands.dismiss(alarmId)
                 if (!delivered) {
-                    if (action is SnoozeAlarm) ringer.snooze(alarmId) else ringer.dismiss(alarmId)
-                    if (currentState().ringing?.alarmId == alarmId) emit(SetRinging(null))
+                    val ringing = currentState().ringing?.takeIf { it.alarmId == alarmId }
+                    if (action is SnoozeAlarm) {
+                        if (ringer.snooze(alarmId) == SnoozeResult.REFUSED && ringing != null) {
+                            AlarmNotifications.postMissed(context, ringing, clock.zone)
+                        }
+                    } else {
+                        ringer.dismiss(alarmId)
+                    }
+                    if (ringing != null) emit(SetRinging(null))
                 }
             }
         }

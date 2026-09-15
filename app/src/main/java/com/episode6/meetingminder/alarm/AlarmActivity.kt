@@ -4,6 +4,7 @@ import android.app.KeyguardManager
 import android.graphics.Color
 import android.os.Bundle
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.addCallback
@@ -19,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.episode6.meetingminder.R
 import com.episode6.meetingminder.appGraph
 import com.episode6.meetingminder.model.RingingAlarm
 import com.episode6.meetingminder.ui.alarm.AlarmRingingScreen
@@ -86,8 +88,11 @@ class AlarmActivity : ComponentActivity() {
         val open = {
             viewModel.onOpenMeeting(alarm.alarmId)
             // the key's event id: the series for a recurring occurrence, which the calendar
-            // app opens at this instance's begin/end
-            openInCalendar(alarm.key.eventId, alarm.begin, alarm.end)
+            // app opens at this instance's begin/end. The alarm is dismissed either way and
+            // this activity is about to close, so a toast is what can still say "no app".
+            if (!openInCalendar(alarm.key.eventId, alarm.begin, alarm.end)) {
+                Toast.makeText(this, R.string.open_in_calendar_failed, Toast.LENGTH_SHORT).show()
+            }
         }
         val keyguard = getSystemService(KeyguardManager::class.java)
         if (!keyguard.isKeyguardLocked) {

@@ -3,6 +3,7 @@ package com.episode6.meetingminder.ui.onboarding
 import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.isEqualTo
+import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.permissions.PermissionChecker
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.meetingminder.permissions.SleepyManufacturer
@@ -95,6 +96,22 @@ class OnboardingViewModelTest {
     }
 
     @Test
+    fun onPermissionRequested_isRemembered_forTheNextRequestToReadBack() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), emptySet()) },
+    ) { store ->
+        val settings = FakeSettingsRepository()
+        val viewModel = OnboardingViewModel(store, settings)
+        viewModel.requestedPermissions.test {
+            assertThat(awaitItem()).isEqualTo(emptySet())
+
+            viewModel.onPermissionRequested("android.permission.READ_CALENDAR")
+
+            assertThat(awaitItem()).isEqualTo(setOf("android.permission.READ_CALENDAR"))
+            assertThat(settings.requestedPermissions.value).isEqualTo(setOf("android.permission.READ_CALENDAR"))
+        }
+    }
+
+    @Test
     fun onPermissionsMaybeChanged_reRunsTheStoresPermissionCheck() = runStoreTest(
         {
             val checker = object : PermissionChecker {
@@ -104,7 +121,7 @@ class OnboardingViewModelTest {
             createAppStore(this, AppState(anchorDate = today), sideEffects)
         },
     ) { store ->
-        val viewModel = OnboardingViewModel(store)
+        val viewModel = OnboardingViewModel(store, FakeSettingsRepository())
         viewModel.state.test {
             assertThat(awaitItem()).isEqualTo(OnboardingUiState(calendarGranted = false))
 

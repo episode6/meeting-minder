@@ -149,6 +149,14 @@ class AppStoreReducerTest {
     }
 
     @Test
+    fun shareStarted_marksAShareInFlight_untilShareFinished() {
+        val started = state.reduce(ShareStarted)
+
+        assertThat(started.shareInFlight).isEqualTo(true)
+        assertThat(started.reduce(ShareFinished).shareInFlight).isEqualTo(false)
+    }
+
+    @Test
     fun clearPendingShare_clearsTheMatchingShare_butKeepsANewerOne() {
         val share = PendingShare.next(today, "text")
         val showing = state.copy(pendingShare = share)

@@ -18,7 +18,7 @@ internal class FakeSettingsRepository(initial: Settings = Settings()) : Settings
         settings.value = settings.value.copy(autoTimeout = autoTimeout)
     }
 
-    override suspend fun setSoundPool(soundPool: SoundPool) {
+    override suspend fun setSoundPool(soundPool: AlarmSoundPool) {
         settings.value = settings.value.copy(soundPool = soundPool)
     }
 
@@ -30,5 +30,11 @@ internal class FakeSettingsRepository(initial: Settings = Settings()) : Settings
         val overrides = settings.value.calendarOverrides.toMutableMap()
         if (included == null) overrides.remove(calendarId) else overrides[calendarId] = included
         settings.value = settings.value.copy(calendarOverrides = overrides)
+    }
+
+    override val requestedPermissions = MutableStateFlow(emptySet<String>())
+
+    override suspend fun markPermissionRequested(permission: String) {
+        requestedPermissions.value += permission
     }
 }

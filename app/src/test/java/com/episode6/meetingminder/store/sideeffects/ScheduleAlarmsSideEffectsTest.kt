@@ -8,6 +8,8 @@ import assertk.assertions.isNull
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.alarm.AlarmReconciliation
 import com.episode6.meetingminder.alarm.FakeAlarmScheduler
+import com.episode6.meetingminder.data.calendar.CalendarFilter
+import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
 import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.DayPlanEntity
 import com.episode6.meetingminder.data.db.FakeDayPlanDao
@@ -17,11 +19,13 @@ import com.episode6.meetingminder.data.db.SelectedEventEntity
 import com.episode6.meetingminder.data.db.toSelectedEventEntity
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
+import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.EventStatus
 import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.SelfStatus
 import com.episode6.meetingminder.model.testCalendarEvent
+import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
 import com.episode6.meetingminder.store.RsvpAccept
 import com.episode6.meetingminder.store.SetAlarms
@@ -57,8 +61,25 @@ class ScheduleAlarmsSideEffectsTest {
     private val alarmDao = FakeScheduledAlarmDao()
     private val settings = FakeSettingsRepository(Settings(leadTime = Duration.ofMinutes(5)))
 
+    private val calendar = CalendarInfo(
+        id = 1, accountName = "me", accountType = "LOCAL", displayName = "Work", color = 0, visible = true,
+        syncEvents = true, ownerAccount = "me", isPrimary = true, accessLevel = 700, canOrganizerRespond = false,
+    )
+    private val repository = FakeCalendarRepository(calendars = listOf(calendar))
+
     private fun sideEffect(dayPlanDao: FakeDayPlanDao) =
-        object : ScheduleAlarmsSideEffects {}.scheduleAlarms(dayPlanDao, alarmDao, scheduler, settings, clock, Random(seed = 1))
+        object : ScheduleAlarmsSideEffects {}.scheduleAlarms(dayPlanDao, alarmDao, scheduler, settings, repository, clock, Random(seed = 1))
+
+    /**
+     * Runs `SetAlarms(date)` with the provider holding the same events the store's window
+     * has loaded (the effect reconciles against the provider, every calendar, declined
+     * included; the window is only its fallback).
+     */
+    private suspend fun run(dayPlanDao: FakeDayPlanDao, state: AppState = stateWithEvents, date: LocalDate = today): List<Action> {
+        repository.events.clear()
+        state.eventsByDay.forEach { (day, events) -> repository.events[day] = events.events }
+        return sideEffect(dayPlanDao).output(SetAlarms(date), state = state).toList()
+    }
 
     private fun selection(event: com.episode6.meetingminder.model.CalendarEvent) = event.toSelectedEventEntity(today)
 
@@ -69,7 +90,7 @@ class ScheduleAlarmsSideEffectsTest {
     fun setAlarms_armsEverySelection_pointsSelectionsAtTheirAlarms_andRecordsAlarmsSetAt() = runTest {
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup), selection(designReview)))
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        val output = run(dayPlanDao)
 
         val standupAlarm = alarmDao.rows.getValue(1)
         val reviewAlarm = alarmDao.rows.getValue(2)
@@ -91,7 +112,7 @@ class ScheduleAlarmsSideEffectsTest {
     fun setAlarms_fansOutOneRsvpAcceptPerNewlyArmedInvite_afterMarkingItPending() = runTest {
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup), selection(designReview)))
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        val output = run(dayPlanDao)
 
         assertThat(output.filterIsInstance<RsvpAccept>()).containsExactly(RsvpAccept(today, standup.key), RsvpAccept(today, designReview.key))
         assertThat(dayPlanDao.selectedEventsOn(today).map { it.rsvpState }).containsExactly(RsvpState.PENDING, RsvpState.PENDING)
@@ -109,7 +130,7 @@ class ScheduleAlarmsSideEffectsTest {
             selections = listOf(selection(standup), selection(soloBlock), selection(readOnlyInvite), selection(alreadyAccepted)),
         )
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = state).toList()
+        val output = run(dayPlanDao, state)
 
         assertThat(output.filterIsInstance<RsvpAccept>()).containsExactly(RsvpAccept(today, standup.key))
         assertThat(dayPlanDao.selectedEventsOn(today).associate { it.eventId to it.rsvpState }).isEqualTo(
@@ -125,10 +146,10 @@ class ScheduleAlarmsSideEffectsTest {
     }
 
     @Test
-    fun setAlarms_stillArmsADeclinedOrCancelledSelection_butNeverRsvpsForIt() = runTest {
+    fun setAlarms_neverArmsADeclinedOrCancelledSelection_andSaysSo() = runTest {
         // selected earlier, then declined by the user (or cancelled by the organizer) in Google
-        // Calendar while the selection row stayed stored: the alarm is still theirs to keep, but
-        // "Set alarms" must not turn the decline back into "Yes, going" (TODO.md §4.6)
+        // Calendar while the selection row stayed stored: no alarm (MaintainAlarms would only
+        // cancel it again), no RSVP (TODO.md §4.6), and the day still counts as "alarms set"
         val declined = testCalendarEvent(4, at(12), at(13), title = "Declined later").copy(selfStatus = SelfStatus.DECLINED)
         val cancelled = testCalendarEvent(5, at(14), at(15), title = "Cancelled later").copy(status = EventStatus.CANCELED)
         val state = TestAppState.copy(
@@ -136,7 +157,7 @@ class ScheduleAlarmsSideEffectsTest {
         )
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup), selection(declined), selection(cancelled)))
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = state).toList()
+        val output = run(dayPlanDao, state)
 
         assertThat(output.filterIsInstance<RsvpAccept>()).containsExactly(RsvpAccept(today, standup.key))
         assertThat(dayPlanDao.selectedEventsOn(today).associate { it.eventId to it.rsvpState }).isEqualTo(
@@ -146,7 +167,69 @@ class ScheduleAlarmsSideEffectsTest {
                 cancelled.eventId to RsvpState.NOT_APPLICABLE,
             ),
         )
-        assertThat(scheduler.armed.values.map { it.eventId }.sorted()).isEqualTo(listOf(1L, 4L, 5L))
+        assertThat(scheduler.armed.values.map { it.eventId }).containsExactly(1L)
+        assertThat(dayPlanDao.selectedEventsOn(today).filter { it.eventId != standup.eventId }.map { it.alarmId }).isEqualTo(listOf<Long?>(null, null))
+        assertThat(dayPlanDao.plansFlow.value.single().alarmsSetAt).isEqualTo(now.toEpochMilli())
+        val message = output.message
+        assertThat(message.text).isEqualTo(R.string.day_alarms_set_some_not_attending)
+        assertThat(message.formatArgs).isEqualTo(listOf<Any>(1, 2))
+    }
+
+    @Test
+    fun setAlarms_afterMaintenanceCancelledADeclinedMeeting_leavesItUnarmed_andTheDayRests() = runTest {
+        // MaintainAlarms cancelled the review's alarm (declined since), kept its selection and
+        // put the day back to "Set alarms"; the re-tap must not arm it again, or the next
+        // maintenance would cancel it again, for ever
+        val declinedReview = designReview.copy(selfStatus = SelfStatus.DECLINED)
+        val armedStandup = ScheduledAlarmEntity(
+            alarmId = 1, date = today, eventId = standup.eventId, instanceTime = 0, fireAt = at(8, 55).toEpochMilli(),
+            title = standup.title, beginMillis = standup.begin.toEpochMilli(), endMillis = standup.end.toEpochMilli(), soundIndex = 5,
+        )
+        val cancelledReview = armedStandup.copy(
+            alarmId = 2, eventId = designReview.eventId, fireAt = at(9, 55).toEpochMilli(), title = designReview.title,
+            beginMillis = designReview.begin.toEpochMilli(), endMillis = designReview.end.toEpochMilli(), state = AlarmState.CANCELLED,
+        )
+        alarmDao.rows[1] = armedStandup
+        alarmDao.rows[2] = cancelledReview
+        scheduler.schedule(armedStandup)
+        val state = TestAppState.copy(eventsByDay = mapOf(today to DayEvents(today, listOf(standup, declinedReview), Instant.EPOCH)))
+        val dayPlanDao = FakeDayPlanDao(
+            plans = listOf(DayPlanEntity(today, alarmsSetAt = null)),
+            selections = listOf(selection(standup).copy(alarmId = 1, alarmAt = armedStandup.fireAt), selection(designReview)),
+        )
+
+        val output = run(dayPlanDao, state)
+
+        assertThat(alarmDao.rows.keys.toList()).containsExactly(1L, 2L)
+        assertThat(scheduler.armed.keys.toList()).containsExactly(1L)
+        assertThat(dayPlanDao.plansFlow.value.single().alarmsSetAt).isEqualTo(now.toEpochMilli())
+        assertThat(output.message.text).isEqualTo(R.string.day_alarms_set_some_not_attending)
+    }
+
+    @Test
+    fun setAlarms_readsTheDayFromEveryCalendar_declinedIncluded_notFromTheDisplayWindow() = runTest {
+        // "show declined" is off and the calendar is hidden in Settings: the window has nothing,
+        // the provider still has the (now declined) meeting, and that is what the tap must see
+        repository.calendars = listOf(calendar.copy(visible = false))
+        repository.events[today] = listOf(standup.copy(selfStatus = SelfStatus.DECLINED), designReview)
+        val state = TestAppState.copy(eventsByDay = mapOf(today to DayEvents(today, emptyList(), Instant.EPOCH)))
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup), selection(designReview)))
+
+        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = state).toList()
+
+        assertThat(repository.eventQueries.last()).isEqualTo(today to CalendarFilter.Only(setOf(1L)))
+        assertThat(scheduler.armed.values.map { it.eventId }).containsExactly(2L)
+        assertThat(output.message.text).isEqualTo(R.string.day_alarms_set_some_not_attending)
+    }
+
+    @Test
+    fun setAlarms_fallsBackToTheLoadedWindow_whenTheProviderCannotBeRead() = runTest {
+        repository.error = SecurityException("calendar access revoked")
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
+
+        run(dayPlanDao)
+
+        assertThat(scheduler.armed.values.map { it.eventId }).containsExactly(1L)
     }
 
     @Test
@@ -160,7 +243,7 @@ class ScheduleAlarmsSideEffectsTest {
             selections = listOf(selection(standup).copy(rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 100)),
         )
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = state).toList()
+        val output = run(dayPlanDao, state)
 
         assertThat(output.filterIsInstance<RsvpAccept>()).isEmpty()
         assertThat(scheduler.armed.keys.toList()).containsExactly(1L)
@@ -184,7 +267,7 @@ class ScheduleAlarmsSideEffectsTest {
         alarmDao.rows[2] = armedReview
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup), selection(designReview), selection(earlyBird)))
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        val output = run(dayPlanDao)
 
         assertThat(output.filterIsInstance<RsvpAccept>()).isEmpty()
         assertThat(dayPlanDao.selectedEventsOn(today).map { it.rsvpState }).containsExactly(
@@ -196,7 +279,7 @@ class ScheduleAlarmsSideEffectsTest {
     fun setAlarms_skipsPastAlarmTimes_andSaysSo() = runTest {
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(earlyBird), selection(standup)))
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        val output = run(dayPlanDao)
 
         assertThat(alarmDao.rows.values.map { it.eventId }).containsExactly(standup.eventId)
         assertThat(dayPlanDao.selectedEventsOn(today).first { it.eventId == earlyBird.eventId }.alarmId).isNull()
@@ -209,7 +292,7 @@ class ScheduleAlarmsSideEffectsTest {
     fun setAlarms_whenEverySelectionIsPast_reportsOnlyTheSkippedCount() = runTest {
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(earlyBird)))
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        val output = run(dayPlanDao)
 
         val message = output.message
         assertThat(message.text).isEqualTo(R.plurals.day_alarms_skipped)
@@ -228,7 +311,7 @@ class ScheduleAlarmsSideEffectsTest {
         scheduler.schedule(armedStandup)
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(designReview)))
 
-        sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        run(dayPlanDao)
 
         assertThat(alarmDao.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
         assertThat(scheduler.cancelled).containsExactly(1L)
@@ -246,7 +329,7 @@ class ScheduleAlarmsSideEffectsTest {
         val state = TestAppState.copy(eventsByDay = mapOf(today to DayEvents(today, listOf(moved), Instant.EPOCH)))
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup).copy(alarmId = 1, alarmAt = armedStandup.fireAt)))
 
-        sideEffect(dayPlanDao).output(SetAlarms(today), state = state).toList()
+        run(dayPlanDao, state)
 
         val retimed = armedStandup.copy(fireAt = at(9, 25).toEpochMilli(), beginMillis = at(9, 30).toEpochMilli(), endMillis = at(10).toEpochMilli())
         assertThat(alarmDao.rows.getValue(1)).isEqualTo(retimed)
@@ -266,7 +349,7 @@ class ScheduleAlarmsSideEffectsTest {
         // toggled off and on again: the selection row was re-created without its pointer
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
 
-        sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        run(dayPlanDao)
 
         assertThat(dayPlanDao.selectedEventsOn(today).single().alarmId).isEqualTo(1)
         assertThat(alarmDao.rows.getValue(1)).isEqualTo(armedStandup)
@@ -277,7 +360,7 @@ class ScheduleAlarmsSideEffectsTest {
         settings.setLeadTime(Duration.ofMinutes(15))
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
 
-        sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        run(dayPlanDao)
 
         assertThat(alarmDao.rows.getValue(1).fireAt).isEqualTo(at(8, 45).toEpochMilli())
     }
@@ -288,7 +371,7 @@ class ScheduleAlarmsSideEffectsTest {
         val state = TestAppState.copy(eventsByDay = mapOf(tomorrow to DayEvents(tomorrow, listOf(laterStandup), Instant.EPOCH)))
         val dayPlanDao = FakeDayPlanDao(selections = listOf(laterStandup.toSelectedEventEntity(tomorrow)))
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(tomorrow), state = state).toList()
+        val output = run(dayPlanDao, state, tomorrow)
 
         val message = output.message
         assertThat(message.text).isEqualTo(R.plurals.day_alarms_set_on_day)
@@ -301,7 +384,7 @@ class ScheduleAlarmsSideEffectsTest {
         scheduler.canSchedule = false
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        val output = run(dayPlanDao)
 
         assertThat(alarmDao.rows).isEmpty()
         assertThat(dayPlanDao.plansFlow.value).isEmpty()
@@ -316,7 +399,7 @@ class ScheduleAlarmsSideEffectsTest {
         scheduler.refuse = true
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        val output = run(dayPlanDao)
 
         assertThat(alarmDao.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
         assertThat(dayPlanDao.selectedEventsOn(today).single().alarmId).isNull()
@@ -334,10 +417,10 @@ class ScheduleAlarmsSideEffectsTest {
     fun aRefusedArm_isRetriedByTheNextSetAlarms_withAFreshRow() = runTest {
         scheduler.refuse = true
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
-        sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        run(dayPlanDao)
 
         scheduler.refuse = false
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        val output = run(dayPlanDao)
 
         assertThat(alarmDao.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
         assertThat(alarmDao.rows.getValue(2).state).isEqualTo(AlarmState.SCHEDULED)
@@ -367,7 +450,7 @@ class ScheduleAlarmsSideEffectsTest {
         scheduler.schedule(armedReview)
         val dayPlanDao = FakeDayPlanDao(plans = listOf(DayPlanEntity(today)), selections = emptyList())
 
-        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+        val output = run(dayPlanDao)
 
         assertThat(alarmDao.rows.values.map { it.state }).containsExactly(AlarmState.CANCELLED, AlarmState.CANCELLED)
         assertThat(scheduler.cancelled).containsExactly(1L, 2L)
@@ -391,5 +474,13 @@ class ScheduleAlarmsSideEffectsTest {
         assertThat(alarmsSetMessage(AlarmReconciliation(schedule = listOf(row), skipped = listOf(skipped)), today, today).text)
             .isEqualTo(R.string.day_alarms_set_some_skipped)
         assertThat(alarmsSetMessage(AlarmReconciliation(cancel = listOf(row)), today, today).text).isEqualTo(R.plurals.day_alarms_cleared)
+        assertThat(alarmsSetMessage(AlarmReconciliation(notAttending = listOf(skipped)), today, today).text)
+            .isEqualTo(R.plurals.day_alarms_not_attending)
+        assertThat(alarmsSetMessage(AlarmReconciliation(schedule = listOf(row), notAttending = listOf(skipped)), today, today).text)
+            .isEqualTo(R.string.day_alarms_set_some_not_attending)
+        assertThat(alarmsSetMessage(AlarmReconciliation(skipped = listOf(skipped), notAttending = listOf(skipped)), today, today).text)
+            .isEqualTo(R.plurals.day_alarms_skipped_mixed)
+        assertThat(alarmsSetMessage(AlarmReconciliation(schedule = listOf(row), skipped = listOf(skipped), notAttending = listOf(skipped)), today, today).text)
+            .isEqualTo(R.string.day_alarms_set_some_skipped_mixed)
     }
 }
