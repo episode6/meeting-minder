@@ -16,6 +16,8 @@ private fun AppState.reduceUpdateStateAction(action: UpdateStateAction): AppStat
     is SetDayPlans -> copy(dayPlans = action.dayPlans)
     is ShowMessage -> copy(transientMessage = action.message)
     is ClearMessage -> if (transientMessage?.id == action.id) copy(transientMessage = null) else this
+    is SetPendingShare -> copy(pendingShare = action.share)
+    is ClearPendingShare -> if (pendingShare?.id == action.id) copy(pendingShare = null) else this
 }
 
 private fun AppState.withDayEvents(dayEvents: DayEvents): AppState {

@@ -9,6 +9,21 @@ import com.episode6.meetingminder.permissions.PermissionState
 import java.time.LocalDate
 
 /**
+ * [AppState.pendingShare]'s payload: [text] is what `Navigation.kt` hands to
+ * [com.episode6.meetingminder.share.shareSchedule] for [date]. [id] is chosen the same way
+ * as [UiMessage.next], for the same reason: [ClearPendingShare] must clear exactly the
+ * share that was launched and never a newer one dispatched in the meantime.
+ */
+data class PendingShare(val id: Long, val date: LocalDate, val text: String) {
+    companion object {
+        private var lastId = 0L
+
+        @Synchronized
+        fun next(date: LocalDate, text: String): PendingShare = PendingShare(id = ++lastId, date = date, text = text)
+    }
+}
+
+/**
  * The single app-wide state behind [AppStore] (TODO.md §3.2). Every screen's ViewModel,
  * and later the alarm receivers, services and the change-detection worker, read and
  * write this one object.
@@ -45,6 +60,13 @@ data class AppState(
     val dayPlans: Map<LocalDate, DayPlan> = emptyMap(),
     /** One-shot snackbar text; ViewModels expose it as a one-shot `Flow` and clear it by id once shown. */
     val transientMessage: UiMessage? = null,
+    /**
+     * A share whose text is ready and the chooser hasn't launched yet ([ShareDay],
+     * TODO.md §4.2). Like [transientMessage], ViewModels expose this as a one-shot `Flow`
+     * and `Navigation.kt` clears it by id once `ShareCompat` has opened the chooser —
+     * launching an Activity belongs in the UI layer, not a side effect.
+     */
+    val pendingShare: PendingShare? = null,
 )
 
 /** The dates [AppState.eventsByDay] keeps: the settled page and the page either side of it. */

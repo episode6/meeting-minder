@@ -5,6 +5,7 @@ import assertk.assertions.containsOnly
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
+import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
@@ -145,6 +146,31 @@ class DayPlanMappingTest {
         )
         assertThat(entity.alarmId).isNull()
         assertThat(entity.rsvpState).isEqualTo(RsvpState.NOT_APPLICABLE)
+    }
+
+    @Test
+    fun buildDayPlans_decodesTheSharedSnapshotJson() {
+        val busyRanges = listOf(BusyRange(Instant.ofEpochMilli(1_000), Instant.ofEpochMilli(2_000)))
+        val plan = DayPlanEntity(date = today, sharedAt = 5_000, sharedSnapshot = encodeBusyRanges(busyRanges))
+
+        val result = buildDayPlans(plans = listOf(plan), selections = emptyList())
+
+        assertThat(result.getValue(today).sharedSnapshot).isEqualTo(busyRanges)
+    }
+
+    @Test
+    fun encodeThenDecodeBusyRanges_roundTrips() {
+        val ranges = listOf(
+            BusyRange(Instant.ofEpochMilli(1_000), Instant.ofEpochMilli(2_000)),
+            BusyRange(Instant.ofEpochMilli(3_000), Instant.ofEpochMilli(4_000)),
+        )
+
+        assertThat(decodeBusyRanges(encodeBusyRanges(ranges))).isEqualTo(ranges)
+    }
+
+    @Test
+    fun encodeBusyRanges_ofAnEmptyList_decodesBackToEmpty() {
+        assertThat(decodeBusyRanges(encodeBusyRanges(emptyList()))).isEmpty()
     }
 }
 

@@ -20,10 +20,14 @@ import java.util.Locale
 class TimelineTimeFormat(is24Hour: Boolean, locale: Locale) {
     private val hourFormatter = DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm" else "h a", locale)
     private val timeFormatter = DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm" else "h:mm", locale)
+    private val timeWithPeriodFormatter = DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm" else "h:mm a", locale)
 
     fun hourLabel(hour: Int): String = LocalTime.of(hour, 0).format(hourFormatter)
 
     fun time(time: LocalTime): String = time.format(timeFormatter)
+
+    /** Like [time], but with AM/PM — for standalone times away from the gutter, e.g. the "shared 8:12 AM" subtitle. */
+    fun timeWithPeriod(time: LocalTime): String = time.format(timeWithPeriodFormatter)
 }
 
 @Composable

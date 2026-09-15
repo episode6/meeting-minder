@@ -33,6 +33,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.lifecycle.repeatOnLifecycle
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.permissions.PermissionRequester
+import com.episode6.meetingminder.share.shareSchedule
 import com.episode6.meetingminder.ui.day.DayScreen
 import com.episode6.meetingminder.ui.day.DayViewModel
 import com.episode6.meetingminder.ui.licenses.LicensesScreen
@@ -108,6 +109,18 @@ fun MeetingMinderNavigation() {
                 }
             }
 
+            // ShareCompat needs a real Activity context and must never launch from a
+            // receiver (TODO.md §4.2), so the actual chooser call lives here, not in the
+            // side effect that formats the text and records the share.
+            LaunchedEffect(viewModel, entryLifecycleOwner) {
+                entryLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    viewModel.pendingShare.collect { share ->
+                        viewModel.onShareLaunched(share)
+                        dayContext.shareSchedule(share.text)
+                    }
+                }
+            }
+
             DayScreen(
                 state = state,
                 snackbarHostState = snackbarHostState,
@@ -124,6 +137,8 @@ fun MeetingMinderNavigation() {
                         viewModel.onCheckForUpdatesFailed()
                     }
                 },
+                onShareAgainClick = viewModel::onShareAgainClick,
+                onMarkNotSharedClick = viewModel::onMarkNotSharedClick,
                 onEventClick = viewModel::onEventToggle,
                 onEventLongClick = { event ->
                     viewModel.calendarEventFor(event.key)?.let { calendarEvent ->

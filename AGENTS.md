@@ -32,7 +32,7 @@ Convention plugins must stay in the `build-logic` included build, **never buildS
 
 ## Package map
 
-This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (so far: `di/`, `model/`, `store/` + `store/sideeffects/`, `data/calendar/`, `data/db/`, `data/settings/`, `alarm/` (`AlarmScheduler`, `AlarmReconciler`, `AlarmRescheduler`, `AlarmNotifications`, `AlarmReceiver`, `BootReceiver`; the ringing service, sound player and activity are PR-10), `permissions/`, `ui/navigation/`, `ui/theme/`, `ui/day/` (`DayScreen`, `DayPager`, `DayTimeline`, `DayEventsLayout`, `EventChip`, `NowLine`, `DayViewDefaults`, `FabState`, `DayViewModel`), `ui/onboarding/`, `ui/licenses/` and `ui/util/`). New code goes where this map says, not wherever is convenient.
+This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (so far: `di/`, `model/`, `store/` + `store/sideeffects/`, `data/calendar/`, `data/db/`, `data/settings/`, `alarm/` (`AlarmScheduler`, `AlarmReconciler`, `AlarmRescheduler`, `AlarmNotifications`, `AlarmReceiver`, `BootReceiver`; the ringing service, sound player and activity are PR-10), `share/` (`ScheduleTextFormatter`, `ShareLauncher`; `monitor/`'s `change_snapshot` differ is PR-11), `permissions/`, `ui/navigation/`, `ui/theme/`, `ui/day/` (`DayScreen`, `DayPager`, `DayTimeline`, `DayEventsLayout`, `EventChip`, `NowLine`, `DayViewDefaults`, `FabState`, `DayViewModel`), `ui/onboarding/`, `ui/licenses/` and `ui/util/`). New code goes where this map says, not wherever is convenient.
 
 | Package | Responsibility |
 |---------|----------------|

@@ -1,8 +1,13 @@
 package com.episode6.meetingminder.data.db
 
+import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.SelectedEvent
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.LocalDate
 
@@ -27,9 +32,22 @@ internal fun buildDayPlans(
             armedKeys = armedByDate[date].orEmpty().toSet(),
             alarmsSetAt = plan?.alarmsSetAt?.let(Instant::ofEpochMilli),
             sharedAt = plan?.sharedAt?.let(Instant::ofEpochMilli),
+            sharedSnapshot = plan?.sharedSnapshot?.let(::decodeBusyRanges),
         )
     }
 }
+
+@Serializable
+private data class BusyRangeDto(val beginMillis: Long, val endMillis: Long)
+
+private val BusyRangeJson = Json { ignoreUnknownKeys = true }
+
+/** [DayPlanEntity.sharedSnapshot]: the merged busy ranges a share sent, as JSON. */
+internal fun encodeBusyRanges(ranges: List<BusyRange>): String =
+    BusyRangeJson.encodeToString(ranges.map { BusyRangeDto(it.begin.toEpochMilli(), it.end.toEpochMilli()) })
+
+internal fun decodeBusyRanges(json: String): List<BusyRange> =
+    BusyRangeJson.decodeFromString<List<BusyRangeDto>>(json).map { BusyRange(Instant.ofEpochMilli(it.beginMillis), Instant.ofEpochMilli(it.endMillis)) }
 
 private fun SelectedEventEntity.toSelectedEvent(): SelectedEvent = SelectedEvent(
     key = key,

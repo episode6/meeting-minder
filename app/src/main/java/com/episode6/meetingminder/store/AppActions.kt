@@ -43,6 +43,12 @@ data class ShowMessage(val message: UiMessage) : UpdateStateAction
 /** Clears the pending message, but only if it is still the one with [id]. */
 data class ClearMessage(val id: Long) : UpdateStateAction
 
+/** Sets [AppState.pendingShare]: the share text is ready for `Navigation.kt` to launch. */
+data class SetPendingShare(val share: PendingShare) : UpdateStateAction
+
+/** Clears [AppState.pendingShare], but only if it is still the one with [id] — like [ClearMessage]. */
+data class ClearPendingShare(val id: Long) : UpdateStateAction
+
 /**
  * Requests handled only by side effects under `store/sideeffects/` (never by the
  * reducer); see TODO.md §3.2 for the full list.
@@ -114,3 +120,19 @@ sealed interface RsvpResult {
     /** The provider refused the write, or the event had left the loaded window before it ran. */
     data object Failed : RsvpResult
 }
+
+/**
+ * The user tapped "Share schedule" or the overflow's "Share again" for [date] (TODO.md
+ * §4.2): format the day's selected events into busy-range text, record `shared_at` +
+ * `shared_snapshot` on `day_plan` and the `change_snapshot` baseline (§4.3, read by
+ * PR-11), and hand the text to `Navigation.kt` via [SetPendingShare] to actually open the
+ * share sheet — `ShareDaySideEffects`.
+ */
+data class ShareDay(val date: LocalDate) : AsyncAction
+
+/**
+ * The overflow's "Mark as not shared" for [date]: clears `day_plan.shared_at`/
+ * `shared_snapshot` and the `change_snapshot` baseline, for the "I fat-fingered the
+ * chooser" case (TODO.md §4.2). Leaves the selection and alarms untouched.
+ */
+data class MarkNotShared(val date: LocalDate) : AsyncAction

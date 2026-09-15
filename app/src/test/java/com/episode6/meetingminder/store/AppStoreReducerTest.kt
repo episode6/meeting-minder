@@ -125,6 +125,25 @@ class AppStoreReducerTest {
     }
 
     @Test
+    fun setPendingShare_replacesAnyPendingShare() {
+        val first = PendingShare.next(today, "first")
+        val second = PendingShare.next(today, "second")
+
+        val result = state.reduce(SetPendingShare(first)).reduce(SetPendingShare(second))
+
+        assertThat(result.pendingShare).isEqualTo(second)
+    }
+
+    @Test
+    fun clearPendingShare_clearsTheMatchingShare_butKeepsANewerOne() {
+        val share = PendingShare.next(today, "text")
+        val showing = state.copy(pendingShare = share)
+
+        assertThat(showing.reduce(ClearPendingShare(share.id)).pendingShare).isNull()
+        assertThat(showing.reduce(ClearPendingShare(share.id - 1))).isSameInstanceAs(showing)
+    }
+
+    @Test
     fun nonUpdateStateActions_leaveStateUntouched() {
         assertThat(state.reduce(object : Action {})).isSameInstanceAs(state)
         assertThat(state.reduce(SubscriberStatusChanged(true))).isSameInstanceAs(state)

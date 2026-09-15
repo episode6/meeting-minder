@@ -947,7 +947,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   chips, Robolectric tests for both write shapes, and the emulator seeding recipe in the `verify`
   skill. Manual check against a real Google account before this merges. (The columns had
   already landed with PR-7's schema, so no database version bump was needed.)
-- [ ] **PR-9: Share schedule.** `[Sonnet 5, effort medium]` ∥ with PR-8. `ScheduleTextFormatter` (pure, tested: merging,
+- [x] **PR-9: Share schedule.** `[Sonnet 5, effort medium]` ∥ with PR-8. `ScheduleTextFormatter` (pure, tested: merging,
   AM/PM elision, empty day, midnight-spanning), `ShareDay`/`SharedDay` side effects writing
   `shared_at` + `shared_snapshot` and the `change_snapshot` baseline (§4.3), the FAB's `Share`
   state (unlocked once `alarms_set_at != null`),
