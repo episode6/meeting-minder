@@ -3,6 +3,7 @@ package com.episode6.meetingminder.store
 import androidx.annotation.StringRes
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.permissions.PermissionState
 import java.time.LocalDate
 
@@ -12,7 +13,7 @@ import java.time.LocalDate
  * write this one object.
  *
  * Fields arrive with the PR that first needs them: permissions (PR-4), calendars and
- * `eventsByDay` (PR-6); `dayPlans` (PR-7), `ringing` (PR-10) and `scheduleChanges`
+ * `eventsByDay` (PR-6), `dayPlans` (PR-7); `ringing` (PR-10) and `scheduleChanges`
  * (PR-11) are added here alongside their model types, each with a default so existing
  * call sites keep compiling.
  */
@@ -35,6 +36,12 @@ data class AppState(
      * yet; a loaded day with nothing on it maps to an empty event list.
      */
     val eventsByDay: Map<LocalDate, DayEvents> = emptyMap(),
+    /**
+     * Every day that has ever had a selection, alarms set or a share, read from Room's
+     * `day_plan` + `selected_event` tables (`ObserveDayPlansSideEffects`). A date absent
+     * here has no selections, exactly like `Map<>::get` returning null on any other date.
+     */
+    val dayPlans: Map<LocalDate, DayPlan> = emptyMap(),
     /** One-shot snackbar text; ViewModels expose it as a one-shot `Flow` and clear it by id once shown. */
     val transientMessage: UiMessage? = null,
 )

@@ -120,13 +120,13 @@ fun MeetingMinderNavigation() {
                         viewModel.onCheckForUpdatesFailed()
                     }
                 },
-                // selection arrives with PR-7
-                onEventClick = {},
+                onEventClick = viewModel::onEventToggle,
                 onEventLongClick = { event ->
                     viewModel.calendarEventFor(event.key)?.let { calendarEvent ->
                         if (!dayContext.openInCalendar(calendarEvent)) viewModel.onOpenInCalendarFailed()
                     }
                 },
+                onFabClick = viewModel::onFabClick,
             )
         }
         composable<Route.Onboarding> {

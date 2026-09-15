@@ -26,9 +26,6 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
 /**
  * The app-scoped graph. Receivers, services and workers reach it via `Context.appGraph`;
  * Composables only ever see ViewModels, created through [metroViewModelFactory].
- *
- * The Room database provider arrives with its first table in PR-7: Room refuses to
- * compile a database with no entities.
  */
 @DependencyGraph(AppScope::class)
 @SingleIn(AppScope::class)

@@ -13,6 +13,7 @@ private fun AppState.reduceUpdateStateAction(action: UpdateStateAction): AppStat
     is SetPermissions -> copy(permissions = action.permissions)
     is SetCalendars -> copy(calendars = action.calendars)
     is SetDayEvents -> withDayEvents(action.dayEvents)
+    is SetDayPlans -> copy(dayPlans = action.dayPlans)
     is ShowMessage -> copy(transientMessage = action.message)
     is ClearMessage -> if (transientMessage?.id == action.id) copy(transientMessage = null) else this
 }

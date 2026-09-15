@@ -884,7 +884,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 2 — Select, alarm, share
 
-- [ ] **PR-7: Selection persistence.** `[Sonnet 5, effort medium]` Room `day_plan` + `selected_event` (+ schema export),
+- [x] **PR-7: Selection persistence.** `[Sonnet 5, effort medium]` Room `day_plan` + `selected_event` (+ schema export),
   `ObserveDayPlans` and `ToggleEvent` side effects, chip toggling with haptics, the FAB in its
   `Hidden`/`SetAlarms(n)` states (tap is a no-op placeholder that shows a snackbar), selection
   survives process death and day paging. Store tests via `runStoreTest`.
