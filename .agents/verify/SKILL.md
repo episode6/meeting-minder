@@ -197,19 +197,23 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   `adb shell dumpsys package $PKG | grep -B1 -A3 CalendarProviderChangedReceiver`, which
   shows the component under `enabledComponents`/`disabledComponents` once
   `CalendarProviderChangedReceiver.kt`'s `setComponentEnabledSetting` has run; `pm list
-  receivers` isn't a real `pm` subcommand). `PROVIDER_CHANGED` is a protected broadcast, so
-  from the shell uid `am broadcast` throws a `SecurityException` on a user build — run
-  `adb root` first (emulator only), the same thing the `BOOT_COMPLETED` broadcast above
-  silently relies on.
-- Midnight rollover / anchor date: on an emulator, `adb root && adb shell settings put
-  global auto_time 0 && adb shell date MMDDhhmmYYYY.ss` (or `adb shell date @<epoch>`) sets
-  the clock directly; Extended Controls also has a clock control. On a real device there's
-  no rooted `date`, so leave the app open and past a real midnight instead. Either way, the
-  viewed day and "Today" target should follow.
+  receivers` isn't a real `pm` subcommand). `PROVIDER_CHANGED` is a protected broadcast,
+  but the shell uid is one of the callers allowed to send those, so no `adb root` is
+  needed: on an API 36 `user` (Play-store) image the command reports
+  `Broadcast completed: result=0` and the receiver's work is enqueued.
+- Midnight rollover / anchor date: `adb shell settings put global auto_time 0` then
+  `adb shell cmd alarm set-time <epochMillis>` (AlarmManager's shell command; the shell
+  uid holds `SET_TIME`, so it works on any build — verified on the API 36 Play-store
+  image, where `adb root` is refused and `adb shell date MMDDhhmmYYYY.ss` fails with
+  "Operation not permitted"). On a rootable image (`google_apis`, not `_playstore`)
+  `adb root && adb shell date MMDDhhmmYYYY.ss` also works; Extended Controls has a clock
+  control too. Put `auto_time` back to 1 afterwards. Either way, the viewed day and "Today"
+  target should follow.
 - Timezone change: `adb shell settings put global auto_time_zone 0` (not `content
   update` — that's not how settings are written), then
   `adb shell cmd alarm set-timezone Europe/London` (AlarmManager's shell command; the
-  shell uid holds `SET_TIME_ZONE`, so no root needed), or on a rooted emulator
+  shell uid holds `SET_TIME_ZONE`, so no root needed — verified on the API 36 Play-store
+  image, `persist.sys.timezone` flips at once), or on a rootable image
   `adb shell setprop persist.sys.timezone Europe/London`, or by hand via Extended
   Controls → Settings → Time / `Settings > System > Date & time`. What to look for:
   `BootReceiver` handles `TIMEZONE_CHANGED`, so `dumpsys alarm` should show every armed
@@ -220,14 +224,19 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   am set-standby-bucket $PKG restricted` simulates the "restricted" bucket warning.
 - Dark theme / large font / TalkBack: `adb shell "cmd uimode night yes"` (and `no` after),
   `adb shell settings put system font_scale 1.5`, and for TalkBack first check it's there
-  at all — `adb shell pm list packages | grep -i talkback` — since `google_apis` emulator
-  images usually don't ship it (it's a Play component; use a Play-store image or a real
-  phone). The service component differs between builds
+  at all — `adb shell pm list packages | grep -i talkback` — since plain `google_apis`
+  emulator images usually don't ship it (it's a Play component; the
+  `google_apis_playstore` image does, as `com.google.android.marvin.talkback`, or use a
+  real phone). The service component differs between builds
   (`com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService`
   on Google builds, `com.android.talkback/…` on AOSP), so use whichever the package list
   shows in `adb shell settings put secure enabled_accessibility_services <component>`,
   and also `adb shell settings put secure accessibility_enabled 1` or the service won't
-  start (revert each afterwards) — walk the day view and onboarding under each.
+  start (verified on the API 36 Play-store image: `dumpsys accessibility` then lists
+  TalkBack under "Enabled services" and its `ServiceRecord` is running). Revert with
+  `settings put secure accessibility_enabled 0` and
+  `settings delete secure enabled_accessibility_services` — walk the day view and
+  onboarding under each.
 
 ## Gotchas
 
