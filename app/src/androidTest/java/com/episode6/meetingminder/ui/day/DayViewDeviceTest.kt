@@ -19,6 +19,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import assertk.assertThat
 import assertk.assertions.contains
+import com.episode6.meetingminder.FullScreenIntentRule
 import com.episode6.meetingminder.MainActivity
 import com.episode6.meetingminder.data.calendar.ContentResolverCalendarRepository
 import kotlinx.coroutines.runBlocking
@@ -58,7 +59,7 @@ class DayViewDeviceTest {
     private val composeRule = createEmptyComposeRule()
 
     @get:Rule
-    val ruleChain: RuleChain = RuleChain.outerRule(permissionRule).around(composeRule)
+    val ruleChain: RuleChain = RuleChain.outerRule(permissionRule).around(FullScreenIntentRule()).around(composeRule)
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val resolver = instrumentation.targetContext.contentResolver

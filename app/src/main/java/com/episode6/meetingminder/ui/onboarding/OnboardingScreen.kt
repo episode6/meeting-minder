@@ -39,16 +39,17 @@ import com.episode6.meetingminder.R
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 
 /**
- * What [OnboardingScreen] renders: the three required rows (TODO.md §4.5). The
- * full-screen-intent and battery-optimisation rows stub as "coming soon" until PR-10/13.
+ * What [OnboardingScreen] renders: the four required rows (TODO.md §4.5). The
+ * battery-optimisation row stubs as "coming soon" until PR-13.
  */
 data class OnboardingUiState(
     val calendarGranted: Boolean,
     val notificationsGranted: Boolean = false,
     val exactAlarmsGranted: Boolean = false,
+    val fullScreenAlarmsGranted: Boolean = false,
 ) {
     /** Every required row is granted; the optional rows never gate Continue. */
-    val canContinue: Boolean get() = calendarGranted && notificationsGranted && exactAlarmsGranted
+    val canContinue: Boolean get() = calendarGranted && notificationsGranted && exactAlarmsGranted && fullScreenAlarmsGranted
 }
 
 /** The live rows of the checklist, each with its own request flow in `Navigation.kt`. */
@@ -56,12 +57,12 @@ enum class OnboardingRow(@param:StringRes internal val title: Int, @param:String
     Calendar(R.string.onboarding_calendar_title, R.string.onboarding_calendar_description),
     Notifications(R.string.onboarding_notifications_title, R.string.onboarding_notifications_description),
     ExactAlarms(R.string.onboarding_alarms_title, R.string.onboarding_alarms_description),
+    FullScreenAlarms(R.string.onboarding_full_screen_title, R.string.onboarding_full_screen_description),
 }
 
 private data class StubRow(@StringRes val title: Int, @StringRes val description: Int)
 
 private val StubRows = listOf(
-    StubRow(R.string.onboarding_full_screen_title, R.string.onboarding_full_screen_description),
     StubRow(R.string.onboarding_battery_title, R.string.onboarding_battery_description),
 )
 
@@ -162,6 +163,7 @@ private fun OnboardingUiState.granted(row: OnboardingRow): Boolean = when (row) 
     OnboardingRow.Calendar -> calendarGranted
     OnboardingRow.Notifications -> notificationsGranted
     OnboardingRow.ExactAlarms -> exactAlarmsGranted
+    OnboardingRow.FullScreenAlarms -> fullScreenAlarmsGranted
 }
 
 @Composable
@@ -234,7 +236,12 @@ internal fun OnboardingScreenStartPreview() {
 internal fun OnboardingScreenGrantedPreview() {
     MeetingMinderTheme {
         OnboardingScreen(
-            state = OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true),
+            state = OnboardingUiState(
+                calendarGranted = true,
+                notificationsGranted = true,
+                exactAlarmsGranted = true,
+                fullScreenAlarmsGranted = true,
+            ),
             settingsOnlyRows = emptySet(),
             canNavigateBack = true,
             onAllowClick = {},
@@ -245,7 +252,7 @@ internal fun OnboardingScreenGrantedPreview() {
     }
 }
 
-/** Render 1's mid-way state: calendar and notifications granted, exact alarms still to allow. */
+/** Render 1's mid-way state: calendar and notifications granted, exact and full-screen alarms still to allow. */
 @Preview(showBackground = true)
 @Composable
 internal fun OnboardingScreenPartlyGrantedPreview() {

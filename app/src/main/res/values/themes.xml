@@ -8,4 +8,10 @@
     <style name="Theme.MeetingMinder" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
     </style>
+
+    <!-- AlarmActivity: the ringing screen is always dark (render 5), so its window is too,
+         whatever the system theme; waking into a white flash would defeat the point. -->
+    <style name="Theme.MeetingMinder.Alarm" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/alarm_window_background</item>
+    </style>
 </resources>

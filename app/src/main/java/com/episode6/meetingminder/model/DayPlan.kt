@@ -15,7 +15,7 @@ data class DayPlan(
     val date: LocalDate,
     val selected: Map<EventKey, SelectedEvent> = emptyMap(),
     /**
-     * Keys of the day's `SCHEDULED` alarm rows (PR-8). Normally a subset of [selected]'s
+     * Keys of the day's armed (`SCHEDULED`, or `SNOOZED` since PR-10) alarm rows (PR-8). Normally a subset of [selected]'s
      * keys with an `alarmId`; the difference is an event deselected since its alarm was
      * armed, whose alarm rings until the next "Set alarms" tap cancels it — so the FAB
      * must stay reachable while this is non-empty even when [selected] is empty.

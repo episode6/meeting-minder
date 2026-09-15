@@ -40,4 +40,5 @@ internal fun AppState.toOnboardingUiState() = OnboardingUiState(
     calendarGranted = permissions.calendarGranted,
     notificationsGranted = permissions.notificationsGranted,
     exactAlarmsGranted = permissions.exactAlarmsGranted,
+    fullScreenAlarmsGranted = permissions.fullScreenIntentGranted,
 )

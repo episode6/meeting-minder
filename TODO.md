@@ -223,6 +223,20 @@ process to dispatch from), and PR-13's in-app `MaintainAlarms` calls the same
 `rescheduleAll()` from its own action rather than through the receiver. See AGENTS.md
 "Receivers and the store".
 
+NB (PR-10): `AlarmFired` did not become a store action after all. `AlarmReceiver` starts
+`AlarmRingingService` with `startForegroundService` at once, and the service must answer with
+`startForeground` within seconds — for which it needs the row — so it reads and marks the
+row itself (`AlarmRinger.fire`) and owns the ringing: the sound, the foreground notification,
+the queue when alarms fire back to back, the auto-timeout. It publishes what is ringing
+through `SetRinging(RingingAlarm?)` (`AppState.ringing: RingingAlarm?`), which is what
+`AlarmActivity` renders. `SnoozeAlarm(alarmId)` / `DismissAlarm(alarmId)` are store actions
+carrying the alarm id (so a tap can't reach an alarm the screen isn't showing), dispatched by
+the ringing screen; `AlarmRingingSideEffects` hands them to the service, which stops the sound
+and awaits the row write (a snooze's new `setAlarmClock` included) before moving on or
+leaving the foreground, and only writes the row itself if the service can't be reached. The
+notification's Snooze/Dismiss actions go to the service directly. The service's rules live
+in the Android-free `AlarmRingingSession`.
+
 Side effects (one file each under `store/sideeffects/`): `ObserveDayPlans`, `LoadCalendars`,
 `LoadDayEvents` (`transformLatest` on `LoadDay`/`CalendarContentChanged`), `ToggleEvent`,
 `ScheduleAlarms`, `RsvpAccept`, `ShareSchedule`, `AlarmRinging`, `ChangeDetection`, `CalendarObserver`
@@ -341,6 +355,15 @@ touching the provider, and because the key no longer contains the time, the stor
 `begin_millis` is what lets us notice a selected event was **moved** (same key, different times)
 and reschedule its alarm (§4.4). `selected_event.alarm_id` is a plain pointer into
 `scheduled_alarm`.
+
+NB (PR-10): `scheduled_alarm` also has `location TEXT?` (denormalised for the ringing screen,
+refreshed by the reconcile like the title) and `timed_out INTEGER` (the ring already
+auto-snoozed once, so the next unanswered ring gives up); database version 4. A `SNOOZED` row
+is armed again at its snooze time (`fire_at`) and counts as armed everywhere `SCHEDULED` does
+(`AlarmState.armed`): the boot re-arm, `DayPlan.armedKeys`, and the "Set alarms" reconcile —
+which keeps a snoozed row for a still-selected event rather than reading its snooze `fire_at`
+as "moved into the past", cancels it if deselected, and re-times it to a fresh `SCHEDULED`
+alarm only when its event has moved far enough that one is due in the future.
 
 ### 3.5 Day view UI (Compose)
 
@@ -644,6 +667,7 @@ android.permission.RECEIVE_BOOT_COMPLETED
 android.permission.VIBRATE
 android.permission.FOREGROUND_SERVICE
 android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK
+android.permission.WAKE_LOCK                   (PR-10: AlarmWakeLock, see the NB under "Full-screen wake-up")
 android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 ```
 
@@ -730,6 +754,30 @@ with the Snooze/Dismiss actions, tap opens the activity. Dismiss/Snooze never re
 what revokes it for non-alarm apps). We still check `NotificationManager.canUseFullScreenIntent()`
 in onboarding and deep-link to `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` if it's off; when denied
 the system shows a 60-second heads-up instead and the sound still plays.
+
+NB (PR-10), where the build settled things this section leaves open:
+- **Back is disabled** on the ringing screen, as §5 says, not "Back = snooze": an accidental
+  back press must never silence a ringing alarm, and Snooze is one tap away.
+- **Back-to-back alarms queue.** An alarm that fires while another rings waits its turn (its
+  row is `FIRED` at once) and rings as soon as the current one is snoozed or dismissed; each
+  gets its own auto-timeout. The same foreground notification is re-posted for it.
+- **The 3-minute ring timeout is an in-process delay** (the foreground service keeps the
+  process alive while it rings); what it triggers — the snooze — is a `setAlarmClock`, as
+  above. A snooze the OS refuses to arm (the exact-alarm grant is gone) posts the same "Missed
+  alarm" notification as the second timeout, rather than losing the alarm silently.
+- **Wake lock.** The alarm broadcast's own wake lock ends when `AlarmReceiver.onReceive`
+  returns, before the service exists, so the receiver takes `AlarmWakeLock` and the service
+  holds it until it stops. That adds `WAKE_LOCK` to the permission list.
+- **The `alarms` channel is silent** (no sound, no vibration), since the service plays the
+  audio. A channel's sound can't be changed once created, so an install from before PR-10
+  keeps the old default sound on it until its data is cleared. Swiping the ringing
+  notification away (Android 14+ lets users dismiss foreground-service notifications) snoozes.
+- **"Open meeting"** (on the screen, not the notification) dismisses the alarm and opens the
+  event in the calendar app once `requestDismissKeyguard` succeeds.
+- **Sound pool:** "bundled only" keeps the siren (it is generated in-app); "system only" is
+  device ringtones alone. The bundled set is eight AOSP alarm OGGs (no Freesound picks yet).
+  The "recently used" buffer records each alarm's first sound, and an alarm never avoids its
+  own entry, which keeps a snoozed alarm sounding the same. Sirens are never recorded.
 
 **Randomised obnoxious alert** (`AlarmSoundPlayer`). Goal: never the same alarm twice in a row,
 so it can't be tuned out. Per alarm we draw a *recipe*, seeded by `scheduled_alarm.sound_index`
@@ -952,7 +1000,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   `shared_at` + `shared_snapshot` and the `change_snapshot` baseline (§4.3), the FAB's `Share`
   state (unlocked once `alarms_set_at != null`),
   "Share again"/"Mark as not shared" overflow items, `ShareCompat` launch from `Navigation.kt`.
-- [ ] **PR-10: Alarm ringing experience.** `[Opus 5, effort xhigh]` `AlarmRingingService` (foreground service, started by
+- [x] **PR-10: Alarm ringing experience.** `[Opus 5, effort xhigh]` `AlarmRingingService` (foreground service, started by
   `AlarmReceiver`, plays sound + vibrates, posts the full-screen-intent notification),
   `AlarmActivity` (`showWhenLocked`/`turnScreenOn`, dismiss keyguard, Compose `AlarmRingingScreen`
   from the store's `ringing` state, Dismiss/Snooze, back disabled), `AlarmSoundPlayer` with the

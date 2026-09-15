@@ -34,7 +34,19 @@ class NavigationViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private val allGranted = PermissionState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true)
+    private val allGranted = PermissionState(
+        calendarGranted = true,
+        notificationsGranted = true,
+        exactAlarmsGranted = true,
+        fullScreenIntentGranted = true,
+    )
+
+    @Test
+    fun requiredPermissionsGranted_needsTheFullScreenAlarmsRowToo() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today, permissions = allGranted.copy(fullScreenIntentGranted = false)), emptySet()) },
+    ) { store ->
+        assertThat(NavigationViewModel(store).requiredPermissionsGranted.value).isEqualTo(false)
+    }
 
     @Test
     fun requiredPermissionsGranted_seededFromInitialStoreState() = runStoreTest(

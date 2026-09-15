@@ -2,6 +2,49 @@
 
 ### v1.0.0 - Unreleased
 
+- Alarm ringing experience (PR-10): a fired alarm now rings instead of posting a plain
+  notification. `AlarmReceiver` takes a wake lock and immediately starts the new
+  `AlarmRingingService`, a `mediaPlayback` foreground service that marks the row `FIRED`,
+  posts the ringing notification (silent `alarms` channel, `CATEGORY_ALARM`, public, with a
+  full-screen intent to the new `AlarmActivity` and Snooze/Dismiss actions straight back to
+  the service; swiping it away snoozes), plays the randomised obnoxious alert and vibrates.
+  `AlarmActivity` (`showWhenLocked`, `turnScreenOn`, keeps the screen on, `singleInstance`,
+  out of recents, back disabled) hosts the Compose `AlarmRingingScreen` (render 5: countdown,
+  big clock, pulsing alarm, title/time/place, Dismiss, "Snooze 2 min", "Open meeting" — which
+  asks the keyguard to go away, dismisses and opens the event in the calendar — and a subtle
+  "Sound: …" line) from the store's new `AppState.ringing` (`SetRinging`, published by the
+  service); its `SnoozeAlarm(alarmId)`/`DismissAlarm(alarmId)` reach the service through
+  `AlarmRingingSideEffects`. The sound (`AlarmSoundPlayer` over the pure, seeded
+  `AlarmSoundRecipe`): 60% a device alarm ringtone, 30% one of eight bundled AOSP alarm OGGs,
+  10% a synthesised siren (`renderSiren`), each at a random speed (0.85–1.35) and pitch
+  (0.8–1.5), re-rolled every ~10 s, ramped from 25% to 100% over 15 s with a `VolumeShaper`,
+  never opening with a sound one of the last five alarms opened with (`RecentAlarmSounds`),
+  on `USAGE_ALARM` with transient audio focus and the alarm stream raised to at least half;
+  plus a random 4–8-segment vibration waveform. Snooze (default 2 min) re-arms the same alarm
+  with `setAlarmClock` as a `SNOOZED` row, which now counts as armed everywhere (boot re-arm,
+  `DayPlan.armedKeys`, and the "Set alarms" reconcile, which keeps a still-selected snoozed
+  alarm instead of reading it as moved into the past). Unanswered for the auto-timeout
+  (default 3 min) an alarm snoozes itself once, then gives up with a "Missed alarm"
+  notification; alarms that fire while one rings wait their turn. The service's rules —
+  answering every `startForegroundService` with `startForeground` in time (a placeholder
+  when the row is slow to load or there is nothing to ring), the queue, awaiting each row
+  write before leaving the foreground, the timeout — live in the Android-free
+  `AlarmRingingSession`. Onboarding's "Full-screen alarms" row is live and required
+  (`PermissionState.fullScreenIntentGranted`, `canUseFullScreenIntent()` on 34+,
+  `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT`). `scheduled_alarm` gains `location` (for the
+  ringing screen) and `timed_out` (database version 4); `Settings` gains `snoozeLength`,
+  `autoTimeout` and `soundPool` (defaults only until PR-12). Permissions added (manifest +
+  `expected-permissions.txt`): `USE_FULL_SCREEN_INTENT`, `FOREGROUND_SERVICE`,
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `VIBRATE`, `WAKE_LOCK`. No new dependency; the bundled
+  sounds are attributed in `THIRD_PARTY_LICENSES.md`. New tests: `AlarmRingingSessionTest`,
+  `AlarmRingerTest`, `AlarmSoundRecipeTest`, `AlarmSirenTest`, `RecentAlarmSoundsTest`,
+  `AlarmNotificationsTest`, `AlarmReceiverTest`, `AlarmRingingSideEffectsTest`,
+  `AlarmRingingViewModelTest`, new cases in `AlarmReconcilerTest`, `ScheduledAlarmDaoTest`,
+  `AlarmReschedulerTest`, `DayPlanMappingTest`, `AppStoreReducerTest`, `PermissionCheckerTest`,
+  `OnboardingViewModelTest`, `NavigationViewModelTest` and `DataStoreSettingsRepositoryTest`,
+  Roborazzi previews of the ringing screen (render 5, started, 1.5× font), and the device test
+  `AlarmRingingDeviceTest` (an alarm 10 s out wakes the screen into the ringing activity;
+  Dismiss closes it). The other device tests pin the full-screen-intent grant.
 - Share schedule (PR-9): the "Share schedule" FAB now works. A pure `share/ScheduleTextFormatter`
   merges the day's selected events into busy ranges and builds the TODO.md §4.2 message
   ("Mon Sep 14 — I'm in meetings: • 9:00 – 9:30 AM … Free the rest of the day.", 12-hour

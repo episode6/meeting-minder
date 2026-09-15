@@ -47,6 +47,18 @@ class AlarmReschedulerTest {
     }
 
     @Test
+    fun aSnoozedAlarm_isRearmedToo() = runTest {
+        // snoozed just before a reboot: its snooze time has passed, so it rings as soon as it's re-armed
+        val snoozed = row(1, beginOffsetMinutes = 10, state = AlarmState.SNOOZED)
+        val scheduler = FakeAlarmScheduler()
+
+        val count = AlarmRescheduler(FakeScheduledAlarmDao(listOf(snoozed)), scheduler, clock).rescheduleAll()
+
+        assertThat(count).isEqualTo(1)
+        assertThat(scheduler.armed.values.toList()).containsExactly(snoozed)
+    }
+
+    @Test
     fun withoutTheExactAlarmGrant_armsNothing() = runTest {
         val scheduler = FakeAlarmScheduler(canSchedule = false)
 
