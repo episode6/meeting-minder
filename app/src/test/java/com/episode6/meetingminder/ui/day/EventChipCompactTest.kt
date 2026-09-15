@@ -18,11 +18,10 @@ import org.robolectric.annotation.GraphicsMode
 import java.time.LocalTime
 
 /**
- * The compact (one-line) chip gives the whole line to the title when title and time range
- * can't share it, falling back to the start time alone first: the hour grid already says
- * when the event is, only the chip says what. Runs with native graphics so text is
- * measured with real font metrics (legacy graphics measure every glyph at about a pixel,
- * and everything fits).
+ * The compact (one-line) chip shows its time range beside a title that fits, and falls back
+ * to the start time alone otherwise: the start time always stays, and a long title
+ * ellipsizes beside it. Runs with native graphics so text is measured with real font
+ * metrics (legacy graphics measure every glyph at about a pixel, and everything fits).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "en-rUS")
@@ -71,14 +70,14 @@ class EventChipCompactTest {
     }
 
     @Test
-    fun aTitleThatWouldBeEllipsized_hidesTheTimeRange() {
+    fun aTitleTooLongForEvenTheStartTime_keepsTheStartTimeAndEllipsizes() {
         val title = "Quarterly planning review with the whole platform team"
         show(PreviewEvents.standup.copy(title = title))
 
         composeRule.onNodeWithText(title, useUnmergedTree = true).assertIsDisplayed()
-        // composed but not placed: the Layout drops them rather than never composing them
+        // composed but not placed: the Layout drops it rather than never composing it
         composeRule.onNodeWithText(timeRange, useUnmergedTree = true).assertIsNotDisplayed()
-        composeRule.onNodeWithText(startTime, useUnmergedTree = true).assertIsNotDisplayed()
+        composeRule.onNodeWithText(startTime, useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test

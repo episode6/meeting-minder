@@ -67,8 +67,8 @@ enum class ChipContentLayout {
 
     /**
      * One line: title on the left, time (or bell + alarm time) on the right. The time range
-     * gives way to the start time alone, and then to nothing, when the whole title wouldn't
-     * fit beside it (the alarm time never gives way).
+     * gives way to the start time alone when the whole title wouldn't fit beside it; the
+     * start time (or the alarm time) always stays, and the title ellipsizes beside it.
      */
     Compact,
 
@@ -271,7 +271,7 @@ fun EventChip(
                         title(Modifier.weight(1f))
                         AlarmTime(alarmText.orEmpty(), detailStyle, Modifier.padding(start = DayViewDefaults.ChipIconSpacing))
                     }
-                    else -> TitleWithOptionalTime(
+                    else -> TitleWithTime(
                         title = { title(Modifier) },
                         time = { ChipTime(timeRange, detailStyle) },
                         shorterTime = { ChipTime(timeFormat.time(event.begin.toLocalTime()), detailStyle) },
@@ -338,13 +338,12 @@ private fun ChipTime(text: String, style: TextStyle) {
 
 /**
  * The compact row's title with a time on the right: the full [time] range when the whole
- * title fits beside it, the [shorterTime] (start only) when only that fits, and nothing
- * otherwise. The chip's place on the hour grid already says when the event is, but nothing
- * else says what it is, so an ellipsized title always wins the space over either time: the
- * time is dropped rather than the title shortened.
+ * title fits beside it, and the [shorterTime] (start only) otherwise. The start time never
+ * gives way — every chip says at least when it starts — so a long title ellipsizes beside
+ * it rather than pushing it off the line.
  */
 @Composable
-private fun TitleWithOptionalTime(
+private fun TitleWithTime(
     title: @Composable () -> Unit,
     time: @Composable () -> Unit,
     shorterTime: @Composable () -> Unit,
@@ -353,22 +352,19 @@ private fun TitleWithOptionalTime(
     Layout(contents = listOf(title, time, shorterTime), modifier = modifier) { (titleMeasurables, timeMeasurables, shorterTimeMeasurables), constraints ->
         val titleMeasurable = titleMeasurables.single()
         val titleWidth = titleMeasurable.maxIntrinsicWidth(constraints.maxHeight)
-        // longest first: the first candidate that fits beside the whole title is the one shown
-        val timeCandidates = listOf(timeMeasurables.single(), shorterTimeMeasurables.single())
-            .map { it to it.maxIntrinsicWidth(constraints.maxHeight) }
+        val fullTime = timeMeasurables.single()
+        val fullTimeWidth = fullTime.maxIntrinsicWidth(constraints.maxHeight)
         // fills a bounded width (the chip row's weight), and takes only what it needs otherwise
-        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else titleWidth + timeCandidates.first().second
-        val timePlaceable = timeCandidates
-            .firstOrNull { (_, timeWidth) -> titleWidth + timeWidth <= width }
-            ?.first
-            ?.measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else titleWidth + fullTimeWidth
+        val timePlaceable = (if (titleWidth + fullTimeWidth <= width) fullTime else shorterTimeMeasurables.single())
+            .measure(constraints.copy(minWidth = 0, minHeight = 0, maxWidth = width))
         val titlePlaceable = titleMeasurable.measure(
-            constraints.copy(minWidth = 0, minHeight = 0, maxWidth = width - (timePlaceable?.width ?: 0)),
+            constraints.copy(minWidth = 0, minHeight = 0, maxWidth = (width - timePlaceable.width).coerceAtLeast(0)),
         )
-        val height = maxOf(titlePlaceable.height, timePlaceable?.height ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
+        val height = maxOf(titlePlaceable.height, timePlaceable.height).coerceIn(constraints.minHeight, constraints.maxHeight)
         layout(width, height) {
             titlePlaceable.placeRelative(0, (height - titlePlaceable.height) / 2)
-            timePlaceable?.placeRelative(width - timePlaceable.width, (height - timePlaceable.height) / 2)
+            timePlaceable.placeRelative(width - timePlaceable.width, (height - timePlaceable.height) / 2)
         }
     }
 }
@@ -503,7 +499,7 @@ private fun EventChipStates() {
                     base.copy(title = "Compact armed", selected = true, alarmAt = LocalTime.of(8, 55)),
                     base.copy(title = "Compact armed, RSVP sent", selected = true, alarmAt = LocalTime.of(8, 55), rsvp = ChipRsvp.Sent),
                     base.copy(title = "Compact with room for the start time only"),
-                    base.copy(title = "Compact with a title too long to share the line with its time range"),
+                    base.copy(title = "Compact with a title too long to share the line with even its start time"),
                 ).forEach { event ->
                     EventChip(
                         event = event,
