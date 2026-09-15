@@ -3,6 +3,7 @@ package com.episode6.meetingminder.ui.alarm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.model.RingingAlarm
+import com.episode6.meetingminder.model.TEST_ALARM_EVENT_ID
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.DismissAlarm
 import com.episode6.meetingminder.store.SnoozeAlarm
@@ -122,6 +123,7 @@ internal fun RingingAlarm.toScreenState(now: Instant, zone: ZoneId) = AlarmRingi
     minutesUntilStart = minutesUntil(now, begin),
     snoozeMinutes = snoozeLength.toMinutes(),
     soundName = soundName,
+    canOpenMeeting = key.eventId != TEST_ALARM_EVENT_ID,
 )
 
 /**

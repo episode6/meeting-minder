@@ -5,6 +5,7 @@ import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
+import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
@@ -14,19 +15,23 @@ import com.episode6.meetingminder.data.db.SelectedEventEntity
 import com.episode6.meetingminder.data.db.decodeScheduleChanges
 import com.episode6.meetingminder.data.db.encodeChangeSnapshotEvents
 import com.episode6.meetingminder.data.db.encodeScheduleChanges
+import com.episode6.meetingminder.data.settings.FakeSettingsRepository
+import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.model.CalendarEvent
+import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.ScheduleChange
+import com.episode6.meetingminder.model.SelfStatus
 import com.episode6.meetingminder.model.testCalendarEvent
+import java.time.Clock
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
-import java.time.Clock
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneOffset
 
 /** [ChangeMonitor] over fakes: what gets recorded, notified, dropped and (re-)armed. It is 12:00 UTC on [today]. */
 class ChangeMonitorTest {
@@ -50,8 +55,8 @@ class ChangeMonitorTest {
     private fun sharedSnapshot(date: LocalDate, events: List<CalendarEvent>, selected: List<CalendarEvent> = events, takenAt: Long = 1_000) =
         ChangeSnapshotEntity(date, takenAt, encodeChangeSnapshotEvents(events, selected.mapTo(mutableSetOf()) { it.key }))
 
-    private fun monitor(snapshotDao: ChangeSnapshotDao) =
-        ChangeMonitor(repository, snapshotDao, dayPlanDao, permissions, notifier, scheduler, clock)
+    private fun monitor(snapshotDao: ChangeSnapshotDao, settings: FakeSettingsRepository = FakeSettingsRepository()) =
+        ChangeMonitor(repository, snapshotDao, dayPlanDao, permissions, notifier, scheduler, settings, clock)
 
     private val moved = ScheduleChange.Moved(today, designReview.key, today.at(13), today.at(14), today.at(13, 30), today.at(14, 30))
     private val new = ScheduleChange.New(today, invite.key, invite.begin, invite.end)
@@ -223,6 +228,44 @@ class ChangeMonitorTest {
         advanceUntilIdle()
 
         assertThat(scheduler.updates.last()).isEqualTo(setOf(today) to ChangeCheckReason.IN_APP)
+    }
+
+    @Test
+    fun runCheck_appliesTheCalendarOverrides_toTheFreshRead() = runTest {
+        val settings = FakeSettingsRepository(Settings(calendarOverrides = mapOf(2L to false)))
+        fun calendar(id: Long, name: String) = CalendarInfo(
+            id = id,
+            accountName = "me",
+            accountType = "com.google",
+            displayName = name,
+            color = 0,
+            visible = true,
+            syncEvents = true,
+            ownerAccount = "me",
+            isPrimary = id == 1L,
+            accessLevel = 700,
+            canOrganizerRespond = false,
+        )
+        repository.calendars = listOf(calendar(1, "Work"), calendar(2, "Personal"))
+        repository.events[today] = listOf(designReview, invite.copy(calendarId = 2))
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+
+        monitor(snapshots, settings).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        // the excluded calendar's invite never enters the fresh read, so it can't be seen as New
+        assertThat(notifier.shown).isEmpty()
+        assertThat(repository.eventQueries).containsExactly(today to CalendarFilter.Only(setOf(1L)))
+    }
+
+    @Test
+    fun runCheck_showDeclinedOff_neverReportsADeclinedInviteAsNew() = runTest {
+        val settings = FakeSettingsRepository(Settings(showDeclined = false))
+        repository.events[today] = listOf(designReview, invite.copy(selfStatus = SelfStatus.DECLINED))
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+
+        monitor(snapshots, settings).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(notifier.shown).isEmpty()
     }
 
     @Test

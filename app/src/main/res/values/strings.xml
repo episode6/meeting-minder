@@ -2,7 +2,6 @@
 <resources>
     <string name="navigate_back">Back</string>
     <string name="more_options">More options</string>
-    <string name="coming_soon">Coming soon</string>
 
     <string name="day_today">Today</string>
     <string name="day_subtitle_no_meetings">No meetings</string>
@@ -74,6 +73,34 @@
     <string name="check_for_updates_no_browser">No app found to open the updates page</string>
 
     <string name="settings_title">Settings</string>
+    <string name="settings_section_alarms">Alarms</string>
+    <string name="settings_lead_time">Lead time</string>
+    <string name="settings_snooze_length">Snooze length</string>
+    <string name="settings_auto_timeout">Auto-timeout</string>
+    <string name="settings_sound_pool">Alarm sounds</string>
+    <string name="settings_sound_pool_all">All</string>
+    <string name="settings_sound_pool_bundled">Bundled only</string>
+    <string name="settings_sound_pool_system">System only</string>
+    <!-- a duration chip's label, e.g. "5 min" -->
+    <string name="settings_minutes_value">%d min</string>
+    <string name="settings_test_alarm">Test alarm</string>
+    <!-- the denormalised scheduled_alarm row title a test alarm rings under (TODO.md §4.4) -->
+    <string name="settings_test_alarm_event_title">Test alarm</string>
+    <string name="settings_test_alarm_scheduled">Test alarm rings in 10 seconds</string>
+    <string name="settings_section_display">Display</string>
+    <string name="settings_show_declined">Show declined events</string>
+    <string name="settings_show_declined_description">Keep meetings you declined in Google Calendar visible, dashed and struck through.</string>
+    <string name="settings_section_calendars">Calendars</string>
+    <!-- %1$s is the account email; the calendar has SYNC_EVENTS off and so holds no events (TODO.md §4.1) -->
+    <string name="settings_calendar_not_syncing">%1$s · not syncing</string>
+    <string name="settings_section_about">About</string>
+    <!-- Permissions row subtitle: every required onboarding permission is granted -->
+    <string name="settings_permissions_all_granted">All granted</string>
+    <!-- Permissions row subtitle: how many required permissions are still missing -->
+    <plurals name="settings_permissions_missing">
+        <item quantity="one">%d not granted</item>
+        <item quantity="other">%d not granted</item>
+    </plurals>
     <string name="licenses_title">Third-party license notices</string>
 
     <string name="onboarding_heading">Set up Meeting Minder</string>

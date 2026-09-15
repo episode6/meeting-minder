@@ -1,7 +1,10 @@
 package com.episode6.meetingminder.store.sideeffects
 
 import android.util.Log
+import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
+import com.episode6.meetingminder.data.calendar.effectiveCalendarFilter
+import com.episode6.meetingminder.data.calendar.excludeDeclined
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.DayPlanDao
@@ -9,6 +12,7 @@ import com.episode6.meetingminder.data.db.decodeBusyRanges
 import com.episode6.meetingminder.data.db.decodeScheduleChanges
 import com.episode6.meetingminder.data.db.encodeBusyRanges
 import com.episode6.meetingminder.data.db.encodeChangeSnapshotEvents
+import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.monitor.ChangeMonitor
@@ -50,12 +54,14 @@ private const val TAG = "MeetingMinderShare"
  * UI layer, not here. [MarkNotShared] clears that bookkeeping back out and stops monitoring.
  *
  * The selection and plan are read from Room and the day's events from the store only when
- * they are loaded (otherwise straight from the provider), because "Share update" can arrive
- * from a notification into a cold process whose store hasn't loaded anything yet. A day that
- * was already shared and has changed since (recorded changes, or busy ranges that no longer
- * match the last share) gets the `Update:` text. If the day can't be read at all, the share
- * still goes out but no baseline is kept, rather than one that would report every meeting
- * as new.
+ * they are loaded (otherwise straight from the provider, with the same calendar filter and
+ * "show declined" toggle `LoadDayEventsSideEffects`/`monitor.ChangeMonitor` apply — TODO.md
+ * §5 PR-12 — so a cold-process "Share update" writes the same baseline a warm one would),
+ * because "Share update" can arrive from a notification into a cold process whose store
+ * hasn't loaded anything yet. A day that was already shared and has changed since (recorded
+ * changes, or busy ranges that no longer match the last share) gets the `Update:` text. If
+ * the day can't be read at all, the share still goes out but no baseline is kept, rather
+ * than one that would report every meeting as new.
  *
  * We can't know whether the user actually sent anything from the chooser (§4.2), so
  * "shared" is recorded as soon as the tap is handled, same moment the text is handed off
@@ -70,12 +76,22 @@ interface ShareDaySideEffects {
         changeSnapshotDao: ChangeSnapshotDao,
         repository: CalendarRepository,
         changeMonitor: ChangeMonitor,
+        settings: SettingsRepository,
         clock: Clock,
     ): SideEffect<AppState> = sideEffect {
         actions.filterIsInstance<ShareDay>().flatMapMerge { action ->
             flow {
                 val date = action.date
-                val events = currentState().eventsByDay[date]?.events ?: repository.readDay(date)
+                val events = currentState().eventsByDay[date]?.events ?: run {
+                    val prefs = settings.current()
+                    // computed only when an override exists, same as ChangeMonitor.runCheck
+                    val filter = if (prefs.calendarOverrides.isEmpty()) {
+                        CalendarFilter.Visible
+                    } else {
+                        effectiveCalendarFilter(repository.calendars(), prefs.calendarOverrides)
+                    }
+                    repository.readDay(date, filter, prefs.showDeclined)
+                }
                 val selections = dayPlanDao.selectedEventsOn(date)
                 val busyRanges = selectedBusyRanges(
                     selections.associate { it.key to BusyRange(Instant.ofEpochMilli(it.beginMillis), Instant.ofEpochMilli(it.endMillis)) },
@@ -120,9 +136,13 @@ interface ShareDaySideEffects {
     }
 }
 
-/** The whole day from the provider, or null when it can't be read (calendar access revoked). */
-private suspend fun CalendarRepository.readDay(date: LocalDate): List<CalendarEvent>? = try {
-    eventsOn(date)
+/**
+ * The whole day from the provider with the current calendar filter and "show declined"
+ * toggle applied (the same read `LoadDayEventsSideEffects`/`monitor.ChangeMonitor` do), or
+ * null when it can't be read (calendar access revoked).
+ */
+private suspend fun CalendarRepository.readDay(date: LocalDate, filter: CalendarFilter, showDeclined: Boolean): List<CalendarEvent>? = try {
+    eventsOn(date, filter).excludeDeclined(showDeclined)
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {

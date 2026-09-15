@@ -11,6 +11,7 @@ import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.SelectedEvent
+import com.episode6.meetingminder.model.TEST_ALARM_EVENT_ID
 import com.episode6.meetingminder.model.testCalendarEvent
 import org.junit.Test
 import java.time.Instant
@@ -105,6 +106,24 @@ class DayPlanMappingTest {
         val result = buildDayPlans(plans = emptyList(), selections = emptyList(), scheduled = listOf(snoozed))
 
         assertThat(result).isEqualTo(mapOf(today to DayPlan(date = today, armedKeys = setOf(EventKey(1, 0)))))
+    }
+
+    @Test
+    fun buildDayPlans_excludesTheTestAlarmFromArmedKeys() {
+        val testAlarm = ScheduledAlarmEntity(
+            alarmId = 1, date = today, eventId = TEST_ALARM_EVENT_ID, instanceTime = 500, fireAt = 700, title = "Test alarm",
+            beginMillis = 700, endMillis = 700, soundIndex = 0, state = AlarmState.SCHEDULED,
+        )
+        val real = ScheduledAlarmEntity(
+            alarmId = 2, date = today, eventId = 1, instanceTime = 0, fireAt = 700, title = "Standup",
+            beginMillis = 1_000, endMillis = 2_000, soundIndex = 0, state = AlarmState.SCHEDULED,
+        )
+
+        val onlyTestAlarm = buildDayPlans(plans = emptyList(), selections = emptyList(), scheduled = listOf(testAlarm))
+        val testAlarmAndReal = buildDayPlans(plans = emptyList(), selections = emptyList(), scheduled = listOf(testAlarm, real))
+
+        assertThat(onlyTestAlarm).isEmpty()
+        assertThat(testAlarmAndReal.getValue(today).armedKeys).containsOnly(EventKey(1, 0))
     }
 
     @Test

@@ -277,6 +277,7 @@ com.episode6.meetingminder
     ├── day/                       DayScreen, DayPager, DayTimeline (Layout), EventChip, NowLine, DayViewModel
     ├── onboarding/                OnboardingScreen, OnboardingViewModel
     ├── alarm/                     AlarmRingingScreen (hosted by AlarmActivity), AlarmRingingViewModel
+    ├── settings/                  SettingsScreen, SettingsViewModel
     ├── licenses/                  LicensesScreen + BasicMarkdown (copied)
     └── util/
 ```
@@ -1067,7 +1068,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   (`meetingminder://day/{date}`, `meetingminder://share/{date}` handled in `Navigation.kt`),
   in-app "changed since you shared" banner, re-share clears everything. `WorkManagerTestInitHelper`
   tests.
-- [ ] **PR-12: Settings screen.** `[Sonnet 5, effort medium]` Lead time, snooze length, auto-timeout, calendars list with
+- [x] **PR-12: Settings screen.** `[Sonnet 5, effort medium]` Lead time, snooze length, auto-timeout, calendars list with
   per-calendar include toggles (and "not syncing" hints), show-declined toggle, sound pack choice
   ("all", "bundled only", "system only"), test-alarm button, permissions status re-entry to
   onboarding, licences link. DataStore-backed `SettingsRepository`.

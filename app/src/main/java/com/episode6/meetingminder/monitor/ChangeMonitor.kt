@@ -1,7 +1,10 @@
 package com.episode6.meetingminder.monitor
 
 import android.util.Log
+import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
+import com.episode6.meetingminder.data.calendar.effectiveCalendarFilter
+import com.episode6.meetingminder.data.calendar.excludeDeclined
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.DayPlanDao
@@ -9,6 +12,7 @@ import com.episode6.meetingminder.data.db.baseline
 import com.episode6.meetingminder.data.db.decodeScheduleChanges
 import com.episode6.meetingminder.data.db.encodeScheduleChanges
 import com.episode6.meetingminder.data.db.promoteSyncedRsvps
+import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.permissions.PermissionChecker
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
@@ -50,6 +54,7 @@ class ChangeMonitor(
     private val permissionChecker: PermissionChecker,
     private val notifier: ScheduleChangeNotifier,
     private val scheduler: ChangeWorkScheduler,
+    private val settings: SettingsRepository,
     private val clock: Clock,
 ) {
     // the worker and the foreground reload can overlap; one check at a time
@@ -67,7 +72,15 @@ class ChangeMonitor(
                 snapshotDao.delete(snapshot.date)
             }
             if (permissionChecker.currentState().calendarGranted) {
-                for (snapshot in current) check(snapshot)
+                val prefs = settings.current()
+                // computed once per check pass, and only when an override exists at all, so
+                // the common case (no calendar overrides) never re-reads the calendar list
+                val filter = if (prefs.calendarOverrides.isEmpty()) {
+                    CalendarFilter.Visible
+                } else {
+                    effectiveCalendarFilter(repository.calendars(), prefs.calendarOverrides)
+                }
+                for (snapshot in current) check(snapshot, filter, prefs.showDeclined)
             }
             current.mapTo(sortedSetOf()) { it.date }
         } catch (e: CancellationException) {
@@ -91,12 +104,12 @@ class ChangeMonitor(
         scheduler.update(snapshotDao.all().mapNotNullTo(sortedSetOf()) { it.date.takeIf { day -> day >= today } }, ChangeCheckReason.IN_APP)
     }
 
-    // The fresh read uses the default calendar filter, like the LoadDay read the share's
-    // baseline came from. Any per-day calendar filter (PR-12) must be applied to both, or
-    // every meeting on a calendar only one of them excludes reads as New or Cancelled.
-    private suspend fun check(snapshot: ChangeSnapshotEntity) {
+    // The fresh read uses the same calendar filter and "show declined" toggle as the
+    // LoadDay read the share's baseline came from (TODO.md §5 PR-12), so a calendar or
+    // event only one of them excludes never reads as New or Cancelled.
+    private suspend fun check(snapshot: ChangeSnapshotEntity, filter: CalendarFilter, showDeclined: Boolean) {
         val fresh = try {
-            repository.eventsOn(snapshot.date)
+            repository.eventsOn(snapshot.date, filter).excludeDeclined(showDeclined)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

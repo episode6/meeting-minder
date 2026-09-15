@@ -9,6 +9,7 @@ import assertk.assertions.isGreaterThanOrEqualTo
 import assertk.assertions.isLessThan
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.RingingAlarm
+import com.episode6.meetingminder.model.TEST_ALARM_EVENT_ID
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.DismissAlarm
 import com.episode6.meetingminder.store.SetRinging
@@ -95,6 +96,18 @@ class AlarmRingingViewModelTest {
                     ),
                 ),
             )
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun theTestAlarm_hasNoOpenMeetingAffordance() = runTest {
+        val testAlarm = alarm.copy(key = EventKey(TEST_ALARM_EVENT_ID, 0))
+        val viewModel = AlarmRingingViewModel(store(testAlarm), clock)
+
+        viewModel.state.test {
+            val shown = awaitMatching { it is AlarmRingingUiState.Ringing } as AlarmRingingUiState.Ringing
+            assertThat(shown.screen.canOpenMeeting).isEqualTo(false)
             cancelAndIgnoreRemainingEvents()
         }
     }

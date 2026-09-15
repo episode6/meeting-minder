@@ -71,6 +71,8 @@ data class AlarmRingingScreenState(
     val snoozeMinutes: Long,
     /** The random sound playing, for the subtle debug line; null until one has started. */
     val soundName: String?,
+    /** False for Settings' "Test alarm" (`TEST_ALARM_EVENT_ID`): there is no real event to open. */
+    val canOpenMeeting: Boolean = true,
 )
 
 /** Sizes of the ringing screen, kept out of the layout code. */
@@ -176,8 +178,10 @@ fun AlarmRingingScreen(
                     ) {
                         Text(stringResource(R.string.alarm_snooze_minutes, state.snoozeMinutes), style = MaterialTheme.typography.titleMedium)
                     }
-                    TextButton(onClick = onOpenMeeting) {
-                        Text(stringResource(R.string.alarm_open_meeting))
+                    if (state.canOpenMeeting) {
+                        TextButton(onClick = onOpenMeeting) {
+                            Text(stringResource(R.string.alarm_open_meeting))
+                        }
                     }
                     if (state.soundName != null) {
                         Text(

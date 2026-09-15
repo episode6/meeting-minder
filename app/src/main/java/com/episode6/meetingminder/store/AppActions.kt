@@ -168,3 +168,10 @@ data class SnoozeAlarm(val alarmId: Long) : AsyncAction
 
 /** The ringing screen's "Dismiss" (or "Open meeting") for alarm [alarmId]; forwarded like [SnoozeAlarm]. */
 data class DismissAlarm(val alarmId: Long) : AsyncAction
+
+/**
+ * Settings' "Test alarm" button (TODO.md §4.4/§5 PR-12): arms one exact alarm ten
+ * seconds out, independent of any selection, so the whole ringing path (sound, vibration,
+ * full-screen wake-up) can be checked end to end (`TestAlarmSideEffects`).
+ */
+data object TestAlarm : AsyncAction
