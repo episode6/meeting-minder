@@ -3,8 +3,10 @@ package com.episode6.meetingminder.ui.onboarding
 import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.isEqualTo
+import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.permissions.PermissionChecker
 import com.episode6.meetingminder.permissions.PermissionState
+import com.episode6.meetingminder.permissions.SleepyManufacturer
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.createAppStore
 import com.episode6.meetingminder.store.sideeffects.PermissionsSideEffects
@@ -37,15 +39,76 @@ class OnboardingViewModelTest {
     @Test
     fun state_followsPermissions() {
         assertThat(AppState(anchorDate = today).toOnboardingUiState())
-            .isEqualTo(OnboardingUiState(calendarGranted = false))
-        assertThat(AppState(anchorDate = today, permissions = PermissionState(calendarGranted = true)).toOnboardingUiState())
-            .isEqualTo(OnboardingUiState(calendarGranted = true))
+            .isEqualTo(OnboardingUiState(calendarGranted = false, notificationsGranted = false, exactAlarmsGranted = false))
+        val granted = PermissionState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = false, fullScreenIntentGranted = true)
+        assertThat(AppState(anchorDate = today, permissions = granted).toOnboardingUiState())
+            .isEqualTo(
+                OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = false, fullScreenAlarmsGranted = true),
+            )
     }
 
     @Test
-    fun canContinue_onlyOnceCalendarIsGranted() {
+    fun state_carriesTheOptionalRowsAndThePhoneMaker() {
+        val permissions = PermissionState(calendarGranted = true, ignoringBatteryOptimizations = true, backgroundRestricted = true)
+
+        assertThat(AppState(anchorDate = today, permissions = permissions).toOnboardingUiState(SleepyManufacturer.Samsung))
+            .isEqualTo(
+                OnboardingUiState(
+                    calendarGranted = true,
+                    batteryOptimizationIgnored = true,
+                    backgroundRestricted = true,
+                    sleepyManufacturer = SleepyManufacturer.Samsung,
+                ),
+            )
+    }
+
+    @Test
+    fun rows_offerBatteryOptimisationOnlyWhileNotIgnored_andTheRestrictedWarningOnlyWhileRestricted() {
+        val required = listOf(OnboardingRow.Calendar, OnboardingRow.Notifications, OnboardingRow.ExactAlarms, OnboardingRow.FullScreenAlarms)
+
+        assertThat(OnboardingUiState(calendarGranted = false).rows).isEqualTo(required + OnboardingRow.BatteryOptimization)
+        assertThat(OnboardingUiState(calendarGranted = false, batteryOptimizationIgnored = true).rows).isEqualTo(required)
+        assertThat(OnboardingUiState(calendarGranted = false, batteryOptimizationIgnored = true, backgroundRestricted = true).rows)
+            .isEqualTo(required + OnboardingRow.BackgroundRestricted)
+    }
+
+    @Test
+    fun optionalRows_neverGateContinue() {
+        val allRequired = OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true, fullScreenAlarmsGranted = true)
+
+        assertThat(allRequired.canContinue).isEqualTo(true)
+        assertThat(allRequired.copy(backgroundRestricted = true).canContinue).isEqualTo(true)
+        assertThat(allRequired.granted(OnboardingRow.BackgroundRestricted)).isEqualTo(true)
+        assertThat(allRequired.copy(backgroundRestricted = true).granted(OnboardingRow.BackgroundRestricted)).isEqualTo(false)
+    }
+
+    @Test
+    fun canContinue_onlyOnceEveryRequiredRowIsGranted() {
         assertThat(OnboardingUiState(calendarGranted = false).canContinue).isEqualTo(false)
-        assertThat(OnboardingUiState(calendarGranted = true).canContinue).isEqualTo(true)
+        assertThat(OnboardingUiState(calendarGranted = true).canContinue).isEqualTo(false)
+        assertThat(OnboardingUiState(calendarGranted = true, notificationsGranted = true).canContinue).isEqualTo(false)
+        assertThat(OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true).canContinue)
+            .isEqualTo(false)
+        assertThat(
+            OnboardingUiState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true, fullScreenAlarmsGranted = true)
+                .canContinue,
+        ).isEqualTo(true)
+    }
+
+    @Test
+    fun onPermissionRequested_isRemembered_forTheNextRequestToReadBack() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), emptySet()) },
+    ) { store ->
+        val settings = FakeSettingsRepository()
+        val viewModel = OnboardingViewModel(store, settings)
+        viewModel.requestedPermissions.test {
+            assertThat(awaitItem()).isEqualTo(emptySet())
+
+            viewModel.onPermissionRequested("android.permission.READ_CALENDAR")
+
+            assertThat(awaitItem()).isEqualTo(setOf("android.permission.READ_CALENDAR"))
+            assertThat(settings.requestedPermissions.value).isEqualTo(setOf("android.permission.READ_CALENDAR"))
+        }
     }
 
     @Test
@@ -58,13 +121,13 @@ class OnboardingViewModelTest {
             createAppStore(this, AppState(anchorDate = today), sideEffects)
         },
     ) { store ->
-        val viewModel = OnboardingViewModel(store)
+        val viewModel = OnboardingViewModel(store, FakeSettingsRepository())
         viewModel.state.test {
             assertThat(awaitItem()).isEqualTo(OnboardingUiState(calendarGranted = false))
 
             viewModel.onPermissionsMaybeChanged()
 
-            assertThat(awaitItem()).isEqualTo(OnboardingUiState(calendarGranted = true))
+            assertThat(awaitItem()).isEqualTo(OnboardingUiState(calendarGranted = true, notificationsGranted = false, exactAlarmsGranted = false))
         }
     }
 }

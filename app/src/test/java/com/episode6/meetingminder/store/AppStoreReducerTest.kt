@@ -1,13 +1,21 @@
 package com.episode6.meetingminder.store
 
+import com.episode6.meetingminder.model.ScheduleChange
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
 import assertk.assertions.isSameInstanceAs
+import com.episode6.meetingminder.model.CalendarInfo
+import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.DayPlan
+import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.RingingAlarm
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.redux.Action
 import com.episode6.redux.subscriberaware.SubscriberStatusChanged
 import org.junit.Test
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 
 class AppStoreReducerTest {
@@ -30,12 +38,79 @@ class AppStoreReducerTest {
     }
 
     @Test
+    fun setAnchorDate_movesTheAnchor_butNotThePageBeingViewed() {
+        val viewing = state.reduce(SetSettledDate(today.plusDays(3)))
+
+        val result = viewing.reduce(SetAnchorDate(today.plusDays(1)))
+
+        assertThat(result).isEqualTo(viewing.copy(anchorDate = today.plusDays(1)))
+        assertThat(result.settledDate).isEqualTo(today.plusDays(3))
+    }
+
+    @Test
     fun setPermissions_replacesTheWholePermissionState() {
         val granted = PermissionState(calendarGranted = true)
 
         val result = state.reduce(SetPermissions(granted))
 
         assertThat(result).isEqualTo(state.copy(permissions = granted))
+    }
+
+    @Test
+    fun setCalendars_replacesTheCalendarList() {
+        val calendar = CalendarInfo(
+            id = 1, accountName = "a", accountType = "LOCAL", displayName = "Cal", color = 0, visible = true,
+            syncEvents = true, ownerAccount = "a", isPrimary = true, accessLevel = 700, canOrganizerRespond = false,
+        )
+
+        val result = state.reduce(SetCalendars(listOf(calendar)))
+
+        assertThat(result).isEqualTo(state.copy(calendars = listOf(calendar)))
+    }
+
+    @Test
+    fun setDayEvents_storesTheDay() {
+        val result = state.reduce(SetDayEvents(dayEvents(today))).reduce(SetDayEvents(dayEvents(today.plusDays(1))))
+
+        assertThat(result.eventsByDay).isEqualTo(
+            mapOf(today to dayEvents(today), today.plusDays(1) to dayEvents(today.plusDays(1))),
+        )
+    }
+
+    @Test
+    fun setDayEvents_replacesAnEarlierLoadOfTheSameDay() {
+        val reloaded = dayEvents(today).copy(loadedAt = Instant.EPOCH.plusSeconds(60))
+
+        val result = state.reduce(SetDayEvents(dayEvents(today))).reduce(SetDayEvents(reloaded))
+
+        assertThat(result.eventsByDay).isEqualTo(mapOf(today to reloaded))
+    }
+
+    @Test
+    fun setDayEvents_dropsDaysOutsideTheSettledWindow() {
+        val loaded = state
+            .reduce(SetDayEvents(dayEvents(today.minusDays(1))))
+            .reduce(SetDayEvents(dayEvents(today)))
+            .reduce(SetSettledDate(today.plusDays(1)))
+
+        // a late result for a day the pager has left behind is ignored, and the stale
+        // yesterday falls out of the window as the new day lands
+        val result = loaded
+            .reduce(SetDayEvents(dayEvents(today.minusDays(2))))
+            .reduce(SetDayEvents(dayEvents(today.plusDays(2))))
+
+        assertThat(result.eventsByDay).isEqualTo(mapOf(today to dayEvents(today), today.plusDays(2) to dayEvents(today.plusDays(2))))
+    }
+
+    private fun dayEvents(date: LocalDate) = DayEvents(date, emptyList(), Instant.EPOCH)
+
+    @Test
+    fun setDayPlans_replacesTheWholeMap() {
+        val plans = mapOf(today to DayPlan(today))
+
+        val result = state.reduce(SetDayPlans(plans))
+
+        assertThat(result).isEqualTo(state.copy(dayPlans = plans))
     }
 
     @Test
@@ -64,6 +139,48 @@ class AppStoreReducerTest {
     }
 
     @Test
+    fun setPendingShare_replacesAnyPendingShare() {
+        val first = PendingShare.next(today, "first")
+        val second = PendingShare.next(today, "second")
+
+        val result = state.reduce(SetPendingShare(first)).reduce(SetPendingShare(second))
+
+        assertThat(result.pendingShare).isEqualTo(second)
+    }
+
+    @Test
+    fun shareStarted_marksAShareInFlight_untilShareFinished() {
+        val started = state.reduce(ShareStarted)
+
+        assertThat(started.shareInFlight).isEqualTo(true)
+        assertThat(started.reduce(ShareFinished).shareInFlight).isEqualTo(false)
+    }
+
+    @Test
+    fun clearPendingShare_clearsTheMatchingShare_butKeepsANewerOne() {
+        val share = PendingShare.next(today, "text")
+        val showing = state.copy(pendingShare = share)
+
+        assertThat(showing.reduce(ClearPendingShare(share.id)).pendingShare).isNull()
+        assertThat(showing.reduce(ClearPendingShare(share.id - 1))).isSameInstanceAs(showing)
+    }
+
+    @Test
+    fun setRinging_replacesTheRingingAlarm() {
+        val alarm = RingingAlarm(
+            alarmId = 3, date = today, key = EventKey(1, 0), title = "Standup", location = null,
+            begin = Instant.ofEpochMilli(1_000), end = Instant.ofEpochMilli(2_000), soundIndex = 4,
+            snoozeLength = Duration.ofMinutes(2),
+        )
+
+        val ringing = state.reduce(SetRinging(alarm))
+
+        assertThat(ringing).isEqualTo(state.copy(ringing = alarm))
+        assertThat(ringing.reduce(SetRinging(alarm.copy(soundName = "Argon"))).ringing?.soundName).isEqualTo("Argon")
+        assertThat(ringing.reduce(SetRinging(null)).ringing).isNull()
+    }
+
+    @Test
     fun nonUpdateStateActions_leaveStateUntouched() {
         assertThat(state.reduce(object : Action {})).isSameInstanceAs(state)
         assertThat(state.reduce(SubscriberStatusChanged(true))).isSameInstanceAs(state)
@@ -76,5 +193,15 @@ class AppStoreReducerTest {
 
         assertThat(second.id).isEqualTo(first.id + 1)
         assertThat(second.formatArgs).isEqualTo(listOf<Any>("arg"))
+    }
+
+    @Test
+    fun setScheduleChanges_replacesEveryDaysChanges() {
+        val change = ScheduleChange.New(today, EventKey(1, 0), Instant.EPOCH, Instant.EPOCH.plusSeconds(1_800))
+
+        val changed = state.reduce(SetScheduleChanges(listOf(change)))
+
+        assertThat(changed.scheduleChanges).isEqualTo(listOf(change))
+        assertThat(changed.reduce(SetScheduleChanges(emptyList())).scheduleChanges).isEqualTo(emptyList<ScheduleChange>())
     }
 }

@@ -4,9 +4,9 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Placeholder launcher art: a day sheet with an alarm clock on it. Scaled to keep
-         everything inside the 33dp-radius circular safe zone of the adaptive icon
-         (the outermost corners land ~33dp from center at 0.8x). -->
+    <!-- Launcher art: a day sheet with an alarm clock on it. Scaled to keep everything
+         inside the 33dp-radius circular safe zone of the adaptive icon (the outermost
+         corners land ~33dp from center at 0.8x). -->
     <group
         android:scaleX="0.8"
         android:scaleY="0.8"

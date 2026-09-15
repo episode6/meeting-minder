@@ -1,6 +1,7 @@
 package com.episode6.meetingminder.data.calendar
 
 import android.content.ContentProvider
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.UriMatcher
 import android.database.Cursor
@@ -23,6 +24,13 @@ import java.time.ZoneOffset
  * overlap match, and `START_DAY`/`END_DAY` are computed at seeding time exactly the way
  * `CalendarInstancesHelper` does (local time for timed events, UTC for all-day ones, an
  * event ending at midnight belongs to the previous day).
+ *
+ * The two RSVP writes (TODO.md §4.6) are accepted and recorded: an `update` on
+ * `attendees/{id}` changes that row's status in place ([updates]), and an `insert` on
+ * `exception/{eventId}` hands out a fresh event id ([inserts]) without cloning anything —
+ * the real provider's exception logic is not emulated, only its addressing. A tiny
+ * `events` table (`_id`, `dirty`) backs the sync-state query; like the real provider,
+ * the instances table does **not** carry `dirty`.
  */
 class FakeCalendarProvider : ContentProvider() {
 
@@ -30,6 +38,15 @@ class FakeCalendarProvider : ContentProvider() {
 
     /** Every query URI seen, so tests can assert on the number of provider round trips. */
     val queriedUris = mutableListOf<Uri>()
+
+    /** Every `update` call, in order. */
+    val updates = mutableListOf<Pair<Uri, ContentValues>>()
+
+    /** Every `insert` call, in order. */
+    val inserts = mutableListOf<Pair<Uri, ContentValues>>()
+
+    /** The id the next exception insert returns; incremented per insert. */
+    var nextExceptionId: Long = 1_000
 
     override fun onCreate(): Boolean {
         db = SQLiteDatabase.create(null)
@@ -52,6 +69,7 @@ class FakeCalendarProvider : ContentProvider() {
                 ${Instances.ORIGINAL_INSTANCE_TIME} INTEGER, ${Events.DELETED} INTEGER, ${Instances.OWNER_ACCOUNT} TEXT,
                 ${Instances.CALENDAR_ACCESS_LEVEL} INTEGER, ${Instances.VISIBLE} INTEGER, ${Instances.EVENT_TIMEZONE} TEXT)""",
         )
+        db.execSQL("CREATE TABLE $EVENTS (${Events._ID} INTEGER PRIMARY KEY, ${Events.DIRTY} INTEGER)")
         db.execSQL(
             """CREATE TABLE $ATTENDEES (
                 ${Attendees._ID} INTEGER PRIMARY KEY, ${Attendees.EVENT_ID} INTEGER, ${Attendees.ATTENDEE_EMAIL} TEXT,
@@ -71,6 +89,7 @@ class FakeCalendarProvider : ContentProvider() {
         return when (matcher.match(uri)) {
             MATCH_CALENDARS -> db.query(CALENDARS, projection, selection, selectionArgs, null, null, sortOrder)
             MATCH_ATTENDEES -> db.query(ATTENDEES, projection, selection, selectionArgs, null, null, sortOrder)
+            MATCH_EVENTS -> db.query(EVENTS, projection, selection, selectionArgs, null, null, sortOrder)
             MATCH_INSTANCES_WHEN -> {
                 // content://com.android.calendar/instances/when/{begin}/{end} returns every
                 // instance overlapping the window, inclusive on both ends exactly like
@@ -146,6 +165,7 @@ class FakeCalendarProvider : ContentProvider() {
         originalId: Long? = null,
         originalInstanceTime: Long? = null,
         deleted: Boolean = false,
+        dirty: Boolean = false,
         ownerAccount: String? = "me@example.com",
         accessLevel: Int = Calendars.CAL_ACCESS_OWNER,
         visible: Boolean = true,
@@ -189,6 +209,15 @@ class FakeCalendarProvider : ContentProvider() {
                 put(Instances.EVENT_TIMEZONE, dayZone.id)
             },
         )
+        db.insertWithOnConflict(
+            EVENTS,
+            null,
+            ContentValues().apply {
+                put(Events._ID, eventId)
+                put(Events.DIRTY, dirty.toInt())
+            },
+            SQLiteDatabase.CONFLICT_REPLACE,
+        )
     }
 
     fun addAttendee(
@@ -213,25 +242,52 @@ class FakeCalendarProvider : ContentProvider() {
         )
     }
 
+    /** One attendee row's status, for asserting on an RSVP update. */
+    fun attendeeStatus(id: Long): Int? =
+        db.query(ATTENDEES, arrayOf(Attendees.ATTENDEE_STATUS), "${Attendees._ID} = ?", arrayOf(id.toString()), null, null, null)
+            .use { if (it.moveToFirst()) it.getInt(0) else null }
+
     override fun getType(uri: Uri): String? = null
-    override fun insert(uri: Uri, values: ContentValues?): Uri? = throw UnsupportedOperationException()
+
+    override fun insert(uri: Uri, values: ContentValues?): Uri? {
+        inserts += uri to ContentValues(values)
+        return when (matcher.match(uri)) {
+            // CalendarProvider2 answers an exception insert with the new event's events/{id} uri
+            MATCH_EXCEPTION_ID -> ContentUris.withAppendedId(Events.CONTENT_URI, nextExceptionId++)
+            else -> throw UnsupportedOperationException("insert on $uri")
+        }
+    }
+
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<String>?): Int = throw UnsupportedOperationException()
-    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<String>?): Int =
-        throw UnsupportedOperationException()
+
+    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<String>?): Int {
+        updates += uri to ContentValues(values)
+        return when (matcher.match(uri)) {
+            MATCH_ATTENDEES_ID -> db.update(ATTENDEES, values, "${Attendees._ID} = ?", arrayOf(uri.lastPathSegment))
+            else -> throw UnsupportedOperationException("update on $uri")
+        }
+    }
 
     private companion object {
         const val CALENDARS = "calendars"
         const val INSTANCES = "instances"
         const val ATTENDEES = "attendees"
+        const val EVENTS = "events"
         const val MATCH_CALENDARS = 1
         const val MATCH_INSTANCES_WHEN = 2
         const val MATCH_ATTENDEES = 3
+        const val MATCH_ATTENDEES_ID = 4
+        const val MATCH_EXCEPTION_ID = 5
+        const val MATCH_EVENTS = 6
         const val EPOCH_JULIAN_DAY = 2440588
 
         val matcher = UriMatcher(UriMatcher.NO_MATCH).apply {
             addURI(CalendarContract.AUTHORITY, "calendars", MATCH_CALENDARS)
             addURI(CalendarContract.AUTHORITY, "instances/when/#/#", MATCH_INSTANCES_WHEN)
             addURI(CalendarContract.AUTHORITY, "attendees", MATCH_ATTENDEES)
+            addURI(CalendarContract.AUTHORITY, "attendees/#", MATCH_ATTENDEES_ID)
+            addURI(CalendarContract.AUTHORITY, "exception/#", MATCH_EXCEPTION_ID)
+            addURI(CalendarContract.AUTHORITY, "events", MATCH_EVENTS)
         }
 
         fun julianDay(millis: Long, zone: ZoneId): Int =

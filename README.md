@@ -2,9 +2,18 @@
 
 An android-only episode6 app for one job: **every morning, look at today, decide which meetings you're actually attending, get loud alarms for those, and text your partner when you're busy.** During the day it watches the calendar and nags you to re-send the schedule when meetings appear or move.
 
-> **Status: early development.** The build system, CI, release tooling, the DI/store/navigation shell and the Calendar Provider repository are in place; the app launches to an empty day view (the permission flow and the calendar timeline arrive next). `TODO.md` is the source of truth for what gets built and in what order.
+> **Status: feature-complete, heading into release prep.** The build system, CI, release tooling, the DI/store/navigation shell, the Calendar Provider repository, the permissions onboarding, the day view, per-day selection, exact alarm scheduling (with boot/time-change re-arming), RSVP, sharing, the ringing experience, background change monitoring and the settings screen are all in place, along with the robustness pass (provider-changed acceleration, battery-optimisation onboarding, midnight/timezone handling, dark theme, large font and TalkBack). `TODO.md` is the source of truth for what gets built and in what order.
 
-## Planned features
+## Screenshots
+
+<p>
+  <img src="https://media.githubusercontent.com/media/episode6/screenshots/main/meeting-minder/pr14-release-prep/day-view-selecting-20260914-181652.png" width="280" alt="Day view with several meetings tapped to select them, and the orange &quot;Set alarms (4)&quot; FAB" />
+  <img src="https://media.githubusercontent.com/media/episode6/screenshots/main/meeting-minder/pr14-release-prep/day-view-alarms-set-20260914-181724.png" width="280" alt="The same day after alarms are set: selected chips show a bell and the alarm time (with a checkmark where the meeting was RSVP'd), and the FAB has become the solid &quot;Share schedule&quot; button" />
+</p>
+
+Tap meetings to select them, set alarms, then share your busy time ranges — no titles — from the system share sheet.
+
+## Features
 
 - **Single-day itinerary** — a Google-Calendar-style timeline with an hour grid, proportional event heights, side-by-side overlaps, and horizontal swiping between days
 - **Tap to select** — tapping an event means "I'm going to this"; the FAB reads "Set alarms (N)"

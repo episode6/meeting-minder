@@ -2,4 +2,6 @@
 <resources>
     <!-- light surface from the episode6-orange M3 scheme (see ui/theme/Color.kt) -->
     <color name="window_background">#FFF8F5</color>
+    <!-- the dark scheme's background, for the always-dark ringing screen -->
+    <color name="alarm_window_background">#121214</color>
 </resources>

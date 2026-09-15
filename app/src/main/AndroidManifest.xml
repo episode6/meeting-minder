@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Permissions arrive with the features that need them (see TODO.md); every one is
          pinned in app/expected-permissions.txt, which is verified against the merged
@@ -11,6 +12,59 @@
          only for the RSVP "Yes, going" written when alarms are set (§4.6). -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+
+    <!-- Exact, alarm-clock-class alarms (TODO.md §4.4). Not being on Play lets us declare
+         USE_EXACT_ALARM (33+, auto-granted, not revocable) so no special-access prompt is
+         needed; SCHEDULE_EXACT_ALARM covers 12/12L, where it is pre-granted but revocable
+         (the "Alarms & reminders" onboarding row). Both gate on canScheduleExactAlarms(). -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <!-- The ringing, missed-alarm and schedule-changed notifications; a runtime
+         permission on 33+ (onboarding row). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Alarms never survive a shutdown: BootReceiver re-arms every stored one. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- The ringing experience (TODO.md §4.4). The ringing notification's full-screen
+         intent wakes the screen into AlarmActivity (granted by default for a sideloaded
+         install on 34+, revocable: the "Full-screen alarms" onboarding row). -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- AlarmRingingService: a mediaPlayback foreground service, because it plays the alarm. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- The random vibration waveform that rings alongside the sound. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- AlarmWakeLock: the alarm broadcast's own wake lock ends when AlarmReceiver returns,
+         before the ringing service exists, so the CPU is kept awake from the receiver
+         until the ringing stops. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- The optional "Ignore battery optimization" onboarding row (TODO.md §4.4/§4.5): the
+         ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS dialog needs it. Not for delivery —
+         alarm-clock alarms and the ringing service start are exempt already — only a
+         belt-and-braces on OEM builds that kill background work. Play restricts this
+         permission, which doesn't apply to a sideloaded app. -->
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:ignore="BatteryLife" />
+    <!-- WorkManager (change detection, TODO.md §4.3) declares ACCESS_NETWORK_STATE for
+         network constraints. Nothing here ever uses one (the app is offline by spec), so it
+         is stripped from the merge rather than allowlisted. WorkManager's own
+         WAKE_LOCK/RECEIVE_BOOT_COMPLETED/FOREGROUND_SERVICE are already declared above. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+
+    <!-- Package visibility (API 30+) for long-press "open in calendar": lets resolveActivity
+         see the calendar app that views content://com.android.calendar/events/… and /time/…
+         (TODO.md §4.1). Not a permission; nothing is added to expected-permissions.txt. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="content" android:host="com.android.calendar" />
+        </intent>
+    </queries>
 
     <application
         android:name=".MeetingMinderApp"
@@ -32,6 +86,65 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Every alarm PendingIntent targets this (see AndroidAlarmScheduler); nothing
+             outside the app may fire it. -->
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:exported="false" />
+
+        <!-- Rings a fired alarm: sound, vibration and the ringing notification
+             (TODO.md §4.4). mediaPlayback: no timeout, no runtime prerequisite. -->
+        <service
+            android:name=".alarm.AlarmRingingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- The ringing screen, launched only by the ringing notification's full-screen
+             intent: over the lock screen, waking the screen, in its own task that never
+             shows in recents. -->
+        <activity
+            android:name=".alarm.AlarmActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.MeetingMinder.Alarm"
+            android:turnScreenOn="true" />
+
+        <!-- Change monitoring's accelerator (TODO.md §4.3 mechanism 3): the calendar provider's
+             PROVIDER_CHANGED broadcast reaches manifest receivers because the provider adds
+             FLAG_RECEIVER_INCLUDE_BACKGROUND (undocumented), so the receiver only enqueues a
+             change check and is harmless if the broadcast stops arriving. Exported because the
+             provider is another app; anyone else sending it only causes one extra check.
+             Disabled here and enabled by WorkManagerChangeWorkScheduler only while a day is
+             shared, so a calendar sync never wakes the app when nothing is monitored. -->
+        <receiver
+            android:name=".monitor.CalendarProviderChangedReceiver"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PROVIDER_CHANGED" />
+                <data
+                    android:host="com.android.calendar"
+                    android:scheme="content" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Re-arms stored alarms after the OS may have dropped them (TODO.md §4.4). All of
+             these are protected system broadcasts, which reach a non-exported receiver. -->
+        <receiver
+            android:name=".alarm.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

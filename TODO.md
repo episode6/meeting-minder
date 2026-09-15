@@ -137,7 +137,10 @@ typealias AppStore = StoreFlow<AppState>
 @Provides @SingleIn(AppScope::class)
 fun provideAppStore(scope: CoroutineScope, sideEffects: Set<SideEffect<AppState>>): AppStore =
     SubscriberAwareStoreFlow(          // emits SubscriberStatusChanged so we can register the
-        scope = scope,                 // ContentObserver only while UI is visible
+        scope = scope,                 // ContentObserver only while UI is visible. NB: PR-6 ended
+                                       // up rebuilding this in store/AppStore.kt (createAppStore)
+                                       // with onSubscription instead of the library's onStart —
+                                       // see AGENTS.md "Common pitfalls" for why.
         initialValue = AppState(),
         reducer = AppState::reduce,
         middlewares = listOf(SideEffectMiddleware(sideEffects)),
@@ -194,6 +197,65 @@ sealed interface AsyncAction : Action { /* PermissionsMaybeChanged, LoadDay(date
     TimeChanged, RunChangeCheck(reason) */ }
 ```
 
+NB (PR-8): `DayPlan` also carries `armedKeys: Set<EventKey>` — the keys of the day's `SCHEDULED`
+`scheduled_alarm` rows, streamed by `ObserveDayPlans` alongside the two tables — so the FAB can
+stay reachable ("Clear alarms", `FabState.SetAlarms(0)`) after every selection on a day is removed
+while its alarms are still armed; otherwise those alarms could never be cancelled (§2's reconcile
+only runs on the tap).
+
+NB (PR-8b): `RsvpAccept` and `RsvpAccepted` carry the **date** as well as the key
+(`RsvpAccept(date, key)`), like `ToggleEvent`: the event is looked up in that day's loaded
+events and the outcome lands on that day's `selected_event` row. `rsvpDecision(event)`
+returns the initial `rsvp_state` directly (`NOT_APPLICABLE` / `UNRESPONDABLE` / `PENDING`)
+rather than a separate decision type, and the alarm reconcile writes it before fanning out
+`RsvpAccept` for the `PENDING` ones. The `SYNCED` promotion lives in
+`RsvpAcceptSideEffects` too, on `SetDayEvents` (the foreground reload); PR-11's background
+diff can call the same DAO update. The promotion asks `CalendarRepository.syncedEventIds(ids)`
+rather than projecting `DIRTY` through `Instances`, which doesn't expose it (§4.6 has the
+detail).
+
+NB (PR-8): `BootCompleted` and `TimeChanged` are **not** store actions. A `BroadcastReceiver`
+can't await a dispatch, and the re-arm must finish before the broadcast (and the process) ends,
+so `alarm/BootReceiver` calls the injected `AlarmRescheduler.rescheduleAll()` directly under
+`goAsync()`; `AlarmReceiver` likewise calls `FiredAlarmHandler` directly. `AlarmFired`,
+`SnoozeAlarm` and `DismissAlarm` remain store actions for PR-10 (the ringing service has a
+process to dispatch from), and PR-13's in-app `MaintainAlarms` calls the same
+`rescheduleAll()` from its own action rather than through the receiver. See AGENTS.md
+"Receivers and the store".
+
+NB (PR-10): `AlarmFired` did not become a store action after all. `AlarmReceiver` starts
+`AlarmRingingService` with `startForegroundService` at once, and the service must answer with
+`startForeground` within seconds — for which it needs the row — so it reads and marks the
+row itself (`AlarmRinger.fire`) and owns the ringing: the sound, the foreground notification,
+the queue when alarms fire back to back, the auto-timeout. It publishes what is ringing
+through `SetRinging(RingingAlarm?)` (`AppState.ringing: RingingAlarm?`), which is what
+`AlarmActivity` renders. `SnoozeAlarm(alarmId)` / `DismissAlarm(alarmId)` are store actions
+carrying the alarm id (so a tap can't reach an alarm the screen isn't showing), dispatched by
+the ringing screen; `AlarmRingingSideEffects` hands them to the service, which stops the sound
+and awaits the row write (a snooze's new `setAlarmClock` included) before moving on or
+leaving the foreground, and only writes the row itself if the service can't be reached. The
+notification's Snooze/Dismiss actions go to the service directly. The service's rules live
+in the Android-free `AlarmRingingSession`.
+
+NB (PR-11): `RunChangeCheck(reason)` is not a store action either. `CalendarChangeWorker`
+calls `monitor/ChangeMonitor.runCheck(reason)` directly (a worker can't await a dispatch,
+like the receivers above), and the foreground check rides on `CalendarContentChanged`
+(`ChangeDetectionSideEffects`). What a check finds is recorded in
+`change_snapshot.changes_json` and streamed into `AppState.scheduleChanges` through
+`SetScheduleChanges`, so the banner shows background findings too. `ShareDay` reads the
+selection and plan from Room (and the day from the provider when the store hasn't loaded
+it) because "Share update" can arrive into a cold process.
+
+NB (PR-13): `SetAnchorDate(date)` is a new `UpdateStateAction`, dispatched by
+`AnchorDateSideEffects` while the store has subscribers (checked as the UI appears and at the
+top of every minute), so a process that lives past midnight — or through a clock or timezone
+change — moves "today". It never moves `settledDate`: the pager keeps showing the date the
+user was on. `MaintainAlarms` did not become a store action either: `alarm/AlarmMaintainer`
+is called by `MaintainAlarmsSideEffects` on `CalendarContentChanged` and by `BootReceiver`
+(after its re-arm), like the other receivers. The graph's `Clock` is `di/DeviceClock`, which
+re-reads the device zone on every call: `Clock.systemDefaultZone()` captured it once, which
+left every app-scoped holder in the old zone after a timezone change.
+
 Side effects (one file each under `store/sideeffects/`): `ObserveDayPlans`, `LoadCalendars`,
 `LoadDayEvents` (`transformLatest` on `LoadDay`/`CalendarContentChanged`), `ToggleEvent`,
 `ScheduleAlarms`, `RsvpAccept`, `ShareSchedule`, `AlarmRinging`, `ChangeDetection`, `CalendarObserver`
@@ -219,11 +281,13 @@ com.episode6.meetingminder
 ├── share/                         ScheduleTextFormatter, ShareLauncher
 ├── permissions/                   PermissionChecker, PermissionRequester (intents), PermissionState
 └── ui/
-    ├── navigation/                Routes (@Serializable), Navigation.kt (NavHost, VM wiring, launchers)
+    ├── navigation/                Routes (@Serializable), Navigation.kt (NavHost, VM wiring, launchers),
+    │                              DeepLinks + DeepLinkInbox (meetingminder://day|share/{date})
     ├── theme/                     MeetingMinderTheme, Color, Type
     ├── day/                       DayScreen, DayPager, DayTimeline (Layout), EventChip, NowLine, DayViewModel
     ├── onboarding/                OnboardingScreen, OnboardingViewModel
     ├── alarm/                     AlarmRingingScreen (hosted by AlarmActivity), AlarmRingingViewModel
+    ├── settings/                  SettingsScreen, SettingsViewModel
     ├── licenses/                  LicensesScreen + BasicMarkdown (copied)
     └── util/
 ```
@@ -313,6 +377,20 @@ touching the provider, and because the key no longer contains the time, the stor
 and reschedule its alarm (§4.4). `selected_event.alarm_id` is a plain pointer into
 `scheduled_alarm`.
 
+NB (PR-10): `scheduled_alarm` also has `location TEXT?` (denormalised for the ringing screen,
+refreshed by the reconcile like the title) and `timed_out INTEGER` (the ring already
+auto-snoozed once, so the next unanswered ring gives up); database version 4. A `SNOOZED` row
+is armed again at its snooze time (`fire_at`) and counts as armed everywhere `SCHEDULED` does
+(`AlarmState.armed`): the boot re-arm, `DayPlan.armedKeys`, and the "Set alarms" reconcile —
+which keeps a snoozed row for a still-selected event rather than reading its snooze `fire_at`
+as "moved into the past", cancels it if deselected, and re-times it to a fresh `SCHEDULED`
+alarm only when its event has moved far enough that one is due in the future.
+
+NB (PR-11): `change_snapshot` also has `changes_json TEXT NOT NULL DEFAULT '[]'` — what the
+last check found changed since the share, which is how a check tells a change it already
+notified about from a new one; a re-share replaces the row and so empties it. Each
+`events_json` row also stores `allDay` (older rows read as timed). Database version 5.
+
 ### 3.5 Day view UI (Compose)
 
 Roll our own timeline (the only Compose "WeekView" library is a JitPack single-maintainer project
@@ -362,8 +440,11 @@ whose opinionated chips would fight our selection styling; Kizitonwose is a mont
   (states: empty day, busy day, selections, alarms set, declined, dark, 1.5 font scale). Chosen
   over Google's `com.android.compose.screenshot` because that's still `0.0.1-alphaN`. Reference
   PNGs are committed; CI runs `verifyRoborazziDebug` — inside the CI image (§3.1), so the
-  reference PNGs must be generated in that image (`docker run` it locally) rather than on a dev
-  machine, or font rendering differences will fail the verify.
+  reference PNGs must be generated in that image rather than on a dev machine, or font rendering
+  differences will fail the verify. They are recorded **in CI, never locally** (running the image
+  under local Docker crashed a laptop): the `record-screenshots` label runs
+  `record-screenshots.yml`, which opens a PR with the new PNGs against the labelled PR's branch.
+  Every image in that PR is looked at before it is merged into the branch.
 - Device tests (`android-device-tests.yml`, API 36): onboarding grant flow with
   `GrantPermissionRule`, insert an event via the provider, assert it appears in the day view.
 
@@ -579,6 +660,46 @@ re-shared. The notification title names the day when it isn't today ("Your Tuesd
 changed since you shared it"). Unselected non-meetings never trigger a change (see the scope
 rule above). No `day_plan` row with `shared_at != null` and `date ≥ today` → nothing runs.
 
+NB (PR-11), where the build settled things this section leaves open:
+- **Three unique works**, all `CalendarChangeWorker`: `calendar-change-trigger` (the content
+  trigger; re-armed from inside its own run with `APPEND_OR_REPLACE`, from anywhere else with
+  `KEEP`), `calendar-change-periodic` (the safety net, `KEEP`, first run one interval out) and
+  `calendar-change-expiry` (the delayed one-time work at the last shared day's midnight,
+  `REPLACE`d when the app arms, kept by a background check, appended behind itself from its
+  own run). `ChangeMonitor` reads `change_snapshot` and arms under one lock for both a check and
+  a share, so a check that read "nothing shared" can't disarm a share that armed meanwhile.
+  A shared day is a `change_snapshot` row; a check deletes the rows
+  of ended days and cancels their notifications, then arms for the remaining days or disarms.
+  A worker never cancels its own one-time work.
+- **"Gone" is judged against the whole day's read**, not the rest-of-day window, so a
+  selected event that is still running is never read as cancelled; the window is expressed
+  through the "hasn't started / not over yet" conditions. A selected event moved to another
+  day reads as Cancelled on the shared day. Declined wins over Moved for the same event.
+- **Notification**: tag `schedule_updates`, id = the day's epoch day. A check that finds the
+  same changes as last time does nothing; one where changes only dropped out updates the
+  notification without alerting (and doesn't revive a dismissed one); no changes left cancels
+  it. The weekday names the day within the next six days, a date further out.
+- **Banner**: shown from the recorded changes, and also (lines-free, "Your picks changed since
+  you shared") when the loaded day's selected busy ranges no longer match `shared_snapshot`,
+  per §2. A re-share of a day with either difference sends the `Update:` text. Never shown for
+  a day before today.
+- **Deep links** (`ui/navigation/DeepLinks`): `MainActivity` queues them in a `DeepLinkInbox`
+  from its launch intent (a fresh start only, never a recreation) and from `onNewIntent` (the
+  notifications launch it clear-top + single-top, and an activity recreated in a surviving
+  task gets the new intent before its first composition); `Navigation.kt` takes each once.
+  An intent re-delivered from Recents (`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`) is ignored, so a
+  "Share update" that cold-started the app doesn't share again when the task is reopened.
+  They are dropped while a required grant is missing.
+- WorkManager's merged `ACCESS_NETWORK_STATE` is removed with `tools:node="remove"`; nothing
+  uses a network constraint.
+
+NB (PR-13), mechanism 3: `monitor/CalendarProviderChangedReceiver` is declared
+`android:enabled="false"` (exported, since the provider is another app) and
+`WorkManagerChangeWorkScheduler.update` enables it exactly while some day is shared, so a
+calendar sync never wakes the process when nothing is monitored. It enqueues a fourth unique
+work, `calendar-change-broadcast` (`KEEP`, 5 s settle, reason `PROVIDER_CHANGED`, which
+re-arms like the periodic check), and a disarm cancels a waiting one.
+
 **Testing**: `ChangeDetector` is plain JVM. Worker tests via `WorkManagerTestInitHelper` +
 `TestDriver.setAllConstraintsMet`. On device: `adb shell content insert/update/delete` on the test
 calendar; `adb shell dumpsys jobscheduler | grep -A30 com.episode6.meetingminder` to see the
@@ -612,6 +733,7 @@ android.permission.RECEIVE_BOOT_COMPLETED
 android.permission.VIBRATE
 android.permission.FOREGROUND_SERVICE
 android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK
+android.permission.WAKE_LOCK                   (PR-10: AlarmWakeLock, see the NB under "Full-screen wake-up")
 android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 ```
 
@@ -646,6 +768,42 @@ temporary allowlist that permits starting a foreground service from the backgrou
   `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`, and on the exact-alarm
   permission-state broadcast. Alarms are cancelled by the OS on shutdown, so the boot path is
   mandatory. No direct-boot handling (the calendar provider isn't readable before first unlock).
+  NB (PR-8): this receiver is named **`BootReceiver`** (the §3.3 package map's name), it
+  calls `AlarmRescheduler.rescheduleAll()` directly under `goAsync()` rather than dispatching a
+  store action (see the §3.2 NB), and it only re-arms rows whose event hasn't ended yet. A
+  `setAlarmClock` call the OS refuses marks that row `CANCELLED` and leaves `alarms_set_at`
+  clear, so the FAB keeps reading "Set alarms (N)" and the next tap inserts a fresh row.
+  NB (PR-13): `MaintainAlarms` is `alarm/AlarmMaintainer` over the pure `maintainAlarms`. It
+  reads each armed row's day **and the day either side** (a timezone change can move an
+  occurrence across midnight) from **every** calendar, whatever the Settings filter says, and
+  skips Settings' test alarm. Two refinements of the rules above: an event moved so that its
+  new alarm time has already passed is still re-timed (it rings at once — the automatic path
+  can't ask, and a meeting pulled forward mustn't be missed; this includes a meeting dragged
+  so that it is *already in progress*, which "Set alarms" would skip as past — a deliberate
+  difference: a late nudge beats silence), except a `SNOOZED` row, which
+  keeps its snooze as in the "Set alarms" reconcile; and since the repository never returns
+  `STATUS_CANCELED` occurrences, an organizer's cancellation reads as "vanished" and keeps its
+  alarm. A cancelled row clears its selection's alarm pointer and puts its day back to
+  "Set alarms" (the armed set no longer matches the selection, so a later re-accept can be
+  re-armed from the FAB); a re-time the OS refuses is marked `CANCELLED` and does the same.
+  For that to rest, the explicit "Set alarms" reconcile follows the same rule: a selection
+  whose event is now `STATUS_CANCELED` or declined by me is **never armed** (it lands in
+  `AlarmReconciliation.notAttending`, counted in the snackbar as "skipped, declined or
+  cancelled", its selection kept), and the reconcile reads the day from **every** calendar
+  with declined events included — the same read `MaintainAlarms` makes, falling back to the
+  loaded window only when the provider can't be read — so neither a hidden calendar nor
+  "show declined" off can make a since-declined selection look like a live meeting. Before
+  this (PR-8b), "Set alarms" still armed such a selection, which the next maintenance then
+  cancelled again, with the day bouncing between the two.
+  `BootReceiver` re-arms from Room first and maintains second, so a slow provider can't eat
+  the re-arm's broadcast budget. Timezone changes need nothing else: `fire_at` is an
+  instant, and `di/DeviceClock` keeps every holder of the graph's `Clock` in the new zone.
+  Known limit of the day-either-side read: a meeting moved *across midnight* (today 16:00 →
+  tomorrow 10:00) is found and re-timed, but its `scheduled_alarm` and `selected_event` rows
+  stay keyed on the day it was selected on. Today's page then keeps a selection whose event
+  is no longer drawn there, and selecting the same occurrence on tomorrow's page and tapping
+  "Set alarms" inserts a second row (the reconcile reads one date's rows), so it rings twice.
+  Accepted for v1.0 — a day-crossing move is rare — and not to be rediscovered as a bug.
 - Force-stop (and some OEM task-swipes) cancels all alarms and blocks broadcasts until the app is
   opened again. Nothing fixes that in code; the onboarding OEM card explains it.
 
@@ -693,6 +851,30 @@ with the Snooze/Dismiss actions, tap opens the activity. Dismiss/Snooze never re
 what revokes it for non-alarm apps). We still check `NotificationManager.canUseFullScreenIntent()`
 in onboarding and deep-link to `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` if it's off; when denied
 the system shows a 60-second heads-up instead and the sound still plays.
+
+NB (PR-10), where the build settled things this section leaves open:
+- **Back is disabled** on the ringing screen, as §5 says, not "Back = snooze": an accidental
+  back press must never silence a ringing alarm, and Snooze is one tap away.
+- **Back-to-back alarms queue.** An alarm that fires while another rings waits its turn (its
+  row is `FIRED` at once) and rings as soon as the current one is snoozed or dismissed; each
+  gets its own auto-timeout. The same foreground notification is re-posted for it.
+- **The 3-minute ring timeout is an in-process delay** (the foreground service keeps the
+  process alive while it rings); what it triggers — the snooze — is a `setAlarmClock`, as
+  above. A snooze the OS refuses to arm (the exact-alarm grant is gone) posts the same "Missed
+  alarm" notification as the second timeout, rather than losing the alarm silently.
+- **Wake lock.** The alarm broadcast's own wake lock ends when `AlarmReceiver.onReceive`
+  returns, before the service exists, so the receiver takes `AlarmWakeLock` and the service
+  holds it until it stops. That adds `WAKE_LOCK` to the permission list.
+- **The `alarms` channel is silent** (no sound, no vibration), since the service plays the
+  audio. A channel's sound can't be changed once created, so an install from before PR-10
+  keeps the old default sound on it until its data is cleared. Swiping the ringing
+  notification away (Android 14+ lets users dismiss foreground-service notifications) snoozes.
+- **"Open meeting"** (on the screen, not the notification) dismisses the alarm and opens the
+  event in the calendar app once `requestDismissKeyguard` succeeds.
+- **Sound pool:** "bundled only" keeps the siren (it is generated in-app); "system only" is
+  device ringtones alone. The bundled set is eight AOSP alarm OGGs (no Freesound picks yet).
+  The "recently used" buffer records each alarm's first sound, and an alarm never avoids its
+  own entry, which keeps a snoozed alarm sounding the same. Sirens are never recorded.
 
 **Randomised obnoxious alert** (`AlarmSoundPlayer`). Goal: never the same alarm twice in a row,
 so it can't be tuned out. Per alarm we draw a *recipe*, seeded by `scheduled_alarm.sound_index`
@@ -744,6 +926,15 @@ Onboarding is shown at first launch, whenever a required grant is missing at lau
 the overflow menu. Backup/restore to a new device drops special-access grants, so the launch
 check matters.
 
+NB (PR-13): row 5 disappears once granted (it isn't a "Granted" tick like the required rows),
+and falls back to `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` on a build without the dialog.
+A warning row, **Background use restricted**, appears only while
+`ActivityManager.isBackgroundRestricted` or the standby bucket is `STANDBY_BUCKET_RESTRICTED`
+("Open settings" → app info, where battery usage is set); Settings' Permissions subtitle reads
+"Background use restricted" then too, unless a required grant is missing. Row 6 matches
+`Build.MANUFACTURER` against `permissions/SleepyManufacturer` and links to that maker's
+dontkillmyapp.com page in the browser. Row 7 stays in Settings ("Test alarm", PR-12).
+
 ### 4.6 RSVP "Yes, going" when alarms are set
 
 Setting alarms is the moment you commit to a meeting, so the same action tells Google Calendar.
@@ -790,6 +981,8 @@ chip shows a subtle "couldn't RSVP" hint), `PENDING`, `ACCEPTED_LOCALLY`, `SYNCE
 | Solo block, no attendees | `hasAttendeeData && humanAttendees == 0` (no rows at all; the exception insert would throw "Status update WTF" without a self row, so this check is mandatory) | `NOT_APPLICABLE` |
 | You're the organizer | `isOrganizer` (Google already has you as accepted) | `NOT_APPLICABLE` |
 | Already accepted | `selfStatus == ACCEPTED` | `NOT_APPLICABLE` |
+| Declined by you | `selfStatus == DECLINED`: selected, then declined in Google Calendar while the selection row stayed stored. The alarm is still armed (the selection is the user's), but a decline is their answer and we never un-respond on their behalf | `NOT_APPLICABLE` |
+| Cancelled by the organizer | `status == CANCELED`. The repository's query already filters cancelled occurrences out (§3.4), so this row is defensive: the exception insert would also write `STATUS = CONFIRMED` for the occurrence | `NOT_APPLICABLE` |
 | Calendar can't respond | `calendarAccessLevel < CAL_ACCESS_RESPOND (300)`; the provider would accept the local write and the server would reject it on sync, leaving a stuck dirty row | `UNRESPONDABLE` |
 | Invite sent to an alias | `hasAttendeeData && humanAttendees >= 1 && selfAttendeeId == null`: there are attendees but none matches `OWNER_ACCOUNT` (case-insensitive), and aliases aren't discoverable from the provider | `UNRESPONDABLE` |
 
@@ -801,10 +994,21 @@ transaction; failures are per event) → `RsvpAccepted(key, result)` updates `rs
 the write immediately changes `SELF_ATTENDEE_STATUS`, our own `ContentObserver` fires and the
 day reloads with the chip now showing the accepted state. Chips show a small "sent" tick once
 `rsvp_state == ACCEPTED_LOCALLY`. Promotion to `SYNCED` happens wherever the day is reloaded
-(the foreground `LoadDayEvents` reload and the §4.3 background diff both project `DIRTY`, which
-`Instances` exposes): a row with `rsvp_event_id` whose `DIRTY == 0` is synced, no share
-required. We don't call `ContentResolver.requestSync` (the provider's own change notification
-already nudges Google's sync adapter); it's a one-liner to add if sync proves lazy.
+(the foreground `LoadDayEvents` reload today, the §4.3 background diff later): a row with
+`rsvp_event_id` whose event reads `DIRTY == 0` is synced, no share required. The provider's
+`Instances` view does **not** expose `Events.DIRTY` (querying it throws `Invalid column dirty`),
+so the check is one batched `CalendarRepository.syncedEventIds(ids)` query on `Events` for the
+ids that were written to, made only while a row is actually waiting. We don't call
+`ContentResolver.requestSync` (the provider's own change notification already nudges Google's
+sync adapter); it's a one-liner to add if sync proves lazy.
+
+The decision is recorded on the selection row only while that row is still unanswered
+(`DayPlanDao.recordRsvpDecision`, a guarded update): a row re-armed on a later tap after its
+event moved into the past and back keeps its `ACCEPTED_LOCALLY`/`SYNCED` state and its tick,
+rather than being re-decided as `NOT_APPLICABLE` off our own write. Known limitation: toggling a
+chip **off** deletes the `selected_event` row, RSVP columns included, so toggling it back on shows
+no tick even though the calendar still says accepted — the calendar is right, only the mark is
+gone.
 
 **Reversal**: none, by design. Deselecting cancels the alarm and leaves the RSVP as is. Declining
 is a decision for Google Calendar, not this app. (If we ever add it, `ATTENDEE_STATUS_INVITED`
@@ -862,7 +1066,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   `PermissionChecker` (refreshed on `ON_RESUME` via `PermissionsMaybeChanged`), Onboarding screen
   with only the calendar row live and the other rows stubbed as "coming soon", routing: launch →
   onboarding if calendar not granted, else Day. Handles the two-denials → "Open settings" case.
-- [ ] **PR-5: Day timeline UI (static).** `[Opus 5, effort high]` `DayTimeline` custom `Layout`, `layoutDay()` overlap
+- [x] **PR-5: Day timeline UI (static).** `[Opus 5, effort high]` `DayTimeline` custom `Layout`, `layoutDay()` overlap
   packing with unit tests (no overlap, chain of overlaps, three-way, back-to-back sharing a
   column, expansion into free columns), `EventChip` with all visual states, `NowLine`, all-day row,
   hour gutter, `DayViewDefaults`. Only previews + Roborazzi screenshots at this point (states listed
@@ -878,11 +1082,11 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 2 — Select, alarm, share
 
-- [ ] **PR-7: Selection persistence.** `[Sonnet 5, effort medium]` Room `day_plan` + `selected_event` (+ schema export),
+- [x] **PR-7: Selection persistence.** `[Sonnet 5, effort medium]` Room `day_plan` + `selected_event` (+ schema export),
   `ObserveDayPlans` and `ToggleEvent` side effects, chip toggling with haptics, the FAB in its
   `Hidden`/`SetAlarms(n)` states (tap is a no-op placeholder that shows a snackbar), selection
   survives process death and day paging. Store tests via `runStoreTest`.
-- [ ] **PR-8: Alarm scheduling core.** `[Fable 5.1, effort high]` ∥ with PR-9. `alarm/AlarmScheduler` over `AlarmManager`
+- [x] **PR-8: Alarm scheduling core.** `[Fable 5.1, effort high]` ∥ with PR-9. `alarm/AlarmScheduler` over `AlarmManager`
   (`setAlarmClock`, unique request codes from `scheduled_alarm.alarm_id`), `scheduled_alarm` table,
   `SetAlarms(date)` side effect that reconciles (cancel deselected, schedule new, skip past with a
   snackbar count), lead time setting (default 5 min) in `SettingsRepository`, `BootReceiver` +
@@ -890,18 +1094,19 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   plain high-priority notification. Permissions: exact alarm (see §4.4), `RECEIVE_BOOT_COMPLETED`.
   Onboarding gets the "Alarms & reminders" and "Notifications" rows for real. Unit tests for alarm
   time math and reconciliation; Robolectric `ShadowAlarmManager` test for scheduling/cancelling.
-- [ ] **PR-8b: RSVP on set-alarms.** `[Fable 5.1, effort high]` After PR-8, ∥ with PR-9. `rsvpDecision(event)` (pure, one
+- [x] **PR-8b: RSVP on set-alarms.** `[Fable 5.1, effort high]` After PR-8, ∥ with PR-9. `rsvpDecision(event)` (pure, one
   test per row of the §4.6 skip table), `CalendarRepository.acceptInstance(event)` doing the
   Attendees update or the exception insert, the `RsvpAccept` side effect fanned out from
   `SetAlarms`, `rsvp_state`/`rsvp_event_id` columns, the "sent" tick and "couldn't RSVP" hint on
   chips, Robolectric tests for both write shapes, and the emulator seeding recipe in the `verify`
-  skill. Manual check against a real Google account before this merges.
-- [ ] **PR-9: Share schedule.** `[Sonnet 5, effort medium]` ∥ with PR-8. `ScheduleTextFormatter` (pure, tested: merging,
+  skill. Manual check against a real Google account before this merges. (The columns had
+  already landed with PR-7's schema, so no database version bump was needed.)
+- [x] **PR-9: Share schedule.** `[Sonnet 5, effort medium]` ∥ with PR-8. `ScheduleTextFormatter` (pure, tested: merging,
   AM/PM elision, empty day, midnight-spanning), `ShareDay`/`SharedDay` side effects writing
   `shared_at` + `shared_snapshot` and the `change_snapshot` baseline (§4.3), the FAB's `Share`
   state (unlocked once `alarms_set_at != null`),
   "Share again"/"Mark as not shared" overflow items, `ShareCompat` launch from `Navigation.kt`.
-- [ ] **PR-10: Alarm ringing experience.** `[Opus 5, effort xhigh]` `AlarmRingingService` (foreground service, started by
+- [x] **PR-10: Alarm ringing experience.** `[Opus 5, effort xhigh]` `AlarmRingingService` (foreground service, started by
   `AlarmReceiver`, plays sound + vibrates, posts the full-screen-intent notification),
   `AlarmActivity` (`showWhenLocked`/`turnScreenOn`, dismiss keyguard, Compose `AlarmRingingScreen`
   from the store's `ringing` state, Dismiss/Snooze, back disabled), `AlarmSoundPlayer` with the
@@ -913,21 +1118,21 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 3 — Watch the day
 
-- [ ] **PR-11: Change detection + notification.** `[Opus 5, effort high]` `ChangeDetector` (pure, tested for each row of
+- [x] **PR-11: Change detection + notification.** `[Opus 5, effort high]` `ChangeDetector` (pure, tested for each row of
   the §4.3 table), `change_snapshot` handling, `CalendarChangeWorker` (content-URI-triggered
   one-time work that re-arms itself) + the 30-min periodic safety net, per-shared-day monitoring
   start/stop lifecycle (today and future days), `schedule_updates` notification with Review / Share update deep links
   (`meetingminder://day/{date}`, `meetingminder://share/{date}` handled in `Navigation.kt`),
   in-app "changed since you shared" banner, re-share clears everything. `WorkManagerTestInitHelper`
   tests.
-- [ ] **PR-12: Settings screen.** `[Sonnet 5, effort medium]` Lead time, snooze length, auto-timeout, calendars list with
+- [x] **PR-12: Settings screen.** `[Sonnet 5, effort medium]` Lead time, snooze length, auto-timeout, calendars list with
   per-calendar include toggles (and "not syncing" hints), show-declined toggle, sound pack choice
   ("all", "bundled only", "system only"), test-alarm button, permissions status re-entry to
   onboarding, licences link. DataStore-backed `SettingsRepository`.
 
 ### Phase 4 — Polish and ship
 
-- [ ] **PR-13: Robustness.** `[Opus 5, effort high]` `PROVIDER_CHANGED` accelerator receiver, battery-optimisation
+- [x] **PR-13: Robustness.** `[Opus 5, effort high]` `PROVIDER_CHANGED` accelerator receiver, battery-optimisation
   onboarding row (optional, only shown if `isIgnoringBatteryOptimizations` is false), midnight
   rollover while the app is open (anchor date refresh), timezone change handling for stored
   alarms, "restricted" standby bucket warning, dark theme pass over every screen, large font
@@ -935,7 +1140,9 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 - [ ] **PR-14: Release prep.** `[Sonnet 5, effort medium]` Real launcher icon + `project-icon.svg`, `README` screenshots via
   the `publish-screenshots` skill, `verify` skill rewritten for this app's core flow (including
   the adb calendar-seeding recipe), `THIRD_PARTY_LICENSES.md` reconciled with
-  `expected-dependencies.txt`, first `release/v1.0.0` branch per `RELEASE_CHECKLIST.md`.
+  `expected-dependencies.txt`. The first `release/v1.0.0` branch is a separate, later step:
+  `RELEASE_CHECKLIST.md` cuts it from a green `main`, so it happens via `release-branch-skill`
+  once the PR-1..PR-14 stack has merged to `main`, not as part of this PR.
 
 Later / v2 ideas (not scheduled): home-screen widget with today's busy ranges, "tomorrow evening
 heads-up" share, per-event lead time, wearable alarm mirroring, a "commute" buffer before the
@@ -983,7 +1190,7 @@ the rationale. "Effort" is the reasoning-effort hint for the implementing agent.
 | PR-11 | Opus 5 | high | WorkManager content-trigger re-arming and the differ; the scope rules in §4.3 are precise but easy to get subtly wrong. |
 | PR-12 | Sonnet 5 | medium | Settings screen over DataStore; UI plumbing. |
 | PR-13 | Opus 5 | high | A grab-bag of edge cases (midnight rollover, timezone changes, TalkBack) that needs judgement about what to test. |
-| PR-14 | Sonnet 5 | medium | Icons, README, licence reconciliation, release branch per the checklist. |
+| PR-14 | Sonnet 5 | medium | Icons, README, licence reconciliation. Release branch per the checklist follows separately once the stack has merged. |
 
 Reviewers should be a **different** model than the implementer where practical (Fable reviews
 Opus/Sonnet work; Opus reviews Fable work). Escalate one tier when a PR's CI or device tests

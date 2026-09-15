@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
+import com.episode6.meetingminder.store.startShare
 import com.episode6.redux.mapStore
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
@@ -19,8 +20,8 @@ private const val STOP_TIMEOUT_MILLIS = 5_000L
  * [MeetingMinderNavigation]'s store adapter (AGENTS.md: "Composables do not see the
  * store... Only ViewModels (and non-UI components) touch the store"). Reached via
  * `metroViewModel()` at the top of the wiring layer, this is the only thing that lets
- * `Navigation.kt` decide the start destination and react to a permission grant changing
- * without importing `appGraph` or dispatching directly.
+ * `Navigation.kt` decide the start destination, react to a permission grant changing and
+ * act on a deep link without importing `appGraph` or dispatching directly.
  */
 @Inject
 @ViewModelKey(NavigationViewModel::class)
@@ -28,13 +29,15 @@ private const val STOP_TIMEOUT_MILLIS = 5_000L
 class NavigationViewModel(private val store: AppStore) : ViewModel() {
 
     /**
+     * Whether every required onboarding row (calendar, notifications, exact alarms; TODO.md
+     * §4.5) is granted — the routing decision between Day and Onboarding.
      * [com.episode6.meetingminder.di.AppGraph] seeds `AppState.permissions` synchronously,
      * so the initial value here is already correct and the very first composition never
      * flashes the wrong screen.
      */
-    val calendarGranted: StateFlow<Boolean> = store
-        .mapStore { it.permissions.calendarGranted }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), store.state.permissions.calendarGranted)
+    val requiredPermissionsGranted: StateFlow<Boolean> = store
+        .mapStore { it.permissions.allRequiredGranted }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), store.state.permissions.allRequiredGranted)
 
     /**
      * Auto-revoke/hibernation and a trip to system Settings can change grants without any
@@ -43,5 +46,18 @@ class NavigationViewModel(private val store: AppStore) : ViewModel() {
      */
     fun onResumed() {
         store.dispatch(PermissionsMaybeChanged)
+    }
+
+    /**
+     * A notification opened [link] (TODO.md §4.3). Returns whether the wiring layer should
+     * show the link's day: not while a required grant is missing (Onboarding comes first,
+     * and the link is dropped). "Share update" ([DeepLink.Share]) dispatches the share right
+     * away: `ShareDaySideEffects` reads what it needs from Room and the provider, so it
+     * doesn't wait for the day to load, and the chooser opens once the day view is showing.
+     */
+    fun onDeepLink(link: DeepLink): Boolean {
+        if (!store.state.permissions.allRequiredGranted) return false
+        if (link is DeepLink.Share) store.startShare(link.date)
+        return true
     }
 }

@@ -13,7 +13,8 @@ The app ships with the following libraries, used under the **Apache License 2.0*
   serialization) — © JetBrains s.r.o. and Kotlin contributors —
   <https://kotlinlang.org>
 - **AndroidX / Jetpack** (Activity, Compose UI, Compose Material 3, Core,
-  DataStore, Lifecycle, Navigation, Room, SQLite, Window, and their support artifacts)
+  DataStore, Lifecycle, Navigation, Room, SQLite, Window, WorkManager, and their support
+  artifacts)
   — © The Android Open Source Project — <https://developer.android.com/jetpack>
 - **Compose Multiplatform** runtime and the multiplatform **Lifecycle** / **SavedState**
   artifacts (`org.jetbrains.compose.*`, `org.jetbrains.androidx.*`) — © JetBrains s.r.o.
@@ -28,3 +29,10 @@ The app ships with the following libraries, used under the **Apache License 2.0*
 - **JSpecify** annotations — © The JSpecify Authors — <https://jspecify.dev>
 - **JetBrains Java annotations** — © JetBrains s.r.o. —
   <https://github.com/JetBrains/java-annotations>
+
+The app also bundles these sounds, used under the same **Apache License 2.0**:
+
+- **Android alarm sounds** "Argon", "Carbon", "Fire Drill", "Helium", "Osmium", "Oxygen",
+  "Platinum" and "Scandium" (`frameworks/base/data/sounds/alarms/ogg`), played by the
+  randomised alarm alert — © The Android Open Source Project —
+  <https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/data/sounds/>

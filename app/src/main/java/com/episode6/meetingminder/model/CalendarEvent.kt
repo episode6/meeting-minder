@@ -45,7 +45,7 @@ data class CalendarEvent(
     val selfAttendeeId: Long?,
     /** `RRULE`/`RDATE` set and not already an exception; an exception is a plain event for RSVP purposes. */
     val isRecurringInstance: Boolean,
-    /** `Calendars.CALENDAR_ACCESS_LEVEL`; `CAL_ACCESS_RESPOND` (300) is what an RSVP needs. */
+    /** `Calendars.CALENDAR_ACCESS_LEVEL`; [CALENDAR_ACCESS_RESPOND] (300) is what an RSVP needs. */
     val calendarAccessLevel: Int,
 ) {
     /**

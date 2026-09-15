@@ -20,6 +20,10 @@ env:
 # needs packages: write.
 jobs:
   image:
+    # Every label reruns this workflow, not just 'build-release' (e.g.
+    # 'record-screenshots' does too). Don't skip the others with a job `if`:
+    # a skipped run on the same head SHA replaces the real android-apk check
+    # in the PR's checks list, and a skipped check counts as passing.
     uses: ./.github/workflows/ci-image.yml
     permissions:
       contents: read

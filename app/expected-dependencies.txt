@@ -53,6 +53,7 @@ androidx.compose.ui:ui-util
 androidx.compose.ui:ui-util-android
 androidx.compose:compose-bom
 androidx.concurrent:concurrent-futures
+androidx.concurrent:concurrent-futures-ktx
 androidx.core:core
 androidx.core:core-ktx
 androidx.core:core-viewtree
@@ -75,7 +76,9 @@ androidx.interpolator:interpolator
 androidx.lifecycle:lifecycle-common
 androidx.lifecycle:lifecycle-common-java8
 androidx.lifecycle:lifecycle-common-jvm
+androidx.lifecycle:lifecycle-livedata
 androidx.lifecycle:lifecycle-livedata-core
+androidx.lifecycle:lifecycle-livedata-core-ktx
 androidx.lifecycle:lifecycle-process
 androidx.lifecycle:lifecycle-runtime
 androidx.lifecycle:lifecycle-runtime-android
@@ -83,6 +86,7 @@ androidx.lifecycle:lifecycle-runtime-compose
 androidx.lifecycle:lifecycle-runtime-compose-android
 androidx.lifecycle:lifecycle-runtime-ktx
 androidx.lifecycle:lifecycle-runtime-ktx-android
+androidx.lifecycle:lifecycle-service
 androidx.lifecycle:lifecycle-viewmodel
 androidx.lifecycle:lifecycle-viewmodel-android
 androidx.lifecycle:lifecycle-viewmodel-compose
@@ -117,10 +121,13 @@ androidx.sqlite:sqlite-framework
 androidx.sqlite:sqlite-framework-android
 androidx.startup:startup-runtime
 androidx.tracing:tracing
+androidx.tracing:tracing-ktx
 androidx.versionedparcelable:versionedparcelable
 androidx.window:window
 androidx.window:window-core
 androidx.window:window-core-android
+androidx.work:work-runtime
+androidx.work:work-runtime-ktx
 com.episode6.redux:compose
 com.episode6.redux:compose-jvm
 com.episode6.redux:side-effects

@@ -2,19 +2,129 @@
 <resources>
     <string name="navigate_back">Back</string>
     <string name="more_options">More options</string>
-    <string name="coming_soon">Coming soon</string>
 
     <string name="day_today">Today</string>
     <string name="day_subtitle_no_meetings">No meetings</string>
-    <string name="day_empty">Nothing on the calendar for this day</string>
+    <!-- app bar subtitle: how many meetings (not solo blocks) are on the shown day -->
+    <plurals name="day_subtitle_meetings">
+        <item quantity="one">%d meeting</item>
+        <item quantity="other">%d meetings</item>
+    </plurals>
+    <string name="open_in_calendar_failed">No calendar app found to open this event</string>
+    <!-- app bar subtitle with a selection, e.g. "3 meetings · 2 selected" -->
+    <string name="day_subtitle_with_selected_count">%1$s · %2$d selected</string>
+    <!-- FAB label while at least one event is selected -->
+    <string name="day_fab_set_alarms">Set alarms (%d)</string>
+    <!-- FAB label when every selection was removed but the day still has armed alarms: the tap cancels them -->
+    <string name="day_fab_clear_alarms">Clear alarms</string>
+    <!-- FAB label once alarms are set -->
+    <string name="day_fab_share">Share schedule</string>
+    <!-- app bar subtitle once alarms are set, e.g. "3 alarms set · not shared yet" -->
+    <plurals name="day_subtitle_alarms_set">
+        <item quantity="one">%d alarm set</item>
+        <item quantity="other">%d alarms set</item>
+    </plurals>
+    <string name="day_subtitle_not_shared_yet">%1$s · not shared yet</string>
+    <!-- app bar subtitle once the day has been shared, e.g. "shared 8:12 AM" -->
+    <string name="day_subtitle_shared_at">shared %1$s</string>
+    <!-- the same when the share happened on a different day: %1$s the date ("Sep 13"), %2$s the time -->
+    <string name="day_subtitle_shared_on">shared %1$s, %2$s</string>
+    <!-- snackbars after "Set alarms" -->
+    <plurals name="day_alarms_set_today">
+        <item quantity="one">%d alarm set for today</item>
+        <item quantity="other">%d alarms set for today</item>
+    </plurals>
+    <!-- %2$s is the day, e.g. "Tuesday, Sep 15" -->
+    <plurals name="day_alarms_set_on_day">
+        <item quantity="one">%1$d alarm set for %2$s</item>
+        <item quantity="other">%1$d alarms set for %2$s</item>
+    </plurals>
+    <plurals name="day_alarms_skipped">
+        <item quantity="one">%d alarm skipped, already started</item>
+        <item quantity="other">%d alarms skipped, already started</item>
+    </plurals>
+    <string name="day_alarms_set_some_skipped">%1$d set, %2$d skipped (already started)</string>
+    <!-- selections whose meeting has since been declined or cancelled get no alarm -->
+    <plurals name="day_alarms_not_attending">
+        <item quantity="one">%d alarm skipped, meeting declined or cancelled</item>
+        <item quantity="other">%d alarms skipped, meetings declined or cancelled</item>
+    </plurals>
+    <string name="day_alarms_set_some_not_attending">%1$d set, %2$d skipped (declined or cancelled)</string>
+    <!-- some already started, some declined or cancelled: no single reason fits -->
+    <plurals name="day_alarms_skipped_mixed">
+        <item quantity="one">%d alarm skipped</item>
+        <item quantity="other">%d alarms skipped</item>
+    </plurals>
+    <string name="day_alarms_set_some_skipped_mixed">%1$d set, %2$d skipped</string>
+    <!-- after "Clear alarms": every selection had been removed, the tap only cancelled -->
+    <plurals name="day_alarms_cleared">
+        <item quantity="one">%d alarm cleared</item>
+        <item quantity="other">%d alarms cleared</item>
+    </plurals>
+    <string name="alarms_exact_permission_missing">Allow alarms &amp; reminders in Permissions to set alarms</string>
+    <string name="day_all_day">all-day</string>
+    <!-- chip time range, e.g. "9:00 – 9:30" -->
+    <string name="event_time_range">%1$s – %2$s</string>
+    <!-- between the parts of a chip's detail line, e.g. "10:00 – 11:00 · Meet" -->
+    <string name="event_detail_separator">" · "</string>
+    <string name="event_state_selected">Selected</string>
+    <string name="event_state_not_selected">Not selected</string>
+    <string name="event_state_alarm_set">Alarm set for %1$s</string>
+    <string name="event_state_declined">Declined</string>
+    <!-- chip hints for the RSVP sent when the alarm was set: a small tick, or a subtle "couldn't RSVP" -->
+    <string name="event_rsvp_sent">RSVP sent</string>
+    <string name="event_rsvp_failed">couldn\'t RSVP</string>
+    <!-- chip state with an RSVP outcome appended, e.g. "Alarm set for 8:55, RSVP sent" -->
+    <string name="event_state_with_rsvp">%1$s, %2$s</string>
+    <!-- what TalkBack reads for a chip (its visible text uses dashes and a bell icon), e.g. "Design review, 10:00 AM to 11:00 AM, Meet" -->
+    <string name="event_a11y_timed">%1$s, %2$s to %3$s</string>
+    <string name="event_a11y_timed_with_location">%1$s, %2$s to %3$s, %4$s</string>
+    <string name="event_a11y_all_day">%1$s, all day</string>
+    <!-- TalkBack action labels: "double tap to select", "double tap and hold to open in calendar" -->
+    <string name="event_action_select">select</string>
+    <string name="event_action_deselect">deselect</string>
+    <string name="event_action_open_in_calendar">open in calendar</string>
 
     <string name="menu_permissions">Permissions</string>
     <string name="menu_settings">Settings</string>
     <string name="menu_check_for_updates">Check for updates</string>
     <string name="menu_licenses">Third-party license notices</string>
+    <!-- overflow items shown only once the settled day has been shared (TODO.md §4.2) -->
+    <string name="menu_share_again">Share again</string>
+    <string name="menu_mark_not_shared">Mark as not shared</string>
     <string name="check_for_updates_no_browser">No app found to open the updates page</string>
 
     <string name="settings_title">Settings</string>
+    <string name="settings_section_alarms">Alarms</string>
+    <string name="settings_lead_time">Lead time</string>
+    <string name="settings_snooze_length">Snooze length</string>
+    <string name="settings_auto_timeout">Auto-timeout</string>
+    <string name="settings_sound_pool">Alarm sounds</string>
+    <string name="settings_sound_pool_all">All</string>
+    <string name="settings_sound_pool_bundled">Bundled only</string>
+    <string name="settings_sound_pool_system">System only</string>
+    <!-- a duration chip's label, e.g. "5 min" -->
+    <string name="settings_minutes_value">%d min</string>
+    <string name="settings_test_alarm">Test alarm</string>
+    <!-- the denormalised scheduled_alarm row title a test alarm rings under (TODO.md §4.4) -->
+    <string name="settings_test_alarm_event_title">Test alarm</string>
+    <string name="settings_test_alarm_scheduled">Test alarm rings in 10 seconds</string>
+    <string name="settings_section_display">Display</string>
+    <string name="settings_show_declined">Show declined events</string>
+    <string name="settings_show_declined_description">Keep meetings you declined in Google Calendar visible, dashed and struck through.</string>
+    <string name="settings_section_calendars">Calendars</string>
+    <!-- %1$s is the account email; the calendar has SYNC_EVENTS off and so holds no events (TODO.md §4.1) -->
+    <string name="settings_calendar_not_syncing">%1$s · not syncing</string>
+    <string name="settings_section_about">About</string>
+    <!-- Permissions row subtitle: every required onboarding permission is granted -->
+    <string name="settings_permissions_all_granted">All granted</string>
+    <!-- Permissions row subtitle: everything required is granted, but Android restricts the app in the background -->
+    <string name="settings_permissions_background_restricted">Background use restricted</string>
+    <!-- Permissions row subtitle: how many required permissions are still missing -->
+    <plurals name="settings_permissions_missing">
+        <item quantity="one">%d not granted</item>
+        <item quantity="other">%d not granted</item>
+    </plurals>
     <string name="licenses_title">Third-party license notices</string>
 
     <string name="onboarding_heading">Set up Meeting Minder</string>
@@ -22,7 +132,6 @@
     <string name="onboarding_granted">Granted</string>
     <string name="onboarding_allow">Allow</string>
     <string name="onboarding_open_settings">Open settings</string>
-    <string name="onboarding_coming_soon">Coming soon</string>
     <string name="onboarding_continue">Continue</string>
 
     <string name="onboarding_calendar_title">Calendar access</string>
@@ -35,4 +144,63 @@
     <string name="onboarding_full_screen_description">Wake the screen when an alarm rings.</string>
     <string name="onboarding_battery_title">Ignore battery optimization</string>
     <string name="onboarding_battery_description">Optional. Helps on phones that kill background apps.</string>
+    <!-- warning row, shown only while Android restricts the app in the background (restricted standby bucket / "Restricted" battery usage) -->
+    <string name="onboarding_restricted_title">Background use restricted</string>
+    <string name="onboarding_restricted_description">Schedule-change reminders can arrive hours late. Set battery usage to Unrestricted.</string>
+    <!-- instructions card for phone makers whose battery managers stop apps; %1$s is the maker, e.g. "Samsung" -->
+    <string name="onboarding_manufacturer_title">%1$s phones</string>
+    <string name="onboarding_manufacturer_description">These phones can put apps to sleep on their own. Keep Meeting Minder out of any sleeping-apps list, and never force-stop it: that cancels its alarms.</string>
+    <string name="onboarding_manufacturer_guide">How to</string>
+
+    <string name="notification_channel_alarms">Alarms</string>
+    <string name="notification_channel_alarms_description">Rings before each meeting you set an alarm for.</string>
+    <!-- ringing and missed-alarm notification body; %1$s is the meeting's start time -->
+    <string name="alarm_notification_starts_at">Starts at %1$s</string>
+    <!-- the ringing service's bare foreground notification, shown for a moment at most -->
+    <string name="alarm_notification_starting">Alarm</string>
+    <!-- an alarm that went unanswered twice (or couldn't ring); %1$s is the meeting title -->
+    <string name="alarm_missed_title">Missed alarm: %1$s</string>
+    <string name="alarm_snooze_action">Snooze</string>
+
+    <!-- ringing screen (render 5): the countdown above the clock, shown in capitals -->
+    <plurals name="alarm_meeting_in">
+        <item quantity="one">Meeting in %d minute</item>
+        <item quantity="other">Meeting in %d minutes</item>
+    </plurals>
+    <string name="alarm_meeting_now">Meeting starting now</string>
+    <plurals name="alarm_meeting_started">
+        <item quantity="one">Meeting started %d minute ago</item>
+        <item quantity="other">Meeting started %d minutes ago</item>
+    </plurals>
+    <string name="alarm_dismiss">Dismiss</string>
+    <!-- e.g. "Snooze 2 min" -->
+    <string name="alarm_snooze_minutes">Snooze %d min</string>
+    <string name="alarm_open_meeting">Open meeting</string>
+    <!-- the subtle debug line naming the random sound that is playing -->
+    <string name="alarm_sound_playing">Sound: “%1$s” (random)</string>
+    <string name="alarm_sound_siren">Siren sweep</string>
+    <string name="alarm_sound_default">Default alarm</string>
+
+    <!-- schedule-changed notification (render 6, TODO.md §4.3) -->
+    <string name="notification_channel_schedule_updates">Schedule updates</string>
+    <string name="notification_channel_schedule_updates_description">When a day you shared changes: a new meeting, or one you picked moving, being cancelled or being declined.</string>
+    <string name="schedule_changed_title">Your schedule changed since you shared it</string>
+    <!-- %1$s names the shared day when it isn't today, e.g. "Tuesday" -->
+    <string name="schedule_changed_title_on_day">Your %1$s schedule changed since you shared it</string>
+    <!-- one line per change, times only (like the share text), e.g. "Moved: 12:00 – 1:00 PM → 12:30 – 1:30 PM" -->
+    <string name="schedule_change_new">New: %1$s</string>
+    <string name="schedule_change_moved">Moved: %1$s → %2$s</string>
+    <string name="schedule_change_cancelled">Cancelled: %1$s</string>
+    <string name="schedule_change_declined">Declined: %1$s</string>
+    <string name="schedule_change_separator">" · "</string>
+    <string name="schedule_changed_review">Review</string>
+    <string name="schedule_changed_share_update">Share update</string>
+    <!-- the day view's "changed since you shared" banner -->
+    <plurals name="day_banner_changes">
+        <item quantity="one">%d change since you shared</item>
+        <item quantity="other">%d changes since you shared</item>
+    </plurals>
+    <!-- banner when only the selection differs from what was shared -->
+    <string name="day_banner_selection_changed">Your picks changed since you shared</string>
+    <string name="day_banner_reshare">Re-share</string>
 </resources>
