@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -16,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Done
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -104,6 +107,8 @@ internal fun chipContentLayout(chipHeight: Dp, density: Density): ChipContentLay
  *   (40% fill while [ChipStatus.Tentative]; no border when not selectable, as in the all-day row);
  * - selected: solid calendar colour + a check, animated;
  * - armed ([TimelineEvent.armed]): selected plus a bell and the alarm time;
+ * - RSVP ([TimelineEvent.rsvp]): a small tick after the alarm time once the "Yes, going"
+ *   went through, or a subtle "couldn't RSVP" hint when it couldn't (TODO.md §4.6);
  * - declined / cancelled: dashed outline and strikethrough, taps ignored;
  * - [past] (ended, on today): the whole chip at 60% alpha.
  *
@@ -149,13 +154,18 @@ fun EventChip(
 
     val haptics = LocalHapticFeedback.current
     val alarmText = event.alarmAt?.let(timeFormat::time)
+    val rsvpText = when (event.rsvp) {
+        ChipRsvp.None -> null
+        ChipRsvp.Sent -> stringResource(R.string.event_rsvp_sent)
+        ChipRsvp.Failed -> stringResource(R.string.event_rsvp_failed)
+    }
     val stateDescription = when {
         declined -> stringResource(R.string.event_state_declined)
         !selectable -> null
         event.armed -> stringResource(R.string.event_state_alarm_set, alarmText.orEmpty())
         event.selected -> stringResource(R.string.event_state_selected)
         else -> stringResource(R.string.event_state_not_selected)
-    }
+    }?.let { state -> if (selectable && rsvpText != null) stringResource(R.string.event_state_with_rsvp, state, rsvpText) else state }
 
     Box(
         modifier
@@ -228,6 +238,7 @@ fun EventChip(
                             modifier = Modifier.padding(start = DayViewDefaults.ChipIconSpacing),
                         )
                     }
+                    RsvpMark(event.rsvp, detailStyle, withLabel = false)
                 }
             }
 
@@ -265,8 +276,10 @@ fun EventChip(
                             style = detailStyle,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
                     }
+                    RsvpMark(event.rsvp, detailStyle, withLabel = true)
                 }
             }
         }
@@ -297,6 +310,42 @@ private fun AlarmTime(text: String, style: TextStyle, modifier: Modifier = Modif
                 .size(DayViewDefaults.ChipInlineIconSize),
         )
         Text(text, style = style, maxLines = 1, softWrap = false)
+    }
+}
+
+/**
+ * The RSVP outcome after the alarm time: a tick for [ChipRsvp.Sent], a warning glyph
+ * (plus "couldn't RSVP" when [withLabel]) for [ChipRsvp.Failed]. Icons carry no content
+ * description; the chip's `stateDescription` reads the outcome out instead. Only the
+ * labelled form takes a share of the row (and ellipsizes) — an icon alone must never make
+ * the time range give way.
+ */
+@Composable
+private fun RowScope.RsvpMark(rsvp: ChipRsvp, style: TextStyle, withLabel: Boolean) {
+    if (rsvp == ChipRsvp.None) return
+    val labelled = withLabel && rsvp == ChipRsvp.Failed
+    Row(
+        Modifier
+            .then(if (labelled) Modifier.weight(1f, fill = false) else Modifier)
+            .padding(start = DayViewDefaults.ChipIconSpacing),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            if (rsvp == ChipRsvp.Sent) Icons.Outlined.Done else Icons.Outlined.ErrorOutline,
+            contentDescription = null,
+            tint = style.color,
+            modifier = Modifier.size(DayViewDefaults.ChipInlineIconSize),
+        )
+        if (labelled) {
+            Text(
+                stringResource(R.string.event_rsvp_failed),
+                style = style,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = DayViewDefaults.ChipInlineIconSpacing),
+            )
+        }
     }
 }
 
@@ -333,6 +382,8 @@ internal fun EventChipStatesPreview() {
                     base.copy(status = ChipStatus.Tentative, title = "Tentative") to false,
                     base.copy(selected = true, title = "Selected") to false,
                     base.copy(selected = true, alarmAt = LocalTime.of(9, 55), title = "Armed") to false,
+                    base.copy(selected = true, alarmAt = LocalTime.of(9, 55), rsvp = ChipRsvp.Sent, title = "Armed, RSVP sent") to false,
+                    base.copy(selected = true, alarmAt = LocalTime.of(9, 55), rsvp = ChipRsvp.Failed, title = "Armed, couldn't RSVP") to false,
                     base.copy(status = ChipStatus.Declined, title = "Declined") to false,
                     base.copy(title = "Past") to true,
                     PreviewEvents.dentist.copy(selected = true, title = "Selected, dark calendar colour") to false,
@@ -351,6 +402,7 @@ internal fun EventChipStatesPreview() {
                 listOf(
                     base.copy(title = "Compact"),
                     base.copy(title = "Compact armed", selected = true, alarmAt = LocalTime.of(8, 55)),
+                    base.copy(title = "Compact armed, RSVP sent", selected = true, alarmAt = LocalTime.of(8, 55), rsvp = ChipRsvp.Sent),
                 ).forEach { event ->
                     EventChip(
                         event = event,

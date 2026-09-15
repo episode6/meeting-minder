@@ -7,6 +7,7 @@ import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
+import com.episode6.meetingminder.model.RsvpState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -101,12 +102,43 @@ class DayPlanDaoTest {
 
     @Test
     fun armSelectedEvent_pointsTheRowAtItsAlarm_withoutTouchingRsvpColumns() = runTest {
-        dao.upsertSelectedEvent(standup.copy(rsvpState = "PENDING", rsvpEventId = 42))
+        dao.upsertSelectedEvent(standup.copy(rsvpState = RsvpState.PENDING, rsvpEventId = 42))
 
         dao.armSelectedEvent(today, standup.eventId, standup.instanceTime, alarmId = 9, alarmAt = 700, title = "Standup (moved)", beginMillis = 1_500, endMillis = 2_500)
 
         assertThat(dao.selectedEventsOn(today).single()).isEqualTo(
-            standup.copy(alarmId = 9, alarmAt = 700, title = "Standup (moved)", beginMillis = 1_500, endMillis = 2_500, rsvpState = "PENDING", rsvpEventId = 42),
+            standup.copy(alarmId = 9, alarmAt = 700, title = "Standup (moved)", beginMillis = 1_500, endMillis = 2_500, rsvpState = RsvpState.PENDING, rsvpEventId = 42),
         )
+    }
+
+    @Test
+    fun setRsvp_storesTheStateByName_withoutTouchingTheAlarmPointer() = runTest {
+        dao.upsertSelectedEvent(standup.copy(alarmId = 9, alarmAt = 700))
+
+        dao.setRsvp(today, standup.eventId, standup.instanceTime, RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 1_000)
+
+        assertThat(dao.selectedEventsOn(today).single()).isEqualTo(
+            standup.copy(alarmId = 9, alarmAt = 700, rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 1_000),
+        )
+        assertThat(database.query("SELECT rsvp_state FROM selected_event", null).use { it.moveToFirst(); it.getString(0) })
+            .isEqualTo("ACCEPTED_LOCALLY")
+    }
+
+    @Test
+    fun recordRsvpDecision_overwritesAnUnansweredRow_butLeavesAnAnsweredOneAlone() = runTest {
+        dao.upsertSelectedEvent(standup.copy(alarmId = 9, alarmAt = 700, rsvpState = RsvpState.UNRESPONDABLE))
+
+        assertThat(dao.recordRsvpDecision(today, standup.eventId, standup.instanceTime, RsvpState.PENDING)).isEqualTo(1)
+        assertThat(dao.selectedEventsOn(today).single())
+            .isEqualTo(standup.copy(alarmId = 9, alarmAt = 700, rsvpState = RsvpState.PENDING))
+
+        dao.setRsvp(today, standup.eventId, standup.instanceTime, RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 1_000)
+        assertThat(dao.recordRsvpDecision(today, standup.eventId, standup.instanceTime, RsvpState.NOT_APPLICABLE)).isEqualTo(0)
+        assertThat(dao.selectedEventsOn(today).single())
+            .isEqualTo(standup.copy(alarmId = 9, alarmAt = 700, rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 1_000))
+
+        dao.setRsvp(today, standup.eventId, standup.instanceTime, RsvpState.SYNCED, rsvpEventId = 1_000)
+        assertThat(dao.recordRsvpDecision(today, standup.eventId, standup.instanceTime, RsvpState.PENDING)).isEqualTo(0)
+        assertThat(dao.selectedEventsOn(today).single().rsvpState).isEqualTo(RsvpState.SYNCED)
     }
 }

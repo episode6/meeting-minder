@@ -15,7 +15,15 @@ data class SelectedEvent(
     val title: String,
     val begin: Instant,
     val end: Instant,
-    /** Pointer into `scheduled_alarm`; null until PR-8 schedules one. */
+    /** Pointer into `scheduled_alarm`; null until "Set alarms" schedules one. */
     val alarmId: Long? = null,
     val alarmAt: Instant? = null,
+    /** Where the RSVP stands (TODO.md §4.6); decided when the event is armed. */
+    val rsvpState: RsvpState = RsvpState.NOT_APPLICABLE,
+    /**
+     * The event id the RSVP was written to — the new exception's id for a recurring
+     * occurrence, the event's own id otherwise — so a later reload can check that row's
+     * `DIRTY` flag. Null until the write has gone through.
+     */
+    val rsvpEventId: Long? = null,
 )

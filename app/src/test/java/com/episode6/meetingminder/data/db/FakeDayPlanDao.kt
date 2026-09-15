@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.data.db
 
+import com.episode6.meetingminder.model.RsvpState
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.time.LocalDate
 
@@ -57,5 +58,30 @@ internal class FakeDayPlanDao(
                 it
             }
         }
+    }
+
+    override suspend fun setRsvp(date: LocalDate, eventId: Long, instanceTime: Long, state: RsvpState, rsvpEventId: Long?) {
+        selectionsFlow.value = selectionsFlow.value.map {
+            if (it.date == date && it.eventId == eventId && it.instanceTime == instanceTime) {
+                it.copy(rsvpState = state, rsvpEventId = rsvpEventId)
+            } else {
+                it
+            }
+        }
+    }
+
+    override suspend fun recordRsvpDecision(date: LocalDate, eventId: Long, instanceTime: Long, state: RsvpState): Int {
+        var updated = 0
+        selectionsFlow.value = selectionsFlow.value.map {
+            if (it.date == date && it.eventId == eventId && it.instanceTime == instanceTime &&
+                it.rsvpState != RsvpState.ACCEPTED_LOCALLY && it.rsvpState != RsvpState.SYNCED
+            ) {
+                updated++
+                it.copy(rsvpState = state, rsvpEventId = null)
+            } else {
+                it
+            }
+        }
+        return updated
     }
 }

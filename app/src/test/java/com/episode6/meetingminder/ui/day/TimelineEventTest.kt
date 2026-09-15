@@ -10,6 +10,7 @@ import com.episode6.meetingminder.model.Availability
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.EventStatus
+import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.SelfStatus
 import org.junit.Test
 import java.time.Instant
@@ -81,6 +82,21 @@ class TimelineEventTest {
     fun armed_needsSelectionAndAnAlarmTime() {
         assertThat(event().toTimelineEvent(newYork, selected = true).armed).isFalse()
         assertThat(event().toTimelineEvent(newYork, alarmAt = LocalTime.NOON).armed).isFalse()
+    }
+
+    @Test
+    fun rsvpState_mapsOntoTheChipsThreeMarks() {
+        assertThat(RsvpState.entries.associateWith { it.toChipRsvp() }).isEqualTo(
+            mapOf(
+                RsvpState.NOT_APPLICABLE to ChipRsvp.None,
+                RsvpState.PENDING to ChipRsvp.None,
+                RsvpState.ACCEPTED_LOCALLY to ChipRsvp.Sent,
+                RsvpState.SYNCED to ChipRsvp.Sent,
+                RsvpState.UNRESPONDABLE to ChipRsvp.Failed,
+                RsvpState.FAILED to ChipRsvp.Failed,
+            ),
+        )
+        assertThat(event().toTimelineEvent(newYork, selected = true, rsvp = ChipRsvp.Sent).rsvp).isEqualTo(ChipRsvp.Sent)
     }
 
     private fun event(

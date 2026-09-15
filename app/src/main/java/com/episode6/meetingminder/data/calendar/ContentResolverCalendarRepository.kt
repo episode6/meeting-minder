@@ -2,6 +2,7 @@ package com.episode6.meetingminder.data.calendar
 
 import android.content.ContentResolver
 import android.content.ContentUris
+import android.content.ContentValues
 import android.database.Cursor
 import android.provider.CalendarContract.Attendees
 import android.provider.CalendarContract.Calendars
@@ -50,6 +51,56 @@ class ContentResolverCalendarRepository(
                 .map { it.toCalendarEvent(attendees[it.eventId] ?: AttendeeSummary.EMPTY) }
                 .sortedWith(compareByDescending<CalendarEvent> { it.allDay }.thenBy { it.begin }.thenByDescending { it.end }.thenBy { it.title })
         }
+
+    /**
+     * The write shapes are the ones AOSP's own calendar app uses (TODO.md §4.6), both
+     * addressed by the occurrence's **own** id ([CalendarEvent.eventId]), never by
+     * `key.eventId` (the series id for a recurring occurrence):
+     *  - a recurring occurrence → `insert(Events.CONTENT_EXCEPTION_URI/{eventId})` with
+     *    `ORIGINAL_INSTANCE_TIME = begin` and `SELF_ATTENDEE_STATUS = ACCEPTED`. That is the
+     *    one place `SELF_ATTENDEE_STATUS` is app-writable: the provider clones the event as
+     *    an exception (with `ORIGINAL_ID`, so it keeps the same [EventKey]) and updates the
+     *    clone's self-attendee row. Google syncs it as a per-instance response.
+     *  - anything else → `update(Attendees.CONTENT_URI/{selfAttendeeId})` with
+     *    `ATTENDEE_STATUS = ACCEPTED`; the provider mirrors it into `SELF_ATTENDEE_STATUS`.
+     * Either way the provider marks the event `DIRTY` and the account's sync adapter
+     * uploads the response on its next upload sync.
+     */
+    override suspend fun acceptInstance(event: CalendarEvent): Long = withContext(ioDispatcher) {
+        if (event.isRecurringInstance) {
+            val uri = ContentUris.withAppendedId(Events.CONTENT_EXCEPTION_URI, event.eventId)
+            val values = ContentValues().apply {
+                put(Events.ORIGINAL_INSTANCE_TIME, event.begin.toEpochMilli())
+                put(Events.SELF_ATTENDEE_STATUS, Attendees.ATTENDEE_STATUS_ACCEPTED)
+                put(Events.STATUS, Events.STATUS_CONFIRMED)
+            }
+            val inserted = contentResolver.insert(uri, values) ?: error("exception insert on $uri returned no row")
+            ContentUris.parseId(inserted)
+        } else {
+            val selfAttendeeId = event.selfAttendeeId ?: error("event ${event.eventId} has no self-attendee row to answer through")
+            val uri = ContentUris.withAppendedId(Attendees.CONTENT_URI, selfAttendeeId)
+            val values = ContentValues().apply { put(Attendees.ATTENDEE_STATUS, Attendees.ATTENDEE_STATUS_ACCEPTED) }
+            val updated = contentResolver.update(uri, values, null, null)
+            check(updated == 1) { "attendee update on $uri touched $updated rows" }
+            event.eventId
+        }
+    }
+
+    override suspend fun syncedEventIds(eventIds: Collection<Long>): Set<Long> = withContext(ioDispatcher) {
+        val ids = eventIds.toSortedSet()
+        if (ids.isEmpty()) return@withContext emptySet()
+        buildSet {
+            ids.chunked(ATTENDEE_QUERY_CHUNK).forEach { chunk ->
+                contentResolver.query(
+                    Events.CONTENT_URI,
+                    arrayOf(Events._ID),
+                    "${Events._ID} IN (${placeholders(chunk.size)}) AND ${Events.DIRTY} = 0",
+                    chunk.map(Long::toString).toTypedArray(),
+                    null,
+                )?.use { cursor -> while (cursor.moveToNext()) add(cursor.getLong(Events._ID)) }
+            }
+        }
+    }
 
     /**
      * The query window is local midnight → next local midnight **widened by ±1 day**, then
@@ -268,7 +319,7 @@ class ContentResolverCalendarRepository(
     }
 
     private companion object {
-        /** SQLite caps bound variables; a day never has this many events, but chunk anyway. */
+        /** SQLite caps bound variables; a day never has this many events, but chunk the `IN (…)` queries anyway. */
         const val ATTENDEE_QUERY_CHUNK = 500
 
         val CALENDAR_PROJECTION = arrayOf(

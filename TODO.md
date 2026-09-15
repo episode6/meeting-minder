@@ -203,6 +203,17 @@ stay reachable ("Clear alarms", `FabState.SetAlarms(0)`) after every selection o
 while its alarms are still armed; otherwise those alarms could never be cancelled (§2's reconcile
 only runs on the tap).
 
+NB (PR-8b): `RsvpAccept` and `RsvpAccepted` carry the **date** as well as the key
+(`RsvpAccept(date, key)`), like `ToggleEvent`: the event is looked up in that day's loaded
+events and the outcome lands on that day's `selected_event` row. `rsvpDecision(event)`
+returns the initial `rsvp_state` directly (`NOT_APPLICABLE` / `UNRESPONDABLE` / `PENDING`)
+rather than a separate decision type, and the alarm reconcile writes it before fanning out
+`RsvpAccept` for the `PENDING` ones. The `SYNCED` promotion lives in
+`RsvpAcceptSideEffects` too, on `SetDayEvents` (the foreground reload); PR-11's background
+diff can call the same DAO update. The promotion asks `CalendarRepository.syncedEventIds(ids)`
+rather than projecting `DIRTY` through `Instances`, which doesn't expose it (§4.6 has the
+detail).
+
 NB (PR-8): `BootCompleted` and `TimeChanged` are **not** store actions. A `BroadcastReceiver`
 can't await a dispatch, and the re-arm must finish before the broadcast (and the process) ends,
 so `alarm/BootReceiver` calls the injected `AlarmRescheduler.rescheduleAll()` directly under
@@ -816,6 +827,8 @@ chip shows a subtle "couldn't RSVP" hint), `PENDING`, `ACCEPTED_LOCALLY`, `SYNCE
 | Solo block, no attendees | `hasAttendeeData && humanAttendees == 0` (no rows at all; the exception insert would throw "Status update WTF" without a self row, so this check is mandatory) | `NOT_APPLICABLE` |
 | You're the organizer | `isOrganizer` (Google already has you as accepted) | `NOT_APPLICABLE` |
 | Already accepted | `selfStatus == ACCEPTED` | `NOT_APPLICABLE` |
+| Declined by you | `selfStatus == DECLINED`: selected, then declined in Google Calendar while the selection row stayed stored. The alarm is still armed (the selection is the user's), but a decline is their answer and we never un-respond on their behalf | `NOT_APPLICABLE` |
+| Cancelled by the organizer | `status == CANCELED`. The repository's query already filters cancelled occurrences out (§3.4), so this row is defensive: the exception insert would also write `STATUS = CONFIRMED` for the occurrence | `NOT_APPLICABLE` |
 | Calendar can't respond | `calendarAccessLevel < CAL_ACCESS_RESPOND (300)`; the provider would accept the local write and the server would reject it on sync, leaving a stuck dirty row | `UNRESPONDABLE` |
 | Invite sent to an alias | `hasAttendeeData && humanAttendees >= 1 && selfAttendeeId == null`: there are attendees but none matches `OWNER_ACCOUNT` (case-insensitive), and aliases aren't discoverable from the provider | `UNRESPONDABLE` |
 
@@ -827,10 +840,21 @@ transaction; failures are per event) → `RsvpAccepted(key, result)` updates `rs
 the write immediately changes `SELF_ATTENDEE_STATUS`, our own `ContentObserver` fires and the
 day reloads with the chip now showing the accepted state. Chips show a small "sent" tick once
 `rsvp_state == ACCEPTED_LOCALLY`. Promotion to `SYNCED` happens wherever the day is reloaded
-(the foreground `LoadDayEvents` reload and the §4.3 background diff both project `DIRTY`, which
-`Instances` exposes): a row with `rsvp_event_id` whose `DIRTY == 0` is synced, no share
-required. We don't call `ContentResolver.requestSync` (the provider's own change notification
-already nudges Google's sync adapter); it's a one-liner to add if sync proves lazy.
+(the foreground `LoadDayEvents` reload today, the §4.3 background diff later): a row with
+`rsvp_event_id` whose event reads `DIRTY == 0` is synced, no share required. The provider's
+`Instances` view does **not** expose `Events.DIRTY` (querying it throws `Invalid column dirty`),
+so the check is one batched `CalendarRepository.syncedEventIds(ids)` query on `Events` for the
+ids that were written to, made only while a row is actually waiting. We don't call
+`ContentResolver.requestSync` (the provider's own change notification already nudges Google's
+sync adapter); it's a one-liner to add if sync proves lazy.
+
+The decision is recorded on the selection row only while that row is still unanswered
+(`DayPlanDao.recordRsvpDecision`, a guarded update): a row re-armed on a later tap after its
+event moved into the past and back keeps its `ACCEPTED_LOCALLY`/`SYNCED` state and its tick,
+rather than being re-decided as `NOT_APPLICABLE` off our own write. Known limitation: toggling a
+chip **off** deletes the `selected_event` row, RSVP columns included, so toggling it back on shows
+no tick even though the calendar still says accepted — the calendar is right, only the mark is
+gone.
 
 **Reversal**: none, by design. Deselecting cancels the alarm and leaves the RSVP as is. Declining
 is a decision for Google Calendar, not this app. (If we ever add it, `ATTENDEE_STATUS_INVITED`
@@ -916,12 +940,13 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   plain high-priority notification. Permissions: exact alarm (see §4.4), `RECEIVE_BOOT_COMPLETED`.
   Onboarding gets the "Alarms & reminders" and "Notifications" rows for real. Unit tests for alarm
   time math and reconciliation; Robolectric `ShadowAlarmManager` test for scheduling/cancelling.
-- [ ] **PR-8b: RSVP on set-alarms.** `[Fable 5.1, effort high]` After PR-8, ∥ with PR-9. `rsvpDecision(event)` (pure, one
+- [x] **PR-8b: RSVP on set-alarms.** `[Fable 5.1, effort high]` After PR-8, ∥ with PR-9. `rsvpDecision(event)` (pure, one
   test per row of the §4.6 skip table), `CalendarRepository.acceptInstance(event)` doing the
   Attendees update or the exception insert, the `RsvpAccept` side effect fanned out from
   `SetAlarms`, `rsvp_state`/`rsvp_event_id` columns, the "sent" tick and "couldn't RSVP" hint on
   chips, Robolectric tests for both write shapes, and the emulator seeding recipe in the `verify`
-  skill. Manual check against a real Google account before this merges.
+  skill. Manual check against a real Google account before this merges. (The columns had
+  already landed with PR-7's schema, so no database version bump was needed.)
 - [ ] **PR-9: Share schedule.** `[Sonnet 5, effort medium]` ∥ with PR-8. `ScheduleTextFormatter` (pure, tested: merging,
   AM/PM elision, empty day, midnight-spanning), `ShareDay`/`SharedDay` side effects writing
   `shared_at` + `shared_snapshot` and the `change_snapshot` baseline (§4.3), the FAB's `Share`

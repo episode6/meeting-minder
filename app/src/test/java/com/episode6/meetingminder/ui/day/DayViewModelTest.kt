@@ -12,6 +12,7 @@ import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.model.SelectedEvent
 import com.episode6.meetingminder.model.testCalendarEvent
 import com.episode6.meetingminder.store.AppState
@@ -349,6 +350,7 @@ class DayViewModelTest {
                             begin = standup.begin,
                             end = standup.end,
                             alarmAt = standup.begin.minusSeconds(300),
+                            rsvpState = RsvpState.ACCEPTED_LOCALLY,
                         ),
                     ),
                 ),
@@ -359,7 +361,7 @@ class DayViewModelTest {
 
         assertThat(ui.fabState).isEqualTo(FabState.SetAlarms(1))
         assertThat(ui.timelineFor(today).timedEvents).containsExactly(
-            standup.toTimelineEvent(zone, selected = true, alarmAt = LocalTime.of(9, 25)),
+            standup.toTimelineEvent(zone, selected = true, alarmAt = LocalTime.of(9, 25), rsvp = ChipRsvp.Sent),
             dentist.toTimelineEvent(zone),
         )
     }

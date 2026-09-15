@@ -18,10 +18,15 @@ import com.episode6.meetingminder.data.db.toSelectedEventEntity
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.EventStatus
+import com.episode6.meetingminder.model.RsvpState
+import com.episode6.meetingminder.model.SelfStatus
 import com.episode6.meetingminder.model.testCalendarEvent
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
+import com.episode6.meetingminder.store.RsvpAccept
 import com.episode6.meetingminder.store.SetAlarms
 import com.episode6.meetingminder.store.ShowMessage
+import com.episode6.redux.Action
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -57,6 +62,9 @@ class ScheduleAlarmsSideEffectsTest {
 
     private fun selection(event: com.episode6.meetingminder.model.CalendarEvent) = event.toSelectedEventEntity(today)
 
+    /** The snackbar of a reconcile: the one [ShowMessage] in its output (the rest are `RsvpAccept`s). */
+    private val List<Action>.message get() = filterIsInstance<ShowMessage>().single().message
+
     @Test
     fun setAlarms_armsEverySelection_pointsSelectionsAtTheirAlarms_andRecordsAlarmsSetAt() = runTest {
         val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup), selection(designReview)))
@@ -69,14 +77,119 @@ class ScheduleAlarmsSideEffectsTest {
         assertThat(reviewAlarm.fireAt).isEqualTo(at(9, 55).toEpochMilli())
         assertThat(scheduler.armed.values.toList()).containsExactly(standupAlarm, reviewAlarm)
         assertThat(dayPlanDao.selectedEventsOn(today)).containsExactly(
-            selection(standup).copy(alarmId = 1, alarmAt = at(8, 55).toEpochMilli()),
-            selection(designReview).copy(alarmId = 2, alarmAt = at(9, 55).toEpochMilli()),
+            selection(standup).copy(alarmId = 1, alarmAt = at(8, 55).toEpochMilli(), rsvpState = RsvpState.PENDING),
+            selection(designReview).copy(alarmId = 2, alarmAt = at(9, 55).toEpochMilli(), rsvpState = RsvpState.PENDING),
         )
         assertThat(dayPlanDao.plansFlow.value).containsExactly(DayPlanEntity(today, alarmsSetAt = now.toEpochMilli()))
-        val message = (output.single() as ShowMessage).message
+        val message = output.message
         assertThat(message.text).isEqualTo(R.plurals.day_alarms_set_today)
         assertThat(message.quantity).isEqualTo(2)
         assertThat(message.formatArgs).isEqualTo(listOf<Any>(2))
+    }
+
+    @Test
+    fun setAlarms_fansOutOneRsvpAcceptPerNewlyArmedInvite_afterMarkingItPending() = runTest {
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup), selection(designReview)))
+
+        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+
+        assertThat(output.filterIsInstance<RsvpAccept>()).containsExactly(RsvpAccept(today, standup.key), RsvpAccept(today, designReview.key))
+        assertThat(dayPlanDao.selectedEventsOn(today).map { it.rsvpState }).containsExactly(RsvpState.PENDING, RsvpState.PENDING)
+    }
+
+    @Test
+    fun setAlarms_recordsTheSkipReason_andSendsNoRsvp_forEventsTheTableSkips() = runTest {
+        val soloBlock = testCalendarEvent(4, at(12), at(13), title = "Dentist", meeting = false)
+        val readOnlyInvite = testCalendarEvent(5, at(14), at(15), title = "Read-only invite").copy(calendarAccessLevel = 200)
+        val alreadyAccepted = testCalendarEvent(6, at(15), at(16), title = "Accepted").copy(selfStatus = SelfStatus.ACCEPTED)
+        val state = TestAppState.copy(
+            eventsByDay = mapOf(today to DayEvents(today, listOf(standup, soloBlock, readOnlyInvite, alreadyAccepted), Instant.EPOCH)),
+        )
+        val dayPlanDao = FakeDayPlanDao(
+            selections = listOf(selection(standup), selection(soloBlock), selection(readOnlyInvite), selection(alreadyAccepted)),
+        )
+
+        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = state).toList()
+
+        assertThat(output.filterIsInstance<RsvpAccept>()).containsExactly(RsvpAccept(today, standup.key))
+        assertThat(dayPlanDao.selectedEventsOn(today).associate { it.eventId to it.rsvpState }).isEqualTo(
+            mapOf(
+                standup.eventId to RsvpState.PENDING,
+                soloBlock.eventId to RsvpState.NOT_APPLICABLE,
+                readOnlyInvite.eventId to RsvpState.UNRESPONDABLE,
+                alreadyAccepted.eventId to RsvpState.NOT_APPLICABLE,
+            ),
+        )
+        // every one of them still got its alarm: the RSVP never gates scheduling
+        assertThat(scheduler.armed.values.map { it.eventId }.sorted()).isEqualTo(listOf(1L, 4L, 5L, 6L))
+    }
+
+    @Test
+    fun setAlarms_stillArmsADeclinedOrCancelledSelection_butNeverRsvpsForIt() = runTest {
+        // selected earlier, then declined by the user (or cancelled by the organizer) in Google
+        // Calendar while the selection row stayed stored: the alarm is still theirs to keep, but
+        // "Set alarms" must not turn the decline back into "Yes, going" (TODO.md §4.6)
+        val declined = testCalendarEvent(4, at(12), at(13), title = "Declined later").copy(selfStatus = SelfStatus.DECLINED)
+        val cancelled = testCalendarEvent(5, at(14), at(15), title = "Cancelled later").copy(status = EventStatus.CANCELED)
+        val state = TestAppState.copy(
+            eventsByDay = mapOf(today to DayEvents(today, listOf(standup, declined, cancelled), Instant.EPOCH)),
+        )
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup), selection(declined), selection(cancelled)))
+
+        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = state).toList()
+
+        assertThat(output.filterIsInstance<RsvpAccept>()).containsExactly(RsvpAccept(today, standup.key))
+        assertThat(dayPlanDao.selectedEventsOn(today).associate { it.eventId to it.rsvpState }).isEqualTo(
+            mapOf(
+                standup.eventId to RsvpState.PENDING,
+                declined.eventId to RsvpState.NOT_APPLICABLE,
+                cancelled.eventId to RsvpState.NOT_APPLICABLE,
+            ),
+        )
+        assertThat(scheduler.armed.values.map { it.eventId }.sorted()).isEqualTo(listOf(1L, 4L, 5L))
+    }
+
+    @Test
+    fun setAlarms_reArmingAnAlreadyAnsweredSelection_keepsItsAnswerAndSendsNoRsvp() = runTest {
+        // answered on an earlier tap, then the event moved into the past (alarm cancelled,
+        // selection skipped) and back again: the fresh event now reads ACCEPTED from our own
+        // write, so a fresh decision would be NOT_APPLICABLE and would erase the "sent" tick
+        val accepted = standup.copy(selfStatus = SelfStatus.ACCEPTED)
+        val state = TestAppState.copy(eventsByDay = mapOf(today to DayEvents(today, listOf(accepted), Instant.EPOCH)))
+        val dayPlanDao = FakeDayPlanDao(
+            selections = listOf(selection(standup).copy(rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 100)),
+        )
+
+        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = state).toList()
+
+        assertThat(output.filterIsInstance<RsvpAccept>()).isEmpty()
+        assertThat(scheduler.armed.keys.toList()).containsExactly(1L)
+        assertThat(dayPlanDao.selectedEventsOn(today).single()).isEqualTo(
+            selection(standup).copy(alarmId = 1, alarmAt = at(8, 55).toEpochMilli(), rsvpState = RsvpState.ACCEPTED_LOCALLY, rsvpEventId = 100),
+        )
+    }
+
+    @Test
+    fun setAlarms_neverRsvpsForAKeptRetimedOrSkippedSelection() = runTest {
+        // standup already armed (kept), the review armed but moved (re-timed), the early bird past (skipped)
+        val armedStandup = ScheduledAlarmEntity(
+            alarmId = 1, date = today, eventId = standup.eventId, instanceTime = 0, fireAt = at(8, 55).toEpochMilli(),
+            title = standup.title, beginMillis = standup.begin.toEpochMilli(), endMillis = standup.end.toEpochMilli(), soundIndex = 5,
+        )
+        val armedReview = armedStandup.copy(
+            alarmId = 2, eventId = designReview.eventId, fireAt = at(9, 25).toEpochMilli(), title = designReview.title,
+            beginMillis = at(9, 30).toEpochMilli(), endMillis = at(10, 30).toEpochMilli(),
+        )
+        alarmDao.rows[1] = armedStandup
+        alarmDao.rows[2] = armedReview
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup), selection(designReview), selection(earlyBird)))
+
+        val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
+
+        assertThat(output.filterIsInstance<RsvpAccept>()).isEmpty()
+        assertThat(dayPlanDao.selectedEventsOn(today).map { it.rsvpState }).containsExactly(
+            RsvpState.NOT_APPLICABLE, RsvpState.NOT_APPLICABLE, RsvpState.NOT_APPLICABLE,
+        )
     }
 
     @Test
@@ -87,7 +200,7 @@ class ScheduleAlarmsSideEffectsTest {
 
         assertThat(alarmDao.rows.values.map { it.eventId }).containsExactly(standup.eventId)
         assertThat(dayPlanDao.selectedEventsOn(today).first { it.eventId == earlyBird.eventId }.alarmId).isNull()
-        val message = (output.single() as ShowMessage).message
+        val message = output.message
         assertThat(message.text).isEqualTo(R.string.day_alarms_set_some_skipped)
         assertThat(message.formatArgs).isEqualTo(listOf<Any>(1, 1))
     }
@@ -98,7 +211,7 @@ class ScheduleAlarmsSideEffectsTest {
 
         val output = sideEffect(dayPlanDao).output(SetAlarms(today), state = stateWithEvents).toList()
 
-        val message = (output.single() as ShowMessage).message
+        val message = output.message
         assertThat(message.text).isEqualTo(R.plurals.day_alarms_skipped)
         assertThat(message.quantity).isEqualTo(1)
         // the day still counts as "alarms set": the FAB flips to Share with nothing armed
@@ -177,7 +290,7 @@ class ScheduleAlarmsSideEffectsTest {
 
         val output = sideEffect(dayPlanDao).output(SetAlarms(tomorrow), state = state).toList()
 
-        val message = (output.single() as ShowMessage).message
+        val message = output.message
         assertThat(message.text).isEqualTo(R.plurals.day_alarms_set_on_day)
         assertThat(message.formatArgs).isEqualTo(listOf<Any>(1, "Tuesday, Sep 15"))
         assertThat(alarmDao.rows.getValue(1).date).isEqualTo(tomorrow)
@@ -209,6 +322,8 @@ class ScheduleAlarmsSideEffectsTest {
         assertThat(dayPlanDao.selectedEventsOn(today).single().alarmId).isNull()
         // not "alarms set": the FAB must keep reading "Set alarms (1)" so the tap can be retried
         assertThat(dayPlanDao.plansFlow.value.mapNotNull { it.alarmsSetAt }).isEmpty()
+        // and no alarm means no RSVP either
+        assertThat(dayPlanDao.selectedEventsOn(today).single().rsvpState).isEqualTo(RsvpState.NOT_APPLICABLE)
         assertThat(output.map { (it as? ShowMessage)?.message?.text ?: it }).containsExactly(
             R.string.alarms_exact_permission_missing,
             PermissionsMaybeChanged,
@@ -229,7 +344,9 @@ class ScheduleAlarmsSideEffectsTest {
         assertThat(scheduler.armed.keys.toList()).containsExactly(2L)
         assertThat(dayPlanDao.selectedEventsOn(today).single().alarmId).isEqualTo(2)
         assertThat(dayPlanDao.plansFlow.value.single().alarmsSetAt).isEqualTo(now.toEpochMilli())
-        assertThat((output.single() as ShowMessage).message.text).isEqualTo(R.plurals.day_alarms_set_today)
+        assertThat(output.message.text).isEqualTo(R.plurals.day_alarms_set_today)
+        // the retry is the first successful arm, so it is the one that RSVPs
+        assertThat(output.filterIsInstance<RsvpAccept>()).containsExactly(RsvpAccept(today, standup.key))
     }
 
     @Test
@@ -257,7 +374,7 @@ class ScheduleAlarmsSideEffectsTest {
         assertThat(scheduler.armed).isEmpty()
         // nothing selected and nothing armed is "nothing picked", not "alarms set": the FAB hides
         assertThat(dayPlanDao.plansFlow.value.single().alarmsSetAt).isNull()
-        val message = (output.single() as ShowMessage).message
+        val message = output.message
         assertThat(message.text).isEqualTo(R.plurals.day_alarms_cleared)
         assertThat(message.quantity).isEqualTo(2)
         assertThat(message.formatArgs).isEqualTo(listOf<Any>(2))

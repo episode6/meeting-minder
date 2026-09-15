@@ -38,6 +38,8 @@ private fun SelectedEventEntity.toSelectedEvent(): SelectedEvent = SelectedEvent
     end = Instant.ofEpochMilli(endMillis),
     alarmId = alarmId,
     alarmAt = alarmAt?.let(Instant::ofEpochMilli),
+    rsvpState = rsvpState,
+    rsvpEventId = rsvpEventId,
 )
 
 /** [CalendarEvent] copied into a fresh, unarmed, un-RSVP'd [SelectedEventEntity] for [date] (`ToggleEvent`). */
