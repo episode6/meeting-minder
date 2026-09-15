@@ -1122,7 +1122,9 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 - [ ] **PR-14: Release prep.** `[Sonnet 5, effort medium]` Real launcher icon + `project-icon.svg`, `README` screenshots via
   the `publish-screenshots` skill, `verify` skill rewritten for this app's core flow (including
   the adb calendar-seeding recipe), `THIRD_PARTY_LICENSES.md` reconciled with
-  `expected-dependencies.txt`, first `release/v1.0.0` branch per `RELEASE_CHECKLIST.md`.
+  `expected-dependencies.txt`. The first `release/v1.0.0` branch is a separate, later step:
+  `RELEASE_CHECKLIST.md` cuts it from a green `main`, so it happens via `release-branch-skill`
+  once the PR-1..PR-14 stack has merged to `main`, not as part of this PR.
 
 Later / v2 ideas (not scheduled): home-screen widget with today's busy ranges, "tomorrow evening
 heads-up" share, per-event lead time, wearable alarm mirroring, a "commute" buffer before the
@@ -1170,7 +1172,7 @@ the rationale. "Effort" is the reasoning-effort hint for the implementing agent.
 | PR-11 | Opus 5 | high | WorkManager content-trigger re-arming and the differ; the scope rules in §4.3 are precise but easy to get subtly wrong. |
 | PR-12 | Sonnet 5 | medium | Settings screen over DataStore; UI plumbing. |
 | PR-13 | Opus 5 | high | A grab-bag of edge cases (midnight rollover, timezone changes, TalkBack) that needs judgement about what to test. |
-| PR-14 | Sonnet 5 | medium | Icons, README, licence reconciliation, release branch per the checklist. |
+| PR-14 | Sonnet 5 | medium | Icons, README, licence reconciliation. Release branch per the checklist follows separately once the stack has merged. |
 
 Reviewers should be a **different** model than the implementer where practical (Fable reviews
 Opus/Sonnet work; Opus reviews Fable work). Escalate one tier when a PR's CI or device tests
