@@ -1,5 +1,7 @@
 # Gradle files
 .gradle/
+# Kotlin 2.x per-project compiler/daemon session data
+.kotlin/
 # rooted on purpose: a bare `build/` also swallows source directories that happen to be
 # named build, e.g. build-logic/src/main/kotlin/com/episode6/meetingminder/build/
 /build/

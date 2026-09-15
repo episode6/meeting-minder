@@ -32,7 +32,7 @@ Convention plugins must stay in the `build-logic` included build, **never buildS
 
 ## Package map
 
-This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (the repo scaffold has only `MainActivity` and `ui/theme/`). New code goes where this map says, not wherever is convenient.
+This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (so far: `di/`, `store/` + `store/sideeffects/`, `ui/navigation/`, `ui/theme/`, `ui/day/` (the empty day-view shell), `ui/licenses/` and `ui/util/`). New code goes where this map says, not wherever is convenient.
 
 | Package | Responsibility |
 |---------|----------------|
@@ -97,11 +97,11 @@ fun SomeScreen(
 
 - ViewModels expose `StateFlow<XxxUiState>` built with `store.mapStore { … }.stateIn(viewModelScope, WhileSubscribed(5_000), …)`, plus `on…` callbacks that dispatch.
 - Composables **do not** see the store, call DAOs, launch coroutines for business logic, or hold mutable domain state. Collect state in the navigation/wiring layer.
-- One-shot UI events (snackbars) come from the store's `transientMessage` and are turned into a `SharedFlow` by the ViewModel, not modelled as long-lived `StateFlow` state.
+- One-shot UI events (snackbars) come from the store's `transientMessage`, not long-lived `StateFlow` state: the ViewModel exposes a cold `Flow<UiMessage>` (`store.map { it.transientMessage }.filterNotNull().distinctUntilChanged` by id), and the wiring layer collects it in a `LaunchedEffect`, dispatching `ClearMessage(id)` through the ViewModel before showing the snackbar. Clearing is explicit, so nothing is lost when the effect restarts (e.g. returning from another screen).
 
 ### Dependency injection (Metro)
 
-- **`AppGraph`** (`@DependencyGraph`, `@SingleIn(AppScope::class)`) provides app-scoped singletons: context, the app `CoroutineScope`, the Room database, DataStore, the `AppStore`.
+- **`AppGraph`** (`@DependencyGraph`, `@SingleIn(AppScope::class)`) provides app-scoped singletons: context, the app `CoroutineScope`, DataStore, the `AppStore` (built by `createAppStore`, which store tests call too), and from PR-7 the Room database (Room won't compile a database with no entities, so the provider arrives with the first table).
 - ViewModels use `@Inject` + `@ViewModelKey` + `@ContributesIntoMap` (or `@AssistedInject` when they need runtime parameters) and are reached from Compose via `metroViewModel()` / `assistedMetroViewModel()` with `LocalMetroViewModelFactory` provided in `MainActivity`.
 - Receivers, services and workers reach the graph through `Context.appGraph`.
 - Do **not** introduce Hilt/Dagger.
@@ -131,13 +131,13 @@ fun SomeScreen(
 
 ## Testing
 
-Like the package map, this is the **target**: the scaffold has only a licence-notice unit test and a launch smoke test, and each convention below arrives with the PR that first needs it (the Roborazzi plugin is catalog-only until then, and the side-effect helper lands with the store).
+Like the package map, this is the **target**, and each convention below arrives with the PR that first needs it. In place so far: plain unit tests for the reducer, store wiring and `DayViewModel`; the side-effect `output(...)` helper (`app/src/test/.../store/sideeffects/SideEffectTestSupport.kt`); Roborazzi's generated preview tests (`generateComposePreviewRobolectricTests` in `app/build.gradle.kts`, covering every non-private `@Preview` under `com.episode6.meetingminder`); and the launch smoke test.
 
 - Pure logic (overlap packing, share text formatting, change-detection diff, alarm time math, the reducer) — plain JUnit 4 + **assertk**, no Android.
 - Side effects — podcast-hacker's mockk-free `output(vararg actions, state)` helper over `SideEffectContext`; assert emitted actions with `containsExactly`. **Turbine** for flow assertions.
 - Prefer hand-written fakes (`FakeCalendarRepository`) over mockk.
 - `ContentResolver` code gets Robolectric tests with `ShadowContentResolver`, plus one instrumented test against a real inserted event.
-- Screenshot tests use **Roborazzi** over every `@Preview`; reference PNGs are committed and CI runs `verifyRoborazziDebug`.
+- Screenshot tests use **Roborazzi** over every `@Preview`: the plugin's `generateComposePreviewRobolectricTests` generates one Robolectric test per preview, so previews must be `internal` (the scanner skips private ones) and a new preview needs no hand-written test. Reference PNGs are committed under `app/src/test/screenshots/` and CI runs `verifyRoborazziDebug`. Record them with `./gradlew recordRoborazziDebug` **inside the CI image** (font rendering differs between machines); a plain `test`/`check` renders but neither records nor compares.
 - Device tests run on an API 36 emulator via `android-device-tests.yml`.
 
 ---

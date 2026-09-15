@@ -52,6 +52,7 @@ fun MeetingMinderTheme(
 ) {
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
+        typography = MeetingMinderTypography,
         content = content,
     )
 }

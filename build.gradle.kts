@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization) apply false
     alias(libs.plugins.androidx.room) apply false
     alias(libs.plugins.metro) apply false
+    alias(libs.plugins.roborazzi) apply false
 }
 
 // snapshot unless CI is building from a release tag (GITHUB_REF=refs/tags/v*);

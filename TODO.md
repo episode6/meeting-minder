@@ -172,7 +172,7 @@ data class AppState(
     val dayPlans: Map<LocalDate, DayPlan> = emptyMap(),        // from Room
     val ringing: RingingAlarm? = null,
     val scheduleChanges: List<ScheduleChange> = emptyList(),   // "changed since shared" banner
-    val transientMessage: UiMessage? = null,                   // snackbars; VMs turn into SharedFlow
+    val transientMessage: UiMessage? = null,                   // snackbars; VMs expose a one-shot Flow, cleared by id
 )
 
 data class DayEvents(val date: LocalDate, val events: List<CalendarEvent>, val loadedAt: Instant)
@@ -840,7 +840,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   targets in §3.1 plus redux-store-flow 1.1.8, WorkManager, Roborazzi, assertk, Turbine.
   `MainActivity` shows "Meeting Minder" in the theme. `expected-permissions.txt` empty,
   `expected-dependencies.txt` generated. CI must be green on this PR before anything else merges.
-- [ ] **PR-2: DI + store + theme + navigation shell.** `[Opus 5, effort high]` Metro `AppGraph` (context, app
+- [x] **PR-2: DI + store + theme + navigation shell.** `[Opus 5, effort high]` Metro `AppGraph` (context, app
   `CoroutineScope`, Room DB provider, DataStore, `AppStore`), `AppMetroViewModelFactory`,
   `MeetingMinderApp`, `Context.appGraph`, `AppState`/actions/reducer with reducer unit tests,
   `SideEffectMiddleware` wiring with an `@IntoSet` contribution pattern and one no-op side effect
