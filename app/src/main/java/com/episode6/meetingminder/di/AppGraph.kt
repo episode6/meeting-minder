@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
+import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.createAppStore
@@ -32,6 +33,9 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
 interface AppGraph : ViewModelGraph {
 
     val appStore: AppStore
+
+    /** Bound in [CalendarModule]; the change-detection worker (PR-11) reads it from here. */
+    val calendarRepository: CalendarRepository
 
     @DependencyGraph.Factory
     fun interface Factory {

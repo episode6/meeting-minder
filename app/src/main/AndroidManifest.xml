@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- No permissions yet: the calendar, alarm, notification, boot and foreground
-         service permissions arrive with the features that need them (see TODO.md).
-         INTERNET must never appear here — the app is fully offline by spec, and
-         app/expected-permissions.txt is verified against the merged release manifest
-         on every `check`. -->
+    <!-- Permissions arrive with the features that need them (see TODO.md); every one is
+         pinned in app/expected-permissions.txt, which is verified against the merged
+         release manifest on every `check`. INTERNET must never appear here: the app is
+         fully offline by spec. -->
+
+    <!-- Both live in the CALENDAR group, so one runtime dialog grants them together.
+         READ_CALENDAR is everything the app reads (TODO.md §4.1); WRITE_CALENDAR is
+         only for the RSVP "Yes, going" written when alarms are set (§4.6). -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
 
     <application
         android:name=".MeetingMinderApp"
