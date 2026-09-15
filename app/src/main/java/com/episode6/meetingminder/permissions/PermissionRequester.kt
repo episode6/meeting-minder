@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.permissions
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -10,13 +11,14 @@ import android.provider.Settings
  * Intents for permission flows the UI can't drive with a plain runtime-permission
  * launcher (TODO.md §4.5). [appSettingsIntent] is the "two denials -> Open settings"
  * escape hatch for the calendar row (§4.1): once `shouldShowRequestPermissionRationale`
- * reports false after an actual denial, Android won't show the dialog again.
+ * reports false after an actual denial, Android won't show the dialog again; it is also
+ * where the app's battery usage ("Unrestricted" / "Restricted") is set.
  * [appNotificationSettingsIntent] is the same escape hatch for notifications, and the
  * only route on 12/12L where `POST_NOTIFICATIONS` doesn't exist. [exactAlarmSettingsIntent]
  * is the "Alarms & reminders" special-access page, only ever needed on 12/12L (33+
  * auto-grants through `USE_EXACT_ALARM`, §4.4). [fullScreenIntentSettingsIntent] is the
- * "Full-screen alarms" special-access page (34+). The battery-optimisation intent arrives
- * with PR-13.
+ * "Full-screen alarms" special-access page (34+). [ignoreBatteryOptimizationsIntent] is the
+ * optional battery-optimisation row's system dialog.
  */
 object PermissionRequester {
     fun appSettingsIntent(context: Context): Intent =
@@ -39,6 +41,18 @@ object PermissionRequester {
         } else {
             appSettingsIntent(context)
         }
+
+    /**
+     * The system "Stop optimizing battery usage?" dialog for this app (TODO.md §4.4). Lint's
+     * BatteryLife check warns about it because Play only allows it for a few app categories;
+     * Meeting Minder isn't on Play, and it's an optional, user-initiated row.
+     */
+    @SuppressLint("BatteryLife")
+    fun ignoreBatteryOptimizationsIntent(context: Context): Intent =
+        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, packageUri(context))
+
+    /** The system list of battery-optimisation exemptions, for an OEM build without the dialog above. */
+    fun batteryOptimizationSettingsIntent(): Intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
 
     private fun packageUri(context: Context): Uri = Uri.fromParts("package", context.packageName, null)
 }

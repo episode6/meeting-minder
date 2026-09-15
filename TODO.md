@@ -246,6 +246,16 @@ like the receivers above), and the foreground check rides on `CalendarContentCha
 selection and plan from Room (and the day from the provider when the store hasn't loaded
 it) because "Share update" can arrive into a cold process.
 
+NB (PR-13): `SetAnchorDate(date)` is a new `UpdateStateAction`, dispatched by
+`AnchorDateSideEffects` while the store has subscribers (checked as the UI appears and at the
+top of every minute), so a process that lives past midnight — or through a clock or timezone
+change — moves "today". It never moves `settledDate`: the pager keeps showing the date the
+user was on. `MaintainAlarms` did not become a store action either: `alarm/AlarmMaintainer`
+is called by `MaintainAlarmsSideEffects` on `CalendarContentChanged` and by `BootReceiver`
+(after its re-arm), like the other receivers. The graph's `Clock` is `di/DeviceClock`, which
+re-reads the device zone on every call: `Clock.systemDefaultZone()` captured it once, which
+left every app-scoped holder in the old zone after a timezone change.
+
 Side effects (one file each under `store/sideeffects/`): `ObserveDayPlans`, `LoadCalendars`,
 `LoadDayEvents` (`transformLatest` on `LoadDay`/`CalendarContentChanged`), `ToggleEvent`,
 `ScheduleAlarms`, `RsvpAccept`, `ShareSchedule`, `AlarmRinging`, `ChangeDetection`, `CalendarObserver`
@@ -683,6 +693,13 @@ NB (PR-11), where the build settled things this section leaves open:
 - WorkManager's merged `ACCESS_NETWORK_STATE` is removed with `tools:node="remove"`; nothing
   uses a network constraint.
 
+NB (PR-13), mechanism 3: `monitor/CalendarProviderChangedReceiver` is declared
+`android:enabled="false"` (exported, since the provider is another app) and
+`WorkManagerChangeWorkScheduler.update` enables it exactly while some day is shared, so a
+calendar sync never wakes the process when nothing is monitored. It enqueues a fourth unique
+work, `calendar-change-broadcast` (`KEEP`, 5 s settle, reason `PROVIDER_CHANGED`, which
+re-arms like the periodic check), and a disarm cancels a waiting one.
+
 **Testing**: `ChangeDetector` is plain JVM. Worker tests via `WorkManagerTestInitHelper` +
 `TestDriver.setAllConstraintsMet`. On device: `adb shell content insert/update/delete` on the test
 calendar; `adb shell dumpsys jobscheduler | grep -A30 com.episode6.meetingminder` to see the
@@ -756,6 +773,19 @@ temporary allowlist that permits starting a foreground service from the backgrou
   store action (see the §3.2 NB), and it only re-arms rows whose event hasn't ended yet. A
   `setAlarmClock` call the OS refuses marks that row `CANCELLED` and leaves `alarms_set_at`
   clear, so the FAB keeps reading "Set alarms (N)" and the next tap inserts a fresh row.
+  NB (PR-13): `MaintainAlarms` is `alarm/AlarmMaintainer` over the pure `maintainAlarms`. It
+  reads each armed row's day **and the day either side** (a timezone change can move an
+  occurrence across midnight) from **every** calendar, whatever the Settings filter says, and
+  skips Settings' test alarm. Two refinements of the rules above: an event moved so that its
+  new alarm time has already passed is still re-timed (it rings at once — the automatic path
+  can't ask, and a meeting pulled forward mustn't be missed), except a `SNOOZED` row, which
+  keeps its snooze as in the "Set alarms" reconcile; and since the repository never returns
+  `STATUS_CANCELED` occurrences, an organizer's cancellation reads as "vanished" and keeps its
+  alarm. A cancelled row clears its selection's alarm pointer; a re-time the OS refuses is
+  marked `CANCELLED` and its day goes back to "Set alarms". `BootReceiver` re-arms from Room
+  first and maintains second, so a slow provider can't eat the re-arm's broadcast budget.
+  Timezone changes need nothing else: `fire_at` is an instant, and `di/DeviceClock` keeps
+  every holder of the graph's `Clock` in the new zone.
 - Force-stop (and some OEM task-swipes) cancels all alarms and blocks broadcasts until the app is
   opened again. Nothing fixes that in code; the onboarding OEM card explains it.
 
@@ -877,6 +907,15 @@ deep links return no result. Required rows block "Continue"; optional rows don't
 Onboarding is shown at first launch, whenever a required grant is missing at launch, and from
 the overflow menu. Backup/restore to a new device drops special-access grants, so the launch
 check matters.
+
+NB (PR-13): row 5 disappears once granted (it isn't a "Granted" tick like the required rows),
+and falls back to `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` on a build without the dialog.
+A warning row, **Background use restricted**, appears only while
+`ActivityManager.isBackgroundRestricted` or the standby bucket is `STANDBY_BUCKET_RESTRICTED`
+("Open settings" → app info, where battery usage is set); Settings' Permissions subtitle reads
+"Background use restricted" then too, unless a required grant is missing. Row 6 matches
+`Build.MANUFACTURER` against `permissions/SleepyManufacturer` and links to that maker's
+dontkillmyapp.com page in the browser. Row 7 stays in Settings ("Test alarm", PR-12).
 
 ### 4.6 RSVP "Yes, going" when alarms are set
 
@@ -1075,7 +1114,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
 
 ### Phase 4 — Polish and ship
 
-- [ ] **PR-13: Robustness.** `[Opus 5, effort high]` `PROVIDER_CHANGED` accelerator receiver, battery-optimisation
+- [x] **PR-13: Robustness.** `[Opus 5, effort high]` `PROVIDER_CHANGED` accelerator receiver, battery-optimisation
   onboarding row (optional, only shown if `isIgnoringBatteryOptimizations` is false), midnight
   rollover while the app is open (anchor date refresh), timezone change handling for stored
   alarms, "restricted" standby bucket warning, dark theme pass over every screen, large font

@@ -1,8 +1,11 @@
 package com.episode6.meetingminder.permissions
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.Application
 import android.app.NotificationManager
+import android.app.usage.UsageStatsManager
+import android.os.PowerManager
 import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
 import assertk.assertions.isEqualTo
@@ -102,6 +105,41 @@ class PermissionCheckerTest {
         )
 
         assertThat(checker.currentState().notificationsGranted).isFalse()
+    }
+
+    @Test
+    fun ignoringBatteryOptimizations_isReported_butNeverRequired() {
+        shadowOf(context.getSystemService(PowerManager::class.java)).setIgnoringBatteryOptimizations(context.packageName, true)
+
+        assertThat(checker.currentState().ignoringBatteryOptimizations).isTrue()
+        assertThat(checker.currentState().allRequiredGranted).isFalse()
+    }
+
+    @Test
+    fun backgroundRestrictedByTheUser_isReported_withoutBlockingTheDayView() {
+        shadowOf(context).grantPermissions(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
+        assertThat(checker.currentState().backgroundRestricted).isFalse()
+
+        shadowOf(context.getSystemService(ActivityManager::class.java)).setBackgroundRestricted(true)
+
+        assertThat(checker.currentState().backgroundRestricted).isTrue()
+        assertThat(checker.currentState().allRequiredGranted).isTrue()
+    }
+
+    @Test
+    fun theRestrictedStandbyBucket_isReportedAsBackgroundRestricted() {
+        shadowOf(context.getSystemService(UsageStatsManager::class.java))
+            .setCurrentAppStandbyBucket(UsageStatsManager.STANDBY_BUCKET_RESTRICTED)
+
+        assertThat(checker.currentState().backgroundRestricted).isTrue()
+    }
+
+    @Test
+    fun theRareStandbyBucket_isNotRestricted() {
+        shadowOf(context.getSystemService(UsageStatsManager::class.java))
+            .setCurrentAppStandbyBucket(UsageStatsManager.STANDBY_BUCKET_RARE)
+
+        assertThat(checker.currentState().backgroundRestricted).isFalse()
     }
 
     @Test

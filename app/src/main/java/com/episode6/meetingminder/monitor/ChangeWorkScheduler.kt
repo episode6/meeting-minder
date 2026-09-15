@@ -26,6 +26,9 @@ enum class ChangeCheckReason {
     /** [CalendarChangeWorker] run at the last shared day's midnight. */
     DAY_ENDED,
 
+    /** [CalendarChangeWorker] enqueued by [CalendarProviderChangedReceiver], the accelerator. */
+    PROVIDER_CHANGED,
+
     /** The app itself: the foreground `CalendarContentChanged` reload, a share, "Mark as not shared". */
     IN_APP,
 }
@@ -59,6 +62,11 @@ interface ChangeWorkScheduler {
  *   when it runs with nothing shared any more
  *   and the check disarms everything and cancels the notifications.
  *
+ * - [BROADCAST_WORK] — the accelerator (mechanism 3): a one-time check a few seconds after
+ *   the provider's `PROVIDER_CHANGED` broadcast, enqueued by [CalendarProviderChangedReceiver]
+ *   with `KEEP` so a sync's burst of broadcasts runs one check. The receiver is enabled here
+ *   exactly while monitoring is armed.
+ *
  * A worker never cancels its own one-time unique work (it is finishing anyway); the
  * periodic work has to cancel itself to stop.
  */
@@ -69,10 +77,12 @@ class WorkManagerChangeWorkScheduler(private val context: Context, private val c
     private val workManager: WorkManager by lazy { WorkManager.getInstance(context) }
 
     override fun update(sharedDays: Set<LocalDate>, reason: ChangeCheckReason) {
+        CalendarProviderChangedReceiver.setEnabled(context, enabled = sharedDays.isNotEmpty())
         if (sharedDays.isEmpty()) {
             if (reason != ChangeCheckReason.CONTENT_TRIGGER) workManager.cancelUniqueWork(TRIGGER_WORK)
             workManager.cancelUniqueWork(PERIODIC_WORK)
             if (reason != ChangeCheckReason.DAY_ENDED) workManager.cancelUniqueWork(EXPIRY_WORK)
+            if (reason != ChangeCheckReason.PROVIDER_CHANGED) workManager.cancelUniqueWork(BROADCAST_WORK)
             return
         }
         workManager.enqueueUniqueWork(
@@ -87,7 +97,7 @@ class WorkManagerChangeWorkScheduler(private val context: Context, private val c
                 ChangeCheckReason.DAY_ENDED -> ExistingWorkPolicy.APPEND_OR_REPLACE
                 // a background check only drops days that have ended, so the last shared day
                 // is where the waiting expiry already is: don't re-create it on every sync
-                ChangeCheckReason.CONTENT_TRIGGER, ChangeCheckReason.PERIODIC -> ExistingWorkPolicy.KEEP
+                ChangeCheckReason.CONTENT_TRIGGER, ChangeCheckReason.PERIODIC, ChangeCheckReason.PROVIDER_CHANGED -> ExistingWorkPolicy.KEEP
                 ChangeCheckReason.IN_APP -> ExistingWorkPolicy.REPLACE
             },
             expiryRequest(sharedDays.max()),
@@ -127,7 +137,25 @@ class WorkManagerChangeWorkScheduler(private val context: Context, private val c
         const val TRIGGER_WORK = "calendar-change-trigger"
         const val PERIODIC_WORK = "calendar-change-periodic"
         const val EXPIRY_WORK = "calendar-change-expiry"
+        const val BROADCAST_WORK = "calendar-change-broadcast"
         const val WORK_TAG = "calendar-change"
+
+        /**
+         * The accelerator's check ([BROADCAST_WORK]), settling for as long as the content
+         * trigger does so one sync is one check. `KEEP`: a broadcast while one is waiting or
+         * running adds nothing (the content trigger still catches a change made mid-run).
+         */
+        fun enqueueProviderChangedCheck(workManager: WorkManager) {
+            workManager.enqueueUniqueWork(
+                BROADCAST_WORK,
+                ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<CalendarChangeWorker>()
+                    .setInitialDelay(TRIGGER_CONTENT_UPDATE_DELAY)
+                    .setInputData(workDataOf(CalendarChangeWorker.KEY_REASON to ChangeCheckReason.PROVIDER_CHANGED.name))
+                    .addTag(WORK_TAG)
+                    .build(),
+            )
+        }
 
         val TRIGGER_CONTENT_UPDATE_DELAY: Duration = Duration.ofSeconds(5)
         val TRIGGER_CONTENT_MAX_DELAY: Duration = Duration.ofMinutes(1)

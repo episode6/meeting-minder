@@ -38,6 +38,16 @@ class AppStoreReducerTest {
     }
 
     @Test
+    fun setAnchorDate_movesTheAnchor_butNotThePageBeingViewed() {
+        val viewing = state.reduce(SetSettledDate(today.plusDays(3)))
+
+        val result = viewing.reduce(SetAnchorDate(today.plusDays(1)))
+
+        assertThat(result).isEqualTo(viewing.copy(anchorDate = today.plusDays(1)))
+        assertThat(result.settledDate).isEqualTo(today.plusDays(3))
+    }
+
+    @Test
     fun setPermissions_replacesTheWholePermissionState() {
         val granted = PermissionState(calendarGranted = true)
 

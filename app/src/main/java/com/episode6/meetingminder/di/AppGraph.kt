@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
+import com.episode6.meetingminder.alarm.AlarmMaintainer
 import com.episode6.meetingminder.alarm.AlarmRescheduler
 import com.episode6.meetingminder.alarm.AlarmRinger
 import com.episode6.meetingminder.alarm.AlarmScheduler
@@ -55,6 +56,9 @@ interface AppGraph : ViewModelGraph {
     /** `BootReceiver`'s re-arm of every stored alarm. */
     val alarmRescheduler: AlarmRescheduler
 
+    /** `BootReceiver`'s re-timing of armed alarms whose meetings moved after boot or a clock/timezone change. */
+    val alarmMaintainer: AlarmMaintainer
+
     /** `AlarmRingingService`'s row transitions (fire, snooze, dismiss, auto-timeout), and `AlarmReceiver`'s fallback. */
     val alarmRinger: AlarmRinger
 
@@ -76,11 +80,12 @@ interface AppGraph : ViewModelGraph {
     fun provideAppCoroutineScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /**
-     * The wall clock, in the device's zone. Deliberately unscoped: every injection reads the
-     * zone afresh, so a ViewModel created after a timezone change sees the new one.
+     * The wall clock, in the device's zone as it is at each call ([DeviceClock]): app-scoped
+     * singletons hold their `Clock` for the life of the process, so a clock that captured
+     * the zone once would leave them in the old zone after a timezone change.
      */
     @Provides
-    fun provideClock(): Clock = Clock.systemDefaultZone()
+    fun provideClock(): Clock = DeviceClock
 
     @Provides
     @SingleIn(AppScope::class)
@@ -92,12 +97,13 @@ interface AppGraph : ViewModelGraph {
         scope: CoroutineScope,
         sideEffects: Set<SideEffect<AppState>>,
         permissionChecker: PermissionChecker,
+        clock: Clock,
     ): AppStore =
         createAppStore(
             scope = scope,
             // Computed synchronously (not via PermissionsMaybeChanged) so the very first
             // composition already knows whether to route to Onboarding or Day.
-            initialState = AppState(anchorDate = LocalDate.now(), permissions = permissionChecker.currentState()),
+            initialState = AppState(anchorDate = LocalDate.now(clock), permissions = permissionChecker.currentState()),
             sideEffects = sideEffects,
         )
 }
