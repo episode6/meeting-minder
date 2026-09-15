@@ -55,8 +55,8 @@ private val MinChipMinutes = ceil(DayViewDefaults.MinChipHeight / DayViewDefault
  * hour grid, the [DayEventsLayout] of [EventChip]s packed by [layoutDay], and the
  * [NowLine] on today.
  *
- * Stateless and data-free: [scrollState] is hoisted so the screen can share one across
- * pager pages (PR-6) and the callbacks only report which event was tapped. All-day chips
+ * Stateless and data-free: [scrollState] is hoisted so [DayPager] can share one across
+ * its pages and the callbacks only report which event was tapped. All-day chips
  * aren't selectable (all-day events are never meetings, never alarmed and never shared);
  * they only answer long-press. Needs a bounded height.
  */

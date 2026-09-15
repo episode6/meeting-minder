@@ -2,6 +2,38 @@
 
 ### v1.0.0 - Unreleased
 
+- Fix: the day view could launch showing stale (or no) events until the store next changed.
+  `createAppStore` now hands each new collector the current state with `onSubscription`
+  instead of redux-store-flow's `SubscriberAwareStoreFlow` `onStart` hand-over, which runs
+  before the collector is registered with the shared flow — so a load that finished while
+  the UI was still busy with its first frame (the `combine` in `DayViewModel` yields after
+  every value) was emitted to nobody. Found by the device test relaunching in a warm
+  process on a slow emulator; pinned by a new `AppStoreTest` case. The device test now
+  prints the full semantics tree (not just the roots) when a wait times out.
+- Day pager wired to the store (PR-6): the day view now shows your real calendar. A
+  `HorizontalPager` (anchor page = today) swipes between days; each settled page dispatches
+  `LoadDay`, and the new `LoadDayEvents` side effect (`transformLatest`) loads that day and
+  the day either side into `AppState.eventsByDay`, which the reducer keeps to the settled
+  date ± 1. `LoadCalendars` fills `AppState.calendars`. All pages share one vertical scroll
+  position, which opens an hour before today's first meeting (else 8 AM). The Today action
+  scrolls the pager back, the app-bar subtitle counts the settled day's meetings
+  ("3 meetings", per `isMeeting`), today's page draws the now-line from a once-a-minute
+  clock, and long-pressing a chip opens that occurrence in the calendar app (falling back to
+  the calendar at that time, with a snackbar if no app handles either; a manifest
+  `<queries>` entry makes the calendar app visible, no new permission). A foreground
+  `ContentObserver` (`CalendarObserver` side effect over the new `CalendarChangeSource`) is
+  registered only while the store has subscribers and calendar access is granted, and
+  turns debounced provider changes into `CalendarContentChanged` reloads; the day screen's
+  snackbar collection is now lifecycle-aware so a backgrounded app releases the observer.
+  New tests: the three side effects, the window-pruning reducer, `DayViewModel`'s
+  mapping (meeting count, now-line, midnight-ending events, initial scroll), page/date
+  maths, Robolectric tests for the observer, the open-in-calendar intents (pure builders in
+  `data/calendar/CalendarIntents`) and their launcher (`ui/navigation/OpenInCalendar`, so
+  `data/` never imports `ui/`), and a device
+  test that inserts an event into the real provider before launch and while the day is on
+  screen and waits for its chip. New Roborazzi previews: `DayScreenBusyPreview` and
+  `DayScreenLoadingPreview`.
+
 - Screenshot references are now recorded in CI: applying the `record-screenshots` label to a PR
   runs the new `record-screenshots.yml`, which records the Roborazzi reference PNGs inside the
   CI image and opens a PR with any changes against that PR's branch, to be reviewed image by

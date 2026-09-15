@@ -32,7 +32,7 @@ Convention plugins must stay in the `build-logic` included build, **never buildS
 
 ## Package map
 
-This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (so far: `di/`, `model/`, `store/` + `store/sideeffects/`, `data/calendar/`, `permissions/`, `ui/navigation/`, `ui/theme/`, `ui/day/` (the static day timeline: `DayTimeline`, `DayEventsLayout`, `EventChip`, `NowLine`, `DayViewDefaults`; the pager and data arrive with PR-6), `ui/onboarding/`, `ui/licenses/` and `ui/util/`). New code goes where this map says, not wherever is convenient.
+This is the **target** layout from `TODO.md` §3.3; each package arrives with the PR that first needs it (so far: `di/`, `model/`, `store/` + `store/sideeffects/`, `data/calendar/`, `permissions/`, `ui/navigation/`, `ui/theme/`, `ui/day/` (`DayScreen`, `DayPager`, `DayTimeline`, `DayEventsLayout`, `EventChip`, `NowLine`, `DayViewDefaults`, `DayViewModel`), `ui/onboarding/`, `ui/licenses/` and `ui/util/`). New code goes where this map says, not wherever is convenient.
 
 | Package | Responsibility |
 |---------|----------------|
@@ -70,20 +70,17 @@ typealias AppStore = StoreFlow<AppState>
 
 @Provides @SingleIn(AppScope::class)
 fun provideAppStore(scope: CoroutineScope, sideEffects: Set<SideEffect<AppState>>): AppStore =
-    SubscriberAwareStoreFlow(
-        scope = scope,
-        initialValue = AppState(),
-        reducer = AppState::reduce,
-        middlewares = listOf(SideEffectMiddleware(sideEffects)),
-    )
+    createAppStore(scope, AppState(anchorDate = LocalDate.now(), …), sideEffects)   // store/AppStore.kt
 ```
+
+`createAppStore` builds the store the way redux-store-flow's `SubscriberAwareStoreFlow` does (a `StoreFlow` + `SideEffectMiddleware`, shared with `WhileSubscribed()` and `replay = 0`, dispatching `SubscriberStatusChanged` as collectors come and go) with one deliberate difference: each new collector is handed the current state via `onSubscription`, not the library's `onStart`. `onStart` runs before the collector is registered with the shared flow, so a state change reduced while the collector is still busy with that first value (a `combine` downstream `yield()`s after every value, which on the main thread means "after the first frame") is emitted to nobody and the collector stays on stale state until the next change — the day view launched with an empty day whenever the load finished during the first frame. Keep building the store here, not with the library call, until the library adopts `onSubscription`.
 
 Conventions:
 
 - Actions split into `sealed interface UpdateStateAction : Action` (the **only** actions the reducer touches) and `sealed interface AsyncAction : Action` (handled only by side effects).
 - Side effects are contributed per feature: `@ContributesTo(AppScope::class) interface XSideEffects { @Provides @IntoSet fun ...: SideEffect<AppState> }`. One file per concern under `store/sideeffects/`.
 - **Room is the source of truth for persisted state.** An observe-only side effect streams DAO flows into `Set…` actions. Two gotchas, both learned in podcast-hacker: an observe-only effect must still subscribe to `actions` (`merge(actions.filter { false }, dao.observe().map { … })`) or every effect starves; and never suspend inline in the relay path — do IO inside `flatMapMerge`/`transformLatest`.
-- `SubscriberAwareStoreFlow` emits `SubscriberStatusChanged`, which is how the calendar `ContentObserver` gets registered only while UI is visible.
+- The store emits `SubscriberStatusChanged` (redux-store-flow's `subscriber-aware` action) when its first collector arrives and its last one leaves, which is how the calendar `ContentObserver` gets registered only while UI is visible.
 
 **ViewModels still exist**, one thin one per screen, and they are the only thing a Composable sees:
 
@@ -131,7 +128,7 @@ fun SomeScreen(
 
 ## Testing
 
-Like the package map, this is the **target**, and each convention below arrives with the PR that first needs it. In place so far: plain unit tests for the reducer, store wiring, `DayViewModel`, `isMeeting`, `EventKey`, the `layoutDay` overlap packing and the chip mapping; the side-effect `output(...)` helper (`app/src/test/.../store/sideeffects/SideEffectTestSupport.kt`); `FakeCalendarRepository` and the Robolectric `FakeCalendarProvider` (both under `app/src/test/.../data/calendar/`); Roborazzi's generated preview tests (`generateComposePreviewRobolectricTests` in `app/build.gradle.kts`, covering every non-private `@Preview` under `com.episode6.meetingminder`); the launch smoke test; and one instrumented repository test against the real provider.
+Like the package map, this is the **target**, and each convention below arrives with the PR that first needs it. In place so far: plain unit tests for the reducer, store wiring, `DayViewModel`, `isMeeting`, `EventKey`, the `layoutDay` overlap packing, pager page/date maths and the chip mapping; side-effect tests with the `output(...)` helper (`app/src/test/.../store/sideeffects/SideEffectTestSupport.kt`; its `Flow` overload plus Turbine covers timing-dependent effects such as the debounced `CalendarObserver`); `FakeCalendarRepository`, `FakeCalendarChangeSource` and the Robolectric `FakeCalendarProvider` (all under `app/src/test/.../data/calendar/`), and `testCalendarEvent(...)` for `CalendarEvent` fixtures; Roborazzi's generated preview tests (`generateComposePreviewRobolectricTests` in `app/build.gradle.kts`, covering every non-private `@Preview` under `com.episode6.meetingminder`); the launch smoke test; one instrumented repository test against the real provider; and the instrumented `DayViewDeviceTest`, which inserts events into the real provider and waits for their chips.
 
 - Pure logic (overlap packing, share text formatting, change-detection diff, alarm time math, the reducer) — plain JUnit 4 + **assertk**, no Android.
 - Side effects — podcast-hacker's mockk-free `output(vararg actions, state)` helper over `SideEffectContext`; assert emitted actions with `containsExactly`. **Turbine** for flow assertions.
@@ -186,6 +183,7 @@ This repo follows the episode6 app-repo shape (see `RELEASE_CHECKLIST.md`, the s
 | Convention plugins in buildSrc | Never. buildSrc's classloader silently disables Metro codegen; keep them in the `build-logic` included build. |
 | Suspending inline in a side effect's relay path | Starves the effect. Do IO inside `flatMapMerge`/`transformLatest`. |
 | Observe-only side effects | Must still subscribe to `actions` (`merge(actions.filter { false }, …)`) or every effect starves. |
+| `SubscriberAwareStoreFlow(...)` from the library | Don't: its `onStart { emit(state) }` hand-over loses changes made while a new collector is busy with its first value (the first frame). `createAppStore` uses `onSubscription`; `AppStoreTest` pins it. |
 | Store in Composables | Composables take `state` + callbacks. Only ViewModels (and non-UI components) touch the store. |
 | `EventKey` vs `eventId` | The key survives moves and identifies a *plan*; `eventId` is what provider writes and dirty checks use. They differ for exception events. |
 | Alarms in the past | Skipped, with a snackbar — never silently dropped. |

@@ -26,6 +26,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.lifecycle.repeatOnLifecycle
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.permissions.PermissionRequester
 import com.episode6.meetingminder.ui.day.DayScreen
@@ -86,20 +87,27 @@ fun MeetingMinderNavigation() {
             val resources = LocalResources.current
             val uriHandler = LocalUriHandler.current
             val checkForUpdatesUrl = stringResource(R.string.check_for_updates_url)
+            val dayContext = LocalContext.current
+            val entryLifecycleOwner = LocalLifecycleOwner.current
 
-            LaunchedEffect(viewModel) {
-                viewModel.messages.collect { message ->
-                    viewModel.onMessageShown(message)
-                    snackbarHostState.showSnackbar(
-                        resources.getString(message.text, *message.formatArgs.toTypedArray()),
-                    )
+            // Only while started: a plain LaunchedEffect would keep collecting the store
+            // with the app in the background, which would keep the store's subscribers
+            // (and so the calendar ContentObserver) alive after the UI is gone.
+            LaunchedEffect(viewModel, entryLifecycleOwner) {
+                entryLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    viewModel.messages.collect { message ->
+                        viewModel.onMessageShown(message)
+                        snackbarHostState.showSnackbar(
+                            resources.getString(message.text, *message.formatArgs.toTypedArray()),
+                        )
+                    }
                 }
             }
 
             DayScreen(
                 state = state,
                 snackbarHostState = snackbarHostState,
-                onTodayClick = viewModel::onTodayClick,
+                onPageSettled = viewModel::onPageSettled,
                 onPermissionsClick = { navController.navigate(Route.Onboarding) },
                 onSettingsClick = { navController.navigate(Route.Settings) },
                 onLicensesClick = { navController.navigate(Route.Licenses) },
@@ -112,9 +120,13 @@ fun MeetingMinderNavigation() {
                         viewModel.onCheckForUpdatesFailed()
                     }
                 },
-                // selection (PR-7) and open-in-calendar (PR-6) aren't wired yet
+                // selection arrives with PR-7
                 onEventClick = {},
-                onEventLongClick = {},
+                onEventLongClick = { event ->
+                    viewModel.calendarEventFor(event.key)?.let { calendarEvent ->
+                        if (!dayContext.openInCalendar(calendarEvent)) viewModel.onOpenInCalendarFailed()
+                    }
+                },
             )
         }
         composable<Route.Onboarding> {

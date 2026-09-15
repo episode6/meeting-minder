@@ -9,7 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import assertk.assertThat
 import assertk.assertions.startsWith
-import com.episode6.meetingminder.ui.day.DAY_TIMELINE_TEST_TAG
+import com.episode6.meetingminder.ui.day.DAY_PAGER_TEST_TAG
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -39,7 +39,8 @@ class AppLaunchTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         assertThat(context.packageName).startsWith("com.episode6.meetingminder")
 
-        composeRule.onNodeWithTag(DAY_TIMELINE_TEST_TAG).assertExists()
+        // one pager, but several composed pages each carrying the timeline tag
+        composeRule.onNodeWithTag(DAY_PAGER_TEST_TAG).assertExists()
         composeRule.onNodeWithContentDescription(context.getString(R.string.day_today)).assertExists()
     }
 }

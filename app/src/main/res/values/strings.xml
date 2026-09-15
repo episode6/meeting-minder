@@ -6,6 +6,12 @@
 
     <string name="day_today">Today</string>
     <string name="day_subtitle_no_meetings">No meetings</string>
+    <!-- app bar subtitle: how many meetings (not solo blocks) are on the shown day -->
+    <plurals name="day_subtitle_meetings">
+        <item quantity="one">%d meeting</item>
+        <item quantity="other">%d meetings</item>
+    </plurals>
+    <string name="open_in_calendar_failed">No calendar app found to open this event</string>
     <string name="day_all_day">all-day</string>
     <!-- chip time range, e.g. "9:00 – 9:30" -->
     <string name="event_time_range">%1$s – %2$s</string>
