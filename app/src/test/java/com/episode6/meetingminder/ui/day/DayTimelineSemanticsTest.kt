@@ -79,8 +79,16 @@ class DayTimelineSemanticsTest {
         show(DayTimelineState(date = PreviewDate, timedEvents = listOf(event)))
 
         val node = composeRule.onNodeWithContentDescription("Standup", substring = true)
-        node.assert(hasStateDescription("Alarm set for 8:55"))
+        node.assert(hasStateDescription("Alarm set for 8:55 AM"))
         assertThat(node.fetchSemanticsNode().config.getOrNull(SemanticsActions.OnClick)?.label).isEqualTo("deselect")
+    }
+
+    @Test
+    fun anArmedChip_speaksAnOnTheHourAlarmInFull_notAsTheChipsShortForm() {
+        val event = PreviewEvents.standup.copy(title = "Standup", location = null, selected = true, alarmAt = LocalTime.of(9, 0))
+        show(DayTimelineState(date = PreviewDate, timedEvents = listOf(event)))
+
+        composeRule.onNodeWithContentDescription("Standup", substring = true).assert(hasStateDescription("Alarm set for 9:00 AM"))
     }
 
     @Test

@@ -133,7 +133,7 @@ fun AlarmRingingScreen(
                         textAlign = TextAlign.Center,
                     )
                     Text(
-                        text = timeFormat.time(state.now),
+                        text = timeFormat.clockTime(state.now),
                         style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onBackground,
                     )

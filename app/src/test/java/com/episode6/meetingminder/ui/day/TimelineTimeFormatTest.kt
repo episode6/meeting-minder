@@ -19,6 +19,30 @@ class TimelineTimeFormatTest {
     }
 
     @Test
+    fun twelve_hour_onTheHourChipTimesAreHourPlusPeriodLetter() {
+        val format = TimelineTimeFormat(is24Hour = false, locale = Locale.US)
+
+        assertThat(format.time(LocalTime.of(9, 0))).isEqualTo("9a")
+        assertThat(format.time(LocalTime.of(12, 0))).isEqualTo("12p")
+        assertThat(format.time(LocalTime.of(0, 0))).isEqualTo("12a")
+        assertThat(format.time(LocalTime.of(17, 0))).isEqualTo("5p")
+        // the gutter, the clock and the AM/PM form keep their full shape
+        assertThat(format.hourLabel(9)).isEqualTo("9 AM")
+        assertThat(format.clockTime(LocalTime.of(9, 0))).isEqualTo("9:00")
+        assertThat(format.timeWithPeriod(LocalTime.of(9, 0))).isEqualTo("9:00 AM")
+    }
+
+    @Test
+    fun twelve_hour_keepsTheFullFormWhereAmAndPmStartAlike() {
+        // 午前 / 午後: "9午" would say nothing about which half of the day
+        val format = TimelineTimeFormat(is24Hour = false, locale = Locale.JAPAN)
+
+        assertThat(format.time(LocalTime.of(9, 0))).isEqualTo("9:00")
+        assertThat(format.time(LocalTime.of(21, 0))).isEqualTo("9:00")
+        assertThat(format.time(LocalTime.of(9, 30))).isEqualTo("9:30")
+    }
+
+    @Test
     fun twenty_four_hour_isZeroPaddedInTheGutterAndOnChips() {
         val format = TimelineTimeFormat(is24Hour = true, locale = Locale.US)
 
@@ -26,6 +50,9 @@ class TimelineTimeFormatTest {
         assertThat(format.hourLabel(21)).isEqualTo("21:00")
         assertThat(format.time(LocalTime.of(9, 30))).isEqualTo("09:30")
         assertThat(format.time(LocalTime.of(21, 5))).isEqualTo("21:05")
+        // no short form on the hour: "09" alone wouldn't read as a time
+        assertThat(format.time(LocalTime.of(9, 0))).isEqualTo("09:00")
+        assertThat(format.clockTime(LocalTime.of(9, 0))).isEqualTo("09:00")
     }
 
     @Test

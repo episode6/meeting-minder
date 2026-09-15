@@ -74,7 +74,7 @@
     <!-- chip hints for the RSVP sent when the alarm was set: a small tick, or a subtle "couldn't RSVP" -->
     <string name="event_rsvp_sent">RSVP sent</string>
     <string name="event_rsvp_failed">couldn\'t RSVP</string>
-    <!-- chip state with an RSVP outcome appended, e.g. "Alarm set for 8:55, RSVP sent" -->
+    <!-- chip state with an RSVP outcome appended, e.g. "Alarm set for 8:55 AM, RSVP sent" -->
     <string name="event_state_with_rsvp">%1$s, %2$s</string>
     <!-- what TalkBack reads for a chip (its visible text uses dashes and a bell icon), e.g. "Design review, 10:00 AM to 11:00 AM, Meet" -->
     <string name="event_a11y_timed">%1$s, %2$s to %3$s</string>
