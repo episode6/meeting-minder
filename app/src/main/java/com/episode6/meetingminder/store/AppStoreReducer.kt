@@ -19,6 +19,7 @@ private fun AppState.reduceUpdateStateAction(action: UpdateStateAction): AppStat
     is SetPendingShare -> copy(pendingShare = action.share)
     is ClearPendingShare -> if (pendingShare?.id == action.id) copy(pendingShare = null) else this
     is SetRinging -> copy(ringing = action.ringing)
+    is SetScheduleChanges -> copy(scheduleChanges = action.changes)
 }
 
 private fun AppState.withDayEvents(dayEvents: DayEvents): AppState {

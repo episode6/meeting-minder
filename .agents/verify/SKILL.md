@@ -169,6 +169,12 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   deviceidle force-idle` checks that a scheduled alarm still fires in Doze.
 - `adb shell dumpsys notification --noredact | grep -A5 meetingminder` for the
   change-detection notification.
+- Change detection (after sharing a day): edit the test calendar with `adb shell content
+  update`/`insert`/`delete` and expect the "Your schedule changed since you shared it"
+  notification within about a minute, and the banner on the day view.
+  `adb shell dumpsys jobscheduler | grep -A30 $PKG` shows the content trigger (a job with a
+  `content://com.android.calendar` trigger); `adb shell cmd jobscheduler run -f $PKG <jobId>`
+  forces a check. Tapping "Share update" should open the chooser with `Update:` text.
 - Landscape probe: `settings put system user_rotation 1` (and back to 0).
 
 ## Gotchas

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.PagerState
@@ -81,6 +82,8 @@ data class DayUiState(
     val days: Map<LocalDate, DayTimelineState> = emptyMap(),
     /** Where the timeline should first open, once today's events have loaded; see [initialFirstVisibleHour]. */
     val initialFirstVisibleHour: Float? = null,
+    /** The "changed since you shared" banner for [date] (TODO.md §4.3); null when [date] isn't shared or nothing changed. */
+    val changeBanner: ScheduleChangeBannerState? = null,
 ) {
     fun timelineFor(date: LocalDate): DayTimelineState = days[date] ?: DayTimelineState(date)
 }
@@ -93,6 +96,10 @@ private val TitleFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
  * reports only where it stops); "Today" scrolls the pager back to its anchor page, which
  * then settles like any swipe. All pages share [scrollState], which jumps once to
  * [DayUiState.initialFirstVisibleHour] when it arrives, unless the user has already scrolled.
+ * A shared day that has changed since shows the [ScheduleChangeBanner] above the pager, whose
+ * "Re-share" is [onShareAgainClick]. [jumpToDate] (a notification's deep link) scrolls the
+ * pager straight to that day, which then settles like any other page; [onJumpHandled]
+ * reports it done.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,11 +119,19 @@ fun DayScreen(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     pagerState: PagerState = rememberDayPagerState(state.anchorDate, state.date),
     scrollState: ScrollState = rememberTimelineScrollState(),
+    jumpToDate: LocalDate? = null,
+    onJumpHandled: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val currentOnPageSettled by rememberUpdatedState(onPageSettled)
     LaunchedEffect(pagerState, state.anchorDate) {
         snapshotFlow { pagerState.settledPage }.collect { currentOnPageSettled(pageToDate(it, state.anchorDate)) }
+    }
+    val currentOnJumpHandled by rememberUpdatedState(onJumpHandled)
+    LaunchedEffect(pagerState, jumpToDate) {
+        if (jumpToDate == null) return@LaunchedEffect
+        pagerState.scrollToPage(dateToPage(jumpToDate, state.anchorDate))
+        currentOnJumpHandled()
     }
     InitialScroll(state.initialFirstVisibleHour, scrollState)
 
@@ -154,16 +169,33 @@ fun DayScreen(
         floatingActionButton = { DayFab(state.fabState, onFabClick) },
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
-        DayPager(
-            state = state,
-            pagerState = pagerState,
-            scrollState = scrollState,
-            onEventClick = onEventClick,
-            onEventLongClick = onEventLongClick,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-        )
+        ) {
+            ChangeBanner(state.changeBanner, onShareAgainClick)
+            DayPager(
+                state = state,
+                pagerState = pagerState,
+                scrollState = scrollState,
+                onEventClick = onEventClick,
+                onEventLongClick = onEventLongClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            )
+        }
+    }
+}
+
+/** [ScheduleChangeBanner] sliding in and out with [state]; the last non-null state keeps rendering while it animates away. */
+@Composable
+private fun ChangeBanner(state: ScheduleChangeBannerState?, onReshareClick: () -> Unit) {
+    var lastState by remember { mutableStateOf(state) }
+    if (state != null) lastState = state
+    AnimatedVisibility(visible = state != null) {
+        lastState?.let { ScheduleChangeBanner(it, onReshareClick) }
     }
 }
 
@@ -419,6 +451,26 @@ internal fun DayScreenSharedPreview() {
             armedCount = 3,
             sharedAtTime = LocalTime.of(8, 12),
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
+        ),
+    )
+}
+
+/**
+ * Render 6's in-app half: the shared day has changed since ("2 changes since you shared" with
+ * the New and Moved lines and "Re-share") above the timeline.
+ */
+@Preview(showBackground = true)
+@Composable
+internal fun DayScreenScheduleChangedPreview() {
+    DayScreenPreviewFrame(
+        DayUiState(
+            anchorDate = PreviewDate,
+            meetingCount = 3,
+            fabState = FabState.Share,
+            armedCount = 3,
+            sharedAtTime = LocalTime.of(8, 12),
+            days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
+            changeBanner = ScheduleChangeBannerState(PreviewBannerLines),
         ),
     )
 }

@@ -3,6 +3,7 @@ package com.episode6.meetingminder.store.sideeffects
 import android.util.Log
 import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.db.DayPlanDao
+import com.episode6.meetingminder.data.db.promoteSyncedRsvps
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.RsvpState
 import com.episode6.meetingminder.store.AppState
@@ -22,7 +23,6 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
-import java.time.LocalDate
 
 private const val TAG = "MeetingMinderRsvp"
 
@@ -80,29 +80,4 @@ private suspend fun CalendarRepository.accept(event: CalendarEvent): RsvpResult 
 } catch (e: Exception) {
     Log.w(TAG, "RSVP for event ${event.eventId} failed", e)
     RsvpResult.Failed
-}
-
-/**
- * A selection whose write went through is `SYNCED` once the row it was written to
- * ([com.episode6.meetingminder.model.SelectedEvent.rsvpEventId]) reads `DIRTY = 0`: the
- * sync adapter has uploaded the response. One-way; a later local edit that dirties the
- * event again doesn't demote it. Nothing is queried unless a row is actually waiting, and
- * a read that fails (calendar access revoked under us) just leaves it waiting.
- */
-private suspend fun DayPlanDao.promoteSyncedRsvps(date: LocalDate, repository: CalendarRepository) {
-    val awaitingSync = selectedEventsOn(date).filter { it.rsvpState == RsvpState.ACCEPTED_LOCALLY && it.rsvpEventId != null }
-    if (awaitingSync.isEmpty()) return
-    val synced = try {
-        repository.syncedEventIds(awaitingSync.mapNotNull { it.rsvpEventId })
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Log.w(TAG, "could not check RSVP sync state", e)
-        return
-    }
-    for (selection in awaitingSync) {
-        if (selection.rsvpEventId in synced) {
-            setRsvp(date, selection.eventId, selection.instanceTime, RsvpState.SYNCED, selection.rsvpEventId)
-        }
-    }
 }

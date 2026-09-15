@@ -44,14 +44,15 @@ import com.episode6.meetingminder.ui.util.ComingSoonScreen
 import com.episode6.meetingminder.ui.util.findActivity
 import com.episode6.meetingminder.ui.util.resolve
 import dev.zacsweers.metrox.viewmodel.metroViewModel
+import java.time.LocalDate
 
 /**
  * The wiring layer: the only place ViewModels are obtained and their state collected,
- * and where one-shot effects (snackbars, activity launchers, later the share sheet and
- * deep links) are handled. Screens below it only take state + callbacks.
+ * and where one-shot effects (snackbars, activity launchers, the share sheet and deep
+ * links) are handled. Screens below it only take state + callbacks.
  */
 @Composable
-fun MeetingMinderNavigation() {
+fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
     val navController = rememberNavController()
     val navigationViewModel: NavigationViewModel = metroViewModel()
     val requiredPermissionsGranted by navigationViewModel.requiredPermissionsGranted.collectAsStateWithLifecycle()
@@ -82,6 +83,26 @@ fun MeetingMinderNavigation() {
             navController.navigate(Route.Onboarding) {
                 popUpTo(navController.graph.id) { inclusive = true }
                 launchSingleTop = true
+            }
+        }
+    }
+
+    // Deep links from notifications (TODO.md §4.3): meetingminder://day/{date} shows that day,
+    // meetingminder://share/{date} also opens its share sheet. MainActivity queues them in
+    // [deepLinks] (its launch intent on a fresh start, and every onNewIntent, since the
+    // notifications launch it single-top) and each is taken here exactly once.
+    var pendingJumpDate by rememberSaveable { mutableStateOf<LocalDate?>(null) }
+    LaunchedEffect(deepLinks, navigationViewModel, navController) {
+        for (link in deepLinks.links) {
+            if (!navigationViewModel.onDeepLink(link)) continue
+            pendingJumpDate = link.date
+            if (navController.currentBackStackEntry?.destination?.hasRoute<Route.Day>() != true &&
+                !navController.popBackStack<Route.Day>(inclusive = false)
+            ) {
+                navController.navigate(Route.Day) {
+                    popUpTo(navController.graph.id) { inclusive = true }
+                    launchSingleTop = true
+                }
             }
         }
     }
@@ -146,6 +167,8 @@ fun MeetingMinderNavigation() {
                     }
                 },
                 onFabClick = viewModel::onFabClick,
+                jumpToDate = pendingJumpDate,
+                onJumpHandled = { pendingJumpDate = null },
             )
         }
         composable<Route.Onboarding> {

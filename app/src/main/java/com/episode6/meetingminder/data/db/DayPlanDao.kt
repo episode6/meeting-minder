@@ -9,11 +9,15 @@ import com.episode6.meetingminder.model.RsvpState
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
-/** Room access to `day_plan` + `selected_event` (TODO.md §3.4); [ObserveDayPlansSideEffects] is its only reader. */
+/** Room access to `day_plan` + `selected_event` (TODO.md §3.4); `ObserveDayPlansSideEffects` streams it into the store. */
 @Dao
 interface DayPlanDao {
     @Query("SELECT * FROM day_plan")
     fun observeDayPlans(): Flow<List<DayPlanEntity>>
+
+    /** One day's plan row, read straight from Room by a share that can't rely on the store having loaded it yet. */
+    @Query("SELECT * FROM day_plan WHERE date = :date")
+    suspend fun dayPlanOn(date: LocalDate): DayPlanEntity?
 
     @Query("SELECT * FROM selected_event")
     fun observeSelectedEvents(): Flow<List<SelectedEventEntity>>

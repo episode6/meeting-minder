@@ -11,7 +11,7 @@ import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.episode6.meetingminder.MainActivity
+import com.episode6.meetingminder.ui.navigation.DeepLinks
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.model.RingingAlarm
 import java.time.LocalDate
@@ -133,13 +133,11 @@ object AlarmNotifications {
     private fun serviceIntent(context: Context, alarmId: Long, intent: Intent): PendingIntent =
         PendingIntent.getService(context, alarmId.toInt(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
+    /** Opens the alarm's day through the same deep link the schedule-changed notification uses, so a running day view jumps to it. */
     private fun openDayIntent(context: Context, alarmId: Long, date: LocalDate): PendingIntent = PendingIntent.getActivity(
         context,
         alarmId.toInt(),
-        Intent(context, MainActivity::class.java)
-            .setAction(Intent.ACTION_VIEW)
-            .setData(AlarmUris.day(date))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        DeepLinks.activityIntent(context, DeepLinks.day(date)),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 

@@ -3,11 +3,14 @@ package com.episode6.meetingminder.ui.day
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.SelectedEvent
+import com.episode6.meetingminder.monitor.toLine
+import com.episode6.meetingminder.share.selectedBusyRanges
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.ClearMessage
@@ -157,7 +160,27 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId) = DayUiStat
         day.toTimelineState(zone, now = now.toLocalTime().takeIf { now.toLocalDate() == date }, selected = dayPlans[date]?.selected.orEmpty())
     },
     initialFirstVisibleHour = eventsByDay[anchorDate]?.let { initialFirstVisibleHour(it.date, it.events, zone) },
+    changeBanner = changeBannerFor(settledDate, zone),
 )
+
+/**
+ * The "changed since you shared" banner for [date] (TODO.md §2/§4.3): only for a day that
+ * has been shared, and only while something differs from that share — the changes the
+ * last check recorded ([AppState.scheduleChanges]), or, once the day's events have loaded,
+ * a selection whose busy ranges no longer match [DayPlan.sharedSnapshot] (§2: changing the
+ * selection after sharing shows the banner too). A re-share resets both. Never for a day
+ * before today ([AppState.anchorDate]): monitoring has ended there, and re-sharing it
+ * would tell nobody anything useful.
+ */
+internal fun AppState.changeBannerFor(date: LocalDate, zone: ZoneId): ScheduleChangeBannerState? {
+    if (date < anchorDate) return null
+    val plan = dayPlans[date]?.takeIf { it.sharedAt != null } ?: return null
+    val changes = scheduleChanges.filter { it.date == date }
+    val events = eventsByDay[date]?.events
+    val selectionChanged = events != null && plan.sharedSnapshot != null &&
+        selectedBusyRanges(plan.selected.mapValues { (_, selection) -> BusyRange(selection.begin, selection.end) }, events) != plan.sharedSnapshot
+    return if (changes.isEmpty() && !selectionChanged) null else ScheduleChangeBannerState(changes.map { it.toLine(zone) })
+}
 
 /**
  * The FAB's state (TODO.md §3.5): hidden with nothing picked, "Set alarms (N)" with a

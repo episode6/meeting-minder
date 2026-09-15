@@ -2,6 +2,44 @@
 
 ### v1.0.0 - Unreleased
 
+- Change detection + notification (PR-11): once a day is shared, Meeting Minder watches it
+  until its midnight and says when it changes. A pure `monitor/ChangeDetector` diffs the
+  day's `change_snapshot` baseline against a fresh read of the whole day using the TODO.md
+  §4.3 table: **New** for any meeting added since the share (selected or not, not yet
+  started), **Moved** / **Cancelled** / **Declined** only for events that were selected at
+  share time (a move into the past, a cancellation after the start, and anything already
+  over are ignored, as are title/colour/attendee edits, identical sync rewrites and all-day
+  events). `monitor/ChangeMonitor` runs it for every shared day (today and later), drops the
+  baselines of days that have ended, records what changed in the new
+  `change_snapshot.changes_json` column (database version 5; baseline rows also store
+  `allDay` now), promotes waiting RSVPs to `SYNCED`, and posts, updates or cancels the
+  `schedule_updates` notification (render 6: one per day, `InboxStyle` with one time-only
+  line per change, titled with the weekday when it isn't today, alerting only when a change
+  is new and the notification isn't already showing, with **Review** → `meetingminder://day/{date}` and **Share update** →
+  `meetingminder://share/{date}` straight into `MainActivity`). It runs in the background
+  from `CalendarChangeWorker` on WorkManager (a content-URI trigger on the calendar provider
+  that re-arms itself after every run, a 30-minute periodic safety net, and a one-time work at
+  the last shared day's midnight that disarms everything), and in the foreground on every
+  `CalendarContentChanged`. A share or "Share again" takes a fresh baseline, cancels the
+  notification and arms monitoring; "Mark as not shared" disarms it. `Navigation.kt` handles
+  the deep links (`ui/navigation/DeepLinks`, queued by `MainActivity` from its launch intent
+  and `onNewIntent`; a link replayed from Recents is ignored): the pager jumps to the day and "Share
+  update" opens the chooser; the missed-alarm notification now opens its day the same way.
+  The day view shows a "changed since you shared" banner (`ScheduleChangeBanner`: "2 changes
+  since you shared", the change lines and **Re-share**) from the new
+  `AppState.scheduleChanges`, and also when the selection no longer matches what was shared.
+  A re-share of a day that has changed sends the `Update:` text. `ShareDay` now reads the
+  selection from Room and the day from the provider when the store hasn't loaded them, so a
+  share from the notification into a cold process shares the right thing. New dependency:
+  WorkManager (`work-runtime-ktx`, plus `work-testing` for tests); its merged
+  `ACCESS_NETWORK_STATE` permission is removed from the manifest, so the permission list is
+  unchanged. New tests: `ChangeDetectorTest` (every row of the §4.3 table),
+  `ChangeMonitorTest`, `WorkManagerChangeWorkSchedulerTest` and `CalendarChangeWorkerTest`
+  (WorkManager's test driver), `ScheduleChangeNotificationsTest`, `DeepLinksTest`,
+  `ChangeDetectionSideEffectsTest`, and new cases in `ShareDaySideEffectsTest`,
+  `ChangeSnapshotDaoTest`, `ChangeSnapshotMappingTest`, `DayViewModelTest`,
+  `NavigationViewModelTest` and `AppStoreReducerTest`; Roborazzi previews of the banner on the
+  day screen and in dark theme.
 - Alarm ringing experience (PR-10): a fired alarm now rings instead of posting a plain
   notification. `AlarmReceiver` takes a wake lock and immediately starts the new
   `AlarmRingingService`, a `mediaPlayback` foreground service that marks the row `FIRED`,

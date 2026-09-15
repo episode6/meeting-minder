@@ -1,5 +1,8 @@
 package com.episode6.meetingminder.ui.day
 
+import com.episode6.meetingminder.monitor.ScheduleChangeLine
+import com.episode6.meetingminder.model.ScheduleChange
+import com.episode6.meetingminder.model.BusyRange
 import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.containsExactly
@@ -448,5 +451,91 @@ class DayViewModelTest {
 
         assertThat(timeline.timedEvents).containsExactly(zeroLengthAtMidnight.toTimelineEvent(zone), standup.toTimelineEvent(zone))
         assertThat(timeline.allDayEvents).isEmpty()
+    }
+
+    private val sharedStandup = DayPlan(
+        date = today,
+        selected = mapOf(standup.key to standup.toSelectedEventForTest()),
+        alarmsSetAt = Instant.EPOCH,
+        sharedAt = Instant.EPOCH,
+        sharedSnapshot = listOf(BusyRange(standup.begin, standup.end)),
+    )
+
+    @Test
+    fun changeBanner_isNull_forADayThatHasntBeenShared() {
+        val state = AppState(
+            anchorDate = today,
+            eventsByDay = mapOf(today to DayEvents(today, listOf(standup), loadedAt)),
+            dayPlans = mapOf(today to sharedStandup.copy(sharedAt = null)),
+            scheduleChanges = listOf(ScheduleChange.New(today, designReview.key, designReview.begin, designReview.end)),
+        )
+
+        assertThat(state.toDayUiState(now, zone).changeBanner).isNull()
+    }
+
+    @Test
+    fun changeBanner_isNull_whileTheSharedDayStillMatchesTheShare() {
+        val state = AppState(
+            anchorDate = today,
+            eventsByDay = mapOf(today to DayEvents(today, listOf(standup, designReview), loadedAt)),
+            dayPlans = mapOf(today to sharedStandup),
+            scheduleChanges = listOf(ScheduleChange.New(tomorrow, designReview.key, designReview.begin, designReview.end)),
+        )
+
+        assertThat(state.toDayUiState(now, zone).changeBanner).isNull()
+    }
+
+    @Test
+    fun changeBanner_listsTheSettledDaysRecordedChanges() {
+        val new = ScheduleChange.New(today, designReview.key, designReview.begin, designReview.end)
+        val moved = ScheduleChange.Moved(today, EventKey(8, 0), at(today, 12), at(today, 13), at(today, 12, 30), at(today, 13, 30))
+        val state = AppState(
+            anchorDate = today,
+            eventsByDay = mapOf(today to DayEvents(today, listOf(standup, designReview), loadedAt)),
+            dayPlans = mapOf(today to sharedStandup),
+            scheduleChanges = listOf(moved, new),
+        )
+
+        assertThat(state.toDayUiState(now, zone).changeBanner).isEqualTo(
+            ScheduleChangeBannerState(
+                listOf(
+                    ScheduleChangeLine.Moved("12:00 – 1:00 PM", "12:30 – 1:30 PM"),
+                    ScheduleChangeLine.New("2:00 – 3:00 PM"),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun changeBanner_showsWithNoLines_whenOnlyTheSelectionChangedSinceTheShare() {
+        val state = AppState(
+            anchorDate = today,
+            eventsByDay = mapOf(today to DayEvents(today, listOf(standup, designReview), loadedAt)),
+            dayPlans = mapOf(
+                today to sharedStandup.copy(selected = sharedStandup.selected + (designReview.key to designReview.toSelectedEventForTest())),
+            ),
+        )
+
+        assertThat(state.toDayUiState(now, zone).changeBanner).isEqualTo(ScheduleChangeBannerState(emptyList()))
+    }
+
+    @Test
+    fun changeBanner_waitsForTheDayToLoad_beforeComparingTheSelection() {
+        val state = AppState(anchorDate = today, dayPlans = mapOf(today to sharedStandup.copy(selected = emptyMap())))
+
+        assertThat(state.toDayUiState(now, zone).changeBanner).isNull()
+    }
+
+    @Test
+    fun changeBanner_isNull_forASharedDayThatHasEnded() {
+        val yesterday = today.minusDays(1)
+        val state = AppState(
+            anchorDate = today,
+            settledDate = yesterday,
+            dayPlans = mapOf(yesterday to sharedStandup.copy(selected = emptyMap())),
+            scheduleChanges = listOf(ScheduleChange.New(yesterday, designReview.key, designReview.begin, designReview.end)),
+        )
+
+        assertThat(state.toDayUiState(now, zone).changeBanner).isNull()
     }
 }

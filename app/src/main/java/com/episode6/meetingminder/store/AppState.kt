@@ -6,6 +6,7 @@ import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.RingingAlarm
+import com.episode6.meetingminder.model.ScheduleChange
 import com.episode6.meetingminder.permissions.PermissionState
 import java.time.LocalDate
 
@@ -30,9 +31,8 @@ data class PendingShare(val id: Long, val date: LocalDate, val text: String) {
  * write this one object.
  *
  * Fields arrive with the PR that first needs them: permissions (PR-4), calendars and
- * `eventsByDay` (PR-6), `dayPlans` (PR-7), `pendingShare` (PR-9), `ringing` (PR-10);
- * `scheduleChanges` (PR-11) is added here alongside its model type, with a default so
- * existing call sites keep compiling.
+ * `eventsByDay` (PR-6), `dayPlans` (PR-7), `pendingShare` (PR-9), `ringing` (PR-10),
+ * `scheduleChanges` (PR-11).
  */
 data class AppState(
     /** The day the day pager is anchored to: today at launch (midnight rollover is PR-13). */
@@ -75,6 +75,13 @@ data class AppState(
      * goes back to null.
      */
     val ringing: RingingAlarm? = null,
+    /**
+     * What has changed on every shared day since it was shared (TODO.md §4.3), each change
+     * tagged with its day: `change_snapshot.changes_json`, recorded by `monitor/ChangeMonitor`
+     * and streamed in by `ChangeDetectionSideEffects`. Drives the day view's "changed since
+     * you shared" banner; a re-share empties that day's list.
+     */
+    val scheduleChanges: List<ScheduleChange> = emptyList(),
 )
 
 /** The dates [AppState.eventsByDay] keeps: the settled page and the page either side of it. */

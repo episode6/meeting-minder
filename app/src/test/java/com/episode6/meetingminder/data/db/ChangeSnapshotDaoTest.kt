@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.data.db
 
+import kotlinx.coroutines.flow.first
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
@@ -53,5 +54,35 @@ class ChangeSnapshotDaoTest {
         dao.delete(today)
 
         assertThat(dao.forDate(today)).isNull()
+    }
+
+    @Test
+    fun upsert_startsWithNoRecordedChanges_andAReShareResetsThem() = runTest {
+        dao.upsert(ChangeSnapshotEntity(today, takenAt = 1_000, eventsJson = "[]"))
+        assertThat(dao.forDate(today)!!.changesJson).isEqualTo("[]")
+        dao.setChanges(today, takenAt = 1_000, changesJson = "[1]")
+
+        dao.upsert(ChangeSnapshotEntity(today, takenAt = 2_000, eventsJson = "[]"))
+
+        assertThat(dao.forDate(today)!!.changesJson).isEqualTo("[]")
+    }
+
+    @Test
+    fun setChanges_onlyWritesOntoTheBaselineItWasFoundAgainst() = runTest {
+        dao.upsert(ChangeSnapshotEntity(today, takenAt = 1_000, eventsJson = "[]"))
+
+        assertThat(dao.setChanges(today, takenAt = 999, changesJson = "[1]")).isEqualTo(0)
+        assertThat(dao.forDate(today)!!.changesJson).isEqualTo("[]")
+        assertThat(dao.setChanges(today, takenAt = 1_000, changesJson = "[1]")).isEqualTo(1)
+        assertThat(dao.forDate(today)!!.changesJson).isEqualTo("[1]")
+    }
+
+    @Test
+    fun allAndObserveAll_listEverySharedDayInDateOrder() = runTest {
+        dao.upsert(ChangeSnapshotEntity(today.plusDays(1), takenAt = 1, eventsJson = "[]"))
+        dao.upsert(ChangeSnapshotEntity(today, takenAt = 1, eventsJson = "[]"))
+
+        assertThat(dao.all().map { it.date }).isEqualTo(listOf(today, today.plusDays(1)))
+        assertThat(dao.observeAll().first().map { it.date }).isEqualTo(listOf(today, today.plusDays(1)))
     }
 }
