@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.episode6.meetingminder.data.db.DayPlanDao
 import com.episode6.meetingminder.data.db.MeetingMinderDatabase
+import com.episode6.meetingminder.data.db.ScheduledAlarmDao
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesTo
 import dev.zacsweers.metro.Provides
@@ -25,4 +26,7 @@ interface DatabaseModule {
 
     @Provides
     fun dayPlanDao(database: MeetingMinderDatabase): DayPlanDao = database.dayPlanDao()
+
+    @Provides
+    fun scheduledAlarmDao(database: MeetingMinderDatabase): ScheduledAlarmDao = database.scheduledAlarmDao()
 }

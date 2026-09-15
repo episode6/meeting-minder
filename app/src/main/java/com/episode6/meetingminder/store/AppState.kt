@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.store
 
+import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
@@ -53,12 +54,15 @@ val AppState.loadedWindow: ClosedRange<LocalDate>
 /**
  * A snackbar message. [id] is chosen by whoever dispatches [ShowMessage] (see
  * [UiMessage.next]) so [ClearMessage] can clear exactly the message that was shown and
- * never a newer one that replaced it in the meantime.
+ * never a newer one that replaced it in the meantime. `ui/util/UiMessageText.kt` turns
+ * it into text: [text] is a plurals resource chosen by [quantity] when that is set, and a
+ * plain string resource otherwise.
  */
 data class UiMessage(
     val id: Long,
-    @param:StringRes val text: Int,
+    val text: Int,
     val formatArgs: List<Any> = emptyList(),
+    val quantity: Int? = null,
 ) {
     companion object {
         private var lastId = 0L
@@ -67,5 +71,10 @@ data class UiMessage(
         @Synchronized
         fun next(@StringRes text: Int, vararg formatArgs: Any): UiMessage =
             UiMessage(id = ++lastId, text = text, formatArgs = formatArgs.toList())
+
+        /** Like [next], for a plurals resource picked by [quantity]. */
+        @Synchronized
+        fun nextPlural(@PluralsRes text: Int, quantity: Int, vararg formatArgs: Any): UiMessage =
+            UiMessage(id = ++lastId, text = text, formatArgs = formatArgs.toList(), quantity = quantity)
     }
 }

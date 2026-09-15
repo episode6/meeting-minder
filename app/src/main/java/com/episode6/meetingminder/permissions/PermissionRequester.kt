@@ -7,13 +7,24 @@ import android.provider.Settings
 
 /**
  * Intents for permission flows the UI can't drive with a plain runtime-permission
- * launcher. [appSettingsIntent] is the "two denials -> Open settings" escape hatch for
- * the calendar row (TODO.md §4.1): once `shouldShowRequestPermissionRationale` reports
- * false after an actual denial, Android won't show the dialog again. Special-access
- * intents for the rows this PR stubs (exact alarms, full-screen intents, battery
- * optimisation) arrive with the PRs that wire those rows up (PR-8, PR-10, PR-13).
+ * launcher (TODO.md §4.5). [appSettingsIntent] is the "two denials -> Open settings"
+ * escape hatch for the calendar row (§4.1): once `shouldShowRequestPermissionRationale`
+ * reports false after an actual denial, Android won't show the dialog again.
+ * [appNotificationSettingsIntent] is the same escape hatch for notifications, and the
+ * only route on 12/12L where `POST_NOTIFICATIONS` doesn't exist. [exactAlarmSettingsIntent]
+ * is the "Alarms & reminders" special-access page, only ever needed on 12/12L (33+
+ * auto-grants through `USE_EXACT_ALARM`, §4.4). The full-screen-intent and
+ * battery-optimisation intents arrive with PR-10 and PR-13.
  */
 object PermissionRequester {
     fun appSettingsIntent(context: Context): Intent =
-        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri(context))
+
+    fun appNotificationSettingsIntent(context: Context): Intent =
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+
+    fun exactAlarmSettingsIntent(context: Context): Intent =
+        Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, packageUri(context))
+
+    private fun packageUri(context: Context): Uri = Uri.fromParts("package", context.packageName, null)
 }

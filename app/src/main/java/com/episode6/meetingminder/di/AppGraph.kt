@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
+import com.episode6.meetingminder.alarm.AlarmRescheduler
+import com.episode6.meetingminder.alarm.FiredAlarmHandler
 import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.permissions.PermissionChecker
 import com.episode6.meetingminder.store.AppState
@@ -35,6 +37,15 @@ interface AppGraph : ViewModelGraph {
 
     /** Bound in [CalendarModule]; the change-detection worker (PR-11) reads it from here. */
     val calendarRepository: CalendarRepository
+
+    /** For receivers: work that must outlive `onReceive` (under `goAsync()`) runs here. */
+    val appCoroutineScope: CoroutineScope
+
+    /** `BootReceiver`'s re-arm of every stored alarm. */
+    val alarmRescheduler: AlarmRescheduler
+
+    /** `AlarmReceiver`'s handling of a fired alarm. */
+    val firedAlarmHandler: FiredAlarmHandler
 
     @DependencyGraph.Factory
     fun interface Factory {

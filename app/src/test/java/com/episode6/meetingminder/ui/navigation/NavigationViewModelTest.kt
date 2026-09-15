@@ -34,26 +34,35 @@ class NavigationViewModelTest {
         Dispatchers.resetMain()
     }
 
+    private val allGranted = PermissionState(calendarGranted = true, notificationsGranted = true, exactAlarmsGranted = true)
+
     @Test
-    fun calendarGranted_seededFromInitialStoreState() = runStoreTest(
-        { createAppStore(this, AppState(anchorDate = today, permissions = PermissionState(calendarGranted = true)), emptySet()) },
+    fun requiredPermissionsGranted_seededFromInitialStoreState() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today, permissions = allGranted), emptySet()) },
     ) { store ->
         val viewModel = NavigationViewModel(store)
-        assertThat(viewModel.calendarGranted.value).isEqualTo(true)
+        assertThat(viewModel.requiredPermissionsGranted.value).isEqualTo(true)
+    }
+
+    @Test
+    fun requiredPermissionsGranted_isFalseWhileAnyRequiredRowIsMissing() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today, permissions = allGranted.copy(notificationsGranted = false)), emptySet()) },
+    ) { store ->
+        assertThat(NavigationViewModel(store).requiredPermissionsGranted.value).isEqualTo(false)
     }
 
     @Test
     fun onResumed_reRunsTheStoresPermissionCheck() = runStoreTest(
         {
             val checker = object : PermissionChecker {
-                override fun currentState() = PermissionState(calendarGranted = true)
+                override fun currentState() = allGranted
             }
             val sideEffects = setOf(object : PermissionsSideEffects {}.permissions(checker))
             createAppStore(this, AppState(anchorDate = today), sideEffects)
         },
     ) { store ->
         val viewModel = NavigationViewModel(store)
-        viewModel.calendarGranted.test {
+        viewModel.requiredPermissionsGranted.test {
             assertThat(awaitItem()).isEqualTo(false)
 
             viewModel.onResumed()

@@ -74,6 +74,10 @@ object DayViewDefaults {
     /** Space between the inline bell and the alarm time. */
     val ChipInlineIconSpacing = 2.dp
 
+    /** The app bar subtitle's bell once alarms are set (render 3). */
+    val SubtitleIconSize = 14.dp
+    val SubtitleIconSpacing = 4.dp
+
     /**
      * Height of the chip for [span]: proportional to its duration minus [ChipVerticalGap], floored at
      * [MinChipHeight]. The one formula both [DayEventsLayout] (placement) and the chip content choice use.

@@ -12,6 +12,20 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
 
+    <!-- Exact, alarm-clock-class alarms (TODO.md §4.4). Not being on Play lets us declare
+         USE_EXACT_ALARM (33+, auto-granted, not revocable) so no special-access prompt is
+         needed; SCHEDULE_EXACT_ALARM covers 12/12L, where it is pre-granted but revocable
+         (the "Alarms & reminders" onboarding row). Both gate on canScheduleExactAlarms(). -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <!-- The fired-alarm notification (and PR-10's ringing notification / PR-11's
+         schedule-changed notification); a runtime permission on 33+ (onboarding row). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Alarms never survive a shutdown: BootReceiver re-arms every stored one. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Package visibility (API 30+) for long-press "open in calendar": lets resolveActivity
          see the calendar app that views content://com.android.calendar/events/… and /time/…
          (TODO.md §4.1). Not a permission; nothing is added to expected-permissions.txt. -->
@@ -42,6 +56,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Every alarm PendingIntent targets this (see AndroidAlarmScheduler); nothing
+             outside the app may fire it. -->
+        <receiver
+            android:name=".alarm.AlarmReceiver"
+            android:exported="false" />
+
+        <!-- Re-arms stored alarms after the OS may have dropped them (TODO.md §4.4). All of
+             these are protected system broadcasts, which reach a non-exported receiver. -->
+        <receiver
+            android:name=".alarm.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

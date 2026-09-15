@@ -16,9 +16,38 @@
     <string name="day_subtitle_with_selected_count">%1$s · %2$d selected</string>
     <!-- FAB label while at least one event is selected -->
     <string name="day_fab_set_alarms">Set alarms (%d)</string>
-    <!-- FAB label once alarms are set (PR-8/9) -->
+    <!-- FAB label when every selection was removed but the day still has armed alarms: the tap cancels them -->
+    <string name="day_fab_clear_alarms">Clear alarms</string>
+    <!-- FAB label once alarms are set; the share itself arrives with PR-9 -->
     <string name="day_fab_share">Share schedule</string>
-    <string name="day_fab_coming_soon">Alarms aren\'t set up yet</string>
+    <string name="day_fab_share_coming_soon">Sharing isn\'t set up yet</string>
+    <!-- app bar subtitle once alarms are set, e.g. "3 alarms set · not shared yet" -->
+    <plurals name="day_subtitle_alarms_set">
+        <item quantity="one">%d alarm set</item>
+        <item quantity="other">%d alarms set</item>
+    </plurals>
+    <string name="day_subtitle_not_shared_yet">%1$s · not shared yet</string>
+    <!-- snackbars after "Set alarms" -->
+    <plurals name="day_alarms_set_today">
+        <item quantity="one">%d alarm set for today</item>
+        <item quantity="other">%d alarms set for today</item>
+    </plurals>
+    <!-- %2$s is the day, e.g. "Tuesday, Sep 15" -->
+    <plurals name="day_alarms_set_on_day">
+        <item quantity="one">%1$d alarm set for %2$s</item>
+        <item quantity="other">%1$d alarms set for %2$s</item>
+    </plurals>
+    <plurals name="day_alarms_skipped">
+        <item quantity="one">%d alarm skipped, already started</item>
+        <item quantity="other">%d alarms skipped, already started</item>
+    </plurals>
+    <string name="day_alarms_set_some_skipped">%1$d set, %2$d skipped (already started)</string>
+    <!-- after "Clear alarms": every selection had been removed, the tap only cancelled -->
+    <plurals name="day_alarms_cleared">
+        <item quantity="one">%d alarm cleared</item>
+        <item quantity="other">%d alarms cleared</item>
+    </plurals>
+    <string name="alarms_exact_permission_missing">Allow alarms &amp; reminders in Permissions to set alarms</string>
     <string name="day_all_day">all-day</string>
     <!-- chip time range, e.g. "9:00 – 9:30" -->
     <string name="event_time_range">%1$s – %2$s</string>
@@ -56,4 +85,9 @@
     <string name="onboarding_full_screen_description">Wake the screen when an alarm rings.</string>
     <string name="onboarding_battery_title">Ignore battery optimization</string>
     <string name="onboarding_battery_description">Optional. Helps on phones that kill background apps.</string>
+
+    <string name="notification_channel_alarms">Alarms</string>
+    <string name="notification_channel_alarms_description">Rings before each meeting you set an alarm for.</string>
+    <!-- fired-alarm notification body; %1$s is the meeting's start time -->
+    <string name="alarm_notification_starts_at">Starts at %1$s</string>
 </resources>

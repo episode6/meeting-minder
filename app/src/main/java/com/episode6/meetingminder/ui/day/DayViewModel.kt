@@ -12,6 +12,7 @@ import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.ClearMessage
 import com.episode6.meetingminder.store.LoadDay
+import com.episode6.meetingminder.store.SetAlarms
 import com.episode6.meetingminder.store.SetSettledDate
 import com.episode6.meetingminder.store.ShowMessage
 import com.episode6.meetingminder.store.ToggleEvent
@@ -82,9 +83,18 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
         store.dispatch(ToggleEvent(date, event.key))
     }
 
-    /** The FAB was tapped; alarms aren't wired up yet (PR-8). */
+    /**
+     * The FAB was tapped: "Set alarms (N)" (or "Clear alarms", the same state with nothing
+     * selected) reconciles the settled day's alarms against its selection ([SetAlarms]);
+     * "Share schedule" is a placeholder snackbar until PR-9.
+     */
     fun onFabClick() {
-        store.dispatch(ShowMessage(UiMessage.next(R.string.day_fab_coming_soon)))
+        val state = store.state
+        when (state.dayPlans[state.settledDate].toFabState()) {
+            is FabState.SetAlarms -> store.dispatch(SetAlarms(state.settledDate))
+            FabState.Share -> store.dispatch(ShowMessage(UiMessage.next(R.string.day_fab_share_coming_soon)))
+            FabState.Hidden -> Unit
+        }
     }
 
     /**
@@ -116,6 +126,7 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId) = DayUiStat
     isToday = settledDate == anchorDate,
     meetingCount = eventsByDay[settledDate]?.events?.count { it.isMeeting },
     fabState = dayPlans[settledDate].toFabState(),
+    armedCount = dayPlans[settledDate]?.selected?.values?.count { it.alarmId != null } ?: 0,
     days = eventsByDay.mapValues { (date, day) ->
         day.toTimelineState(zone, now = now.toLocalTime().takeIf { now.toLocalDate() == date }, selected = dayPlans[date]?.selected.orEmpty())
     },
@@ -124,15 +135,18 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId) = DayUiStat
 
 /**
  * The FAB's state (TODO.md §3.5): hidden with nothing picked, "Set alarms (N)" with a
- * selection and no alarms yet, "Share schedule" once alarms are set (PR-8 is the first PR
- * that can ever produce a non-null [DayPlan.alarmsSetAt], so [FabState.Share] is
- * unreachable through this PR's own UI, but the precedence is right for when it lands).
+ * selection and no alarms yet, "Share schedule" once alarms are set. [DayPlan.alarmsSetAt]
+ * is cleared by any later change of selection (`DayPlanDao.toggleSelectedEvent`), which is
+ * what puts the day back into "Set alarms" until the next reconcile (§2 interaction rules).
+ * That reconcile is also the only thing that cancels a deselected event's alarm, so while
+ * [DayPlan.armedKeys] is non-empty the FAB stays even with nothing selected — as
+ * `SetAlarms(0)`, which [DayScreen] labels "Clear alarms".
  */
 internal fun DayPlan?.toFabState(): FabState {
     val selected = this?.selected.orEmpty()
     return when {
         this?.alarmsSetAt != null -> FabState.Share
-        selected.isEmpty() -> FabState.Hidden
+        selected.isEmpty() && this?.armedKeys.orEmpty().isEmpty() -> FabState.Hidden
         else -> FabState.SetAlarms(selected.size)
     }
 }

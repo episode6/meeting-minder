@@ -17,9 +17,30 @@ interface DayPlanDao {
     @Query("SELECT * FROM selected_event")
     fun observeSelectedEvents(): Flow<List<SelectedEventEntity>>
 
-    /** Unused until PR-8 (`SetAlarms`) writes a real `alarms_set_at`; kept here since it owns the table. */
+    /**
+     * `REPLACE` deletes and re-inserts the row, so this resets every column of an existing
+     * plan — including `shared_at`. Nothing calls it in production; [markAlarmsSet] (and
+     * PR-9's share write) update their own columns instead.
+     */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDayPlan(entity: DayPlanEntity)
+
+    @Query("INSERT OR IGNORE INTO day_plan (date) VALUES (:date)")
+    suspend fun ensureDayPlan(date: LocalDate)
+
+    @Query("UPDATE day_plan SET alarms_set_at = :alarmsSetAt WHERE date = :date")
+    suspend fun setAlarmsSetAt(date: LocalDate, alarmsSetAt: Long?)
+
+    /**
+     * Records that the alarms for [date] now match its selection (`SetAlarms` reconciled
+     * them at [alarmsSetAt]), creating the plan row if the day never had one. Flips the FAB
+     * to "Share schedule".
+     */
+    @Transaction
+    suspend fun markAlarmsSet(date: LocalDate, alarmsSetAt: Long) {
+        ensureDayPlan(date)
+        setAlarmsSetAt(date, alarmsSetAt)
+    }
 
     @Query("SELECT * FROM selected_event WHERE date = :date")
     suspend fun selectedEventsOn(date: LocalDate): List<SelectedEventEntity>
@@ -28,8 +49,7 @@ interface DayPlanDao {
      * `REPLACE` deletes and re-inserts the row, so calling this on an existing key resets
      * every column to [entity]'s values — including [SelectedEventEntity.alarmId]/`alarmAt`/
      * `rsvpState`. Safe today only because [toggleSelectedEvent] never calls it on a key
-     * that already exists; a future PR re-timing a moved *selected* event should use a
-     * targeted `@Update`/`@Query` write (or Room's `@Upsert`) instead.
+     * that already exists; re-timing a moved *selected* event goes through [armSelectedEvent].
      */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSelectedEvent(entity: SelectedEventEntity)
@@ -44,6 +64,11 @@ interface DayPlanDao {
      * concurrent callers (e.g. two back-to-back taps on the same chip racing under `flatMapMerge`
      * in [com.episode6.meetingminder.store.sideeffects.ToggleEventSideEffects]) so a double toggle
      * of the same key can't both read "not selected" and both insert.
+     *
+     * Any change of selection also clears the day's `alarms_set_at`: the armed set no longer
+     * matches the selection, so the FAB goes back to "Set alarms" until the user re-taps it and
+     * the reconcile catches up (TODO.md §2 interaction rules). The alarms themselves stay
+     * armed until then.
      */
     @Transaction
     suspend fun toggleSelectedEvent(entity: SelectedEventEntity) {
@@ -51,5 +76,27 @@ interface DayPlanDao {
         if (deleted == 0) {
             upsertSelectedEvent(entity)
         }
+        setAlarmsSetAt(entity.date, null)
     }
+
+    /**
+     * Points a selection at its armed alarm and refreshes the denormalised times/title
+     * (the reconcile re-times a moved event, TODO.md §4.4). A targeted update rather than
+     * a `REPLACE` so `rsvp_state`/`rsvp_event_id` (PR-8b) survive.
+     */
+    @Query(
+        "UPDATE selected_event SET alarm_id = :alarmId, alarm_at = :alarmAt, title = :title, " +
+            "begin_millis = :beginMillis, end_millis = :endMillis " +
+            "WHERE date = :date AND event_id = :eventId AND instance_time = :instanceTime",
+    )
+    suspend fun armSelectedEvent(
+        date: LocalDate,
+        eventId: Long,
+        instanceTime: Long,
+        alarmId: Long?,
+        alarmAt: Long?,
+        title: String,
+        beginMillis: Long,
+        endMillis: Long,
+    )
 }

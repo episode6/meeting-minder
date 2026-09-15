@@ -49,14 +49,21 @@ repeatable; drive it by hand only for one-off visual checks.
 
 ## Core flow to exercise
 
-> **Current state:** the day view is live (TODO.md PR-6): the app launches to today's page
-> of the day pager with the device's visible calendars loaded — swipe between days (the
-> app-bar date and "N meetings" subtitle follow the settled page), Today scrolls back,
-> long-press a chip to open it in the calendar app, and an event inserted with `content
-> insert` (see "Seeding calendar data") appears within a second or two while the day is on
-> screen. Selection, alarms and sharing (PR-7 onward) don't exist yet; tapping a chip does
-> nothing. The chip states are also reviewed through the Roborazzi previews under
-> `app/src/test/screenshots/`. `adb shell setprop log.tag.MeetingMinderStore DEBUG` logs every dispatched
+> **Current state:** the day view, selection and alarm scheduling are live (TODO.md
+> PR-8): the app launches to today's page of the day pager with the device's visible
+> calendars loaded — swipe between days (the app-bar date and "N meetings" subtitle follow
+> the settled page), Today scrolls back, long-press a chip to open it in the calendar app,
+> and an event inserted with `content insert` (see "Seeding calendar data") appears within
+> a second or two while the day is on screen. Tap chips to select them, tap "Set alarms (N)"
+> (chips gain a bell + alarm time, the subtitle reads "N alarms set · not shared yet" in
+> orange with a bell, the FAB flips to a solid orange "Share schedule" — a placeholder
+> snackbar until PR-9). Deselecting an armed chip reverts the FAB to "Set alarms (N)"
+> without cancelling anything; deselecting every armed chip leaves it as "Clear alarms",
+> and the tap cancels them (`dumpsys alarm` should then show none). A fired alarm posts
+> a plain high-priority notification for now (the full-screen ringing screen is PR-10);
+> RSVP is PR-8b. Onboarding needs calendar, notifications and exact alarms granted before
+> the day view shows. The chip states are also reviewed through the Roborazzi previews
+> under `app/src/test/screenshots/`. `adb shell setprop log.tag.MeetingMinderStore DEBUG` logs every dispatched
 > store action's type. The flow below is the target; exercise
 > whichever parts of it exist when you verify.
 
@@ -77,8 +84,12 @@ snooze both need checking — snooze must reschedule, not cancel.
   `adb exec-out screencap -p > shot.png`.
 - The ringing screen shows over the lock screen: `adb shell input keyevent 26` to sleep
   the display first, and screenshot after it fires.
-- `adb shell dumpsys alarm | grep meetingminder` shows what's actually scheduled — the
-  quickest way to tell a scheduling bug from a UI bug.
+- `adb shell dumpsys alarm | grep -A12 meetingminder` shows what's actually scheduled — the
+  quickest way to tell a scheduling bug from a UI bug. Each alarm is an `RTC_WAKEUP`
+  alarm-clock entry whose operation carries `meetingminder://alarm/{alarmId}`.
+- `adb shell am broadcast -a android.intent.action.BOOT_COMPLETED -p $PKG` exercises the
+  re-arm path without rebooting (check `dumpsys alarm` again afterwards); `adb shell cmd
+  deviceidle force-idle` checks that a scheduled alarm still fires in Doze.
 - `adb shell dumpsys notification --noredact | grep -A5 meetingminder` for the
   change-detection notification.
 - Landscape probe: `settings put system user_rotation 1` (and back to 0).

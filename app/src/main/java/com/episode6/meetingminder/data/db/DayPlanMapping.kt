@@ -6,16 +6,25 @@ import com.episode6.meetingminder.model.SelectedEvent
 import java.time.Instant
 import java.time.LocalDate
 
-/** [DayPlanEntity]/[SelectedEventEntity] rows into the `AppState.dayPlans` map (`ObserveDayPlansSideEffects`). */
-internal fun buildDayPlans(plans: List<DayPlanEntity>, selections: List<SelectedEventEntity>): Map<LocalDate, DayPlan> {
+/**
+ * [DayPlanEntity]/[SelectedEventEntity] rows plus the `SCHEDULED` [ScheduledAlarmEntity]
+ * rows into the `AppState.dayPlans` map (`ObserveDayPlansSideEffects`).
+ */
+internal fun buildDayPlans(
+    plans: List<DayPlanEntity>,
+    selections: List<SelectedEventEntity>,
+    scheduled: List<ScheduledAlarmEntity> = emptyList(),
+): Map<LocalDate, DayPlan> {
     val plansByDate = plans.associateBy { it.date }
     val selectionsByDate = selections.groupBy { it.date }
-    val dates = plansByDate.keys + selectionsByDate.keys
+    val armedByDate = scheduled.filter { it.state == AlarmState.SCHEDULED }.groupBy({ it.date }, { it.key })
+    val dates = plansByDate.keys + selectionsByDate.keys + armedByDate.keys
     return dates.associateWith { date ->
         val plan = plansByDate[date]
         DayPlan(
             date = date,
             selected = selectionsByDate[date].orEmpty().associate { it.key to it.toSelectedEvent() },
+            armedKeys = armedByDate[date].orEmpty().toSet(),
             alarmsSetAt = plan?.alarmsSetAt?.let(Instant::ofEpochMilli),
             sharedAt = plan?.sharedAt?.let(Instant::ofEpochMilli),
         )

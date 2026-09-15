@@ -1,0 +1,189 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "57fb006718bdf52f7e3549de9643eb12",
+    "entities": [
+      {
+        "tableName": "day_plan",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`date` TEXT NOT NULL, `alarms_set_at` INTEGER, `shared_at` INTEGER, `shared_snapshot` TEXT, PRIMARY KEY(`date`))",
+        "fields": [
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "alarmsSetAt",
+            "columnName": "alarms_set_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sharedAt",
+            "columnName": "shared_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "sharedSnapshot",
+            "columnName": "shared_snapshot",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "date"
+          ]
+        }
+      },
+      {
+        "tableName": "selected_event",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`date` TEXT NOT NULL, `event_id` INTEGER NOT NULL, `instance_time` INTEGER NOT NULL, `title` TEXT NOT NULL, `begin_millis` INTEGER NOT NULL, `end_millis` INTEGER NOT NULL, `alarm_id` INTEGER, `alarm_at` INTEGER, `rsvp_state` TEXT NOT NULL, `rsvp_event_id` INTEGER, PRIMARY KEY(`date`, `event_id`, `instance_time`))",
+        "fields": [
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "event_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "instanceTime",
+            "columnName": "instance_time",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "beginMillis",
+            "columnName": "begin_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endMillis",
+            "columnName": "end_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "alarmId",
+            "columnName": "alarm_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "alarmAt",
+            "columnName": "alarm_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "rsvpState",
+            "columnName": "rsvp_state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rsvpEventId",
+            "columnName": "rsvp_event_id",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "date",
+            "event_id",
+            "instance_time"
+          ]
+        }
+      },
+      {
+        "tableName": "scheduled_alarm",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`alarm_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `date` TEXT NOT NULL, `event_id` INTEGER NOT NULL, `instance_time` INTEGER NOT NULL, `fire_at` INTEGER NOT NULL, `title` TEXT NOT NULL, `begin_millis` INTEGER NOT NULL, `end_millis` INTEGER NOT NULL, `sound_index` INTEGER NOT NULL, `state` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "alarmId",
+            "columnName": "alarm_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "event_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "instanceTime",
+            "columnName": "instance_time",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fireAt",
+            "columnName": "fire_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "beginMillis",
+            "columnName": "begin_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endMillis",
+            "columnName": "end_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "soundIndex",
+            "columnName": "sound_index",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "alarm_id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '57fb006718bdf52f7e3549de9643eb12')"
+    ]
+  }
+}

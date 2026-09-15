@@ -197,6 +197,21 @@ sealed interface AsyncAction : Action { /* PermissionsMaybeChanged, LoadDay(date
     TimeChanged, RunChangeCheck(reason) */ }
 ```
 
+NB (PR-8): `DayPlan` also carries `armedKeys: Set<EventKey>` — the keys of the day's `SCHEDULED`
+`scheduled_alarm` rows, streamed by `ObserveDayPlans` alongside the two tables — so the FAB can
+stay reachable ("Clear alarms", `FabState.SetAlarms(0)`) after every selection on a day is removed
+while its alarms are still armed; otherwise those alarms could never be cancelled (§2's reconcile
+only runs on the tap).
+
+NB (PR-8): `BootCompleted` and `TimeChanged` are **not** store actions. A `BroadcastReceiver`
+can't await a dispatch, and the re-arm must finish before the broadcast (and the process) ends,
+so `alarm/BootReceiver` calls the injected `AlarmRescheduler.rescheduleAll()` directly under
+`goAsync()`; `AlarmReceiver` likewise calls `FiredAlarmHandler` directly. `AlarmFired`,
+`SnoozeAlarm` and `DismissAlarm` remain store actions for PR-10 (the ringing service has a
+process to dispatch from), and PR-13's in-app `MaintainAlarms` calls the same
+`rescheduleAll()` from its own action rather than through the receiver. See AGENTS.md
+"Receivers and the store".
+
 Side effects (one file each under `store/sideeffects/`): `ObserveDayPlans`, `LoadCalendars`,
 `LoadDayEvents` (`transformLatest` on `LoadDay`/`CalendarContentChanged`), `ToggleEvent`,
 `ScheduleAlarms`, `RsvpAccept`, `ShareSchedule`, `AlarmRinging`, `ChangeDetection`, `CalendarObserver`
@@ -652,6 +667,11 @@ temporary allowlist that permits starting a foreground service from the backgrou
   `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`, and on the exact-alarm
   permission-state broadcast. Alarms are cancelled by the OS on shutdown, so the boot path is
   mandatory. No direct-boot handling (the calendar provider isn't readable before first unlock).
+  NB (PR-8): this receiver is named **`BootReceiver`** (the §3.3 package map's name), it
+  calls `AlarmRescheduler.rescheduleAll()` directly under `goAsync()` rather than dispatching a
+  store action (see the §3.2 NB), and it only re-arms rows whose event hasn't ended yet. A
+  `setAlarmClock` call the OS refuses marks that row `CANCELLED` and leaves `alarms_set_at`
+  clear, so the FAB keeps reading "Set alarms (N)" and the next tap inserts a fresh row.
 - Force-stop (and some OEM task-swipes) cancels all alarms and blocks broadcasts until the app is
   opened again. Nothing fixes that in code; the onboarding OEM card explains it.
 
@@ -888,7 +908,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   `ObserveDayPlans` and `ToggleEvent` side effects, chip toggling with haptics, the FAB in its
   `Hidden`/`SetAlarms(n)` states (tap is a no-op placeholder that shows a snackbar), selection
   survives process death and day paging. Store tests via `runStoreTest`.
-- [ ] **PR-8: Alarm scheduling core.** `[Fable 5.1, effort high]` ∥ with PR-9. `alarm/AlarmScheduler` over `AlarmManager`
+- [x] **PR-8: Alarm scheduling core.** `[Fable 5.1, effort high]` ∥ with PR-9. `alarm/AlarmScheduler` over `AlarmManager`
   (`setAlarmClock`, unique request codes from `scheduled_alarm.alarm_id`), `scheduled_alarm` table,
   `SetAlarms(date)` side effect that reconciles (cancel deselected, schedule new, skip past with a
   snackbar count), lead time setting (default 5 min) in `SettingsRepository`, `BootReceiver` +
