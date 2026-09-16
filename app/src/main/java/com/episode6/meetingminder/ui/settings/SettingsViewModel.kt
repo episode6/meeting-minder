@@ -2,12 +2,15 @@ package com.episode6.meetingminder.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.episode6.meetingminder.data.calendar.defaultBusyCalendar
+import com.episode6.meetingminder.data.calendar.writable
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.meetingminder.store.AppStore
+import com.episode6.meetingminder.store.BusySyncSettingChanged
 import com.episode6.meetingminder.store.CalendarContentChanged
 import com.episode6.meetingminder.store.ClearMessage
 import com.episode6.meetingminder.store.TestAlarm
@@ -66,6 +69,11 @@ data class SettingsUiState(
     val showDeclined: Boolean = true,
     val calendars: List<CalendarRow> = emptyList(),
     val permissionsStatus: PermissionsStatus = PermissionsStatus.AllGranted,
+    /** Settings → Busy calendar (TODO.md §4.7): the toggle's state and the calendar it's set to. */
+    val busySyncEnabled: Boolean = false,
+    val busySyncCalendarId: Long? = null,
+    /** The calendars the toggle's radio list offers; see [com.episode6.meetingminder.data.calendar.writable]. */
+    val writableCalendars: List<CalendarInfo> = emptyList(),
 )
 
 /**
@@ -128,6 +136,29 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
         store.dispatch(CalendarContentChanged)
     }
 
+    /**
+     * Settings → Busy calendar's toggle (TODO.md §4.7). Turning it on with no calendar
+     * chosen yet applies [defaultBusyCalendar] (the "Family" default) and writes its id
+     * explicitly. Either way, [BusySyncSettingChanged] is dispatched so PR-15c's cleanup
+     * side effect can react.
+     */
+    fun onBusySyncToggle(enabled: Boolean) = viewModelScope.launch {
+        val current = settings.current()
+        val previousCalendarId = current.busySync.calendarId
+        settings.setBusySyncEnabled(enabled)
+        if (enabled && previousCalendarId == null) {
+            defaultBusyCalendar(store.state.calendars.writable())?.let { settings.setBusySyncCalendar(it.id) }
+        }
+        store.dispatch(BusySyncSettingChanged(previousCalendarId, enabledNow = enabled))
+    }
+
+    /** Settings → Busy calendar's radio row for [calendar]. */
+    fun onBusyCalendarSelected(calendar: CalendarInfo) = viewModelScope.launch {
+        val previousCalendarId = settings.current().busySync.calendarId
+        settings.setBusySyncCalendar(calendar.id)
+        store.dispatch(BusySyncSettingChanged(previousCalendarId, enabledNow = settings.current().busySync.enabled))
+    }
+
     fun onTestAlarmClick() {
         store.dispatch(TestAlarm)
     }
@@ -145,4 +176,7 @@ private fun Settings.toUiState(calendars: List<CalendarInfo>, permissionsStatus:
     showDeclined = showDeclined,
     calendars = calendars.map { CalendarRow(it, included = calendarOverrides[it.id] ?: it.visible) },
     permissionsStatus = permissionsStatus,
+    busySyncEnabled = busySync.enabled,
+    busySyncCalendarId = busySync.calendarId,
+    writableCalendars = calendars.writable(),
 )

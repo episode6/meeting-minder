@@ -2,6 +2,8 @@
 
 ### v1.0.10 - Unreleased
 
+- Settings gains a "Busy calendar" section (TODO.md §4.7, PR-15a of 3): a toggle "Sync busy times to a calendar" and, once on, a single-choice list of the calendars the app can write to (auto-picking a "Family" calendar the first time it's turned on, if there is a writable one). While the sync would be effective, the FAB reads "Sync & Share", the overflow's "Share again" reads "Sync & share again" and the changed-schedule banner's button reads "Sync & re-share" — this PR only stores the preference and swaps the labels; the calendar write itself lands in PR-15b/c.
+
 ### v1.0.0 - 2026-09-15
 
 - Long-pressing an event chip now opens a menu instead of going straight to the calendar app: "Open in calendar" first (what the long-press used to do), then "Respond Yes", "Respond No" and "Respond Maybe" for an invite the app can answer (`canRespond` in `model/Rsvp.kt`: an invite with a self-attendee row on a calendar that lets you respond, and not one you organised). The answer is written for that one occurrence only, through the same two write shapes as the automatic "Yes, going" (`CalendarRepository.respondToInstance`, which replaces `acceptInstance`), the menu ticks your current answer, a snackbar confirms, and the day reloads at once. A "Yes" on an armed selection gives the chip its "RSVP sent" tick; a "No" or "Maybe" drops that tick and leaves the selection alone, and a "No" makes the chip declined and unselectable with its alarm cancelled in the same reload by the automatic maintenance, as a decline made in Google Calendar would. Picking the answer the calendar already holds is confirmed without a write. A `SecurityException` on the write re-checks permissions like the loads do. `RespondToEvent`/`RespondToEventSideEffects`.

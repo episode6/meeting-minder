@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +19,14 @@ import java.time.Duration
  * and the siren, [SYSTEM_ONLY] only the device's alarm ringtones.
  */
 enum class AlarmSoundPool { ALL, BUNDLED_ONLY, SYSTEM_ONLY }
+
+/**
+ * Settings → Busy calendar (TODO.md §4.7). [calendarId] is null until the user (or the Family
+ * default) picks one. The repository stores only what the user chose; the "Family" default is
+ * applied by the ViewModel at the moment the toggle is turned on, as an explicit id, so a later
+ * rename of the Family calendar can't silently move the sync.
+ */
+data class BusySync(val enabled: Boolean = false, val calendarId: Long? = null)
 
 /**
  * The user's preferences (TODO.md §6 item 8 for the defaults, §5 PR-12 for the screen that
@@ -41,6 +50,8 @@ data class Settings(
     val showDeclined: Boolean = true,
     /** Per-calendar include override; see the class doc. Empty means "respect `VISIBLE` for every calendar". */
     val calendarOverrides: Map<Long, Boolean> = emptyMap(),
+    /** Settings → Busy calendar (TODO.md §4.7): whether, and to which calendar, a share also syncs busy blocks. */
+    val busySync: BusySync = BusySync(),
 )
 
 object SettingsDefaults {
@@ -64,6 +75,12 @@ interface SettingsRepository {
 
     /** Sets [Settings.calendarOverrides] for [calendarId]: `true`/`false` to force it, or null to clear the override. */
     suspend fun setCalendarOverride(calendarId: Long, included: Boolean?)
+
+    /** Sets [BusySync.enabled]. Applying the Family default when turning it on is the ViewModel's job. */
+    suspend fun setBusySyncEnabled(enabled: Boolean)
+
+    /** Sets [BusySync.calendarId]; null clears it back to "no calendar chosen". */
+    suspend fun setBusySyncCalendar(calendarId: Long?)
 
     /**
      * The runtime permissions (`Manifest.permission` names) this app has asked the system
@@ -120,6 +137,16 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         }
     }
 
+    override suspend fun setBusySyncEnabled(enabled: Boolean) {
+        dataStore.edit { it[Keys.BusySyncEnabled] = enabled }
+    }
+
+    override suspend fun setBusySyncCalendar(calendarId: Long?) {
+        dataStore.edit { prefs ->
+            if (calendarId == null) prefs.remove(Keys.BusySyncCalendarId) else prefs[Keys.BusySyncCalendarId] = calendarId
+        }
+    }
+
     override val requestedPermissions: Flow<Set<String>> = dataStore.data.map { it[Keys.RequestedPermissions].orEmpty() }
 
     override suspend fun markPermissionRequested(permission: String) {
@@ -133,6 +160,7 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         soundPool = this[Keys.AlarmSoundPool]?.let { name -> AlarmSoundPool.entries.firstOrNull { it.name == name } } ?: AlarmSoundPool.ALL,
         showDeclined = this[Keys.ShowDeclined] ?: true,
         calendarOverrides = calendarOverrides(),
+        busySync = BusySync(enabled = this[Keys.BusySyncEnabled] ?: false, calendarId = this[Keys.BusySyncCalendarId]),
     )
 
     private fun Preferences.calendarOverrides(): Map<Long, Boolean> {
@@ -153,5 +181,7 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         val CalendarOverridesIncluded = stringSetPreferencesKey("calendar_overrides_included")
         val CalendarOverridesExcluded = stringSetPreferencesKey("calendar_overrides_excluded")
         val RequestedPermissions = stringSetPreferencesKey("requested_permissions")
+        val BusySyncEnabled = booleanPreferencesKey("busy_sync_enabled")
+        val BusySyncCalendarId = longPreferencesKey("busy_sync_calendar_id")
     }
 }

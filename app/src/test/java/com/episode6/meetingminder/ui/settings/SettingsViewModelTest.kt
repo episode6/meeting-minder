@@ -5,9 +5,11 @@ import assertk.assertThat
 import assertk.assertions.isEqualTo
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
+import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.store.AppState
+import com.episode6.meetingminder.store.BusySyncSettingChanged
 import com.episode6.meetingminder.store.CalendarContentChanged
 import com.episode6.meetingminder.store.TestAlarm
 import com.episode6.meetingminder.store.createAppStore
@@ -149,6 +151,59 @@ class SettingsViewModelTest {
         assertThat(testAlarms.first()).isEqualTo(TestAlarm)
     }
 
+    @Test
+    fun onBusySyncToggle_on_withNoCalendarChosen_appliesTheFamilyDefault_andDispatchesTheChange() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today, calendars = listOf(personal.copy(displayName = "Family"))), setOf(recordBusySyncSettingChanged)) },
+    ) { store ->
+        val settings = FakeSettingsRepository()
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onBusySyncToggle(true)
+
+        assertThat(settings.settings.value.busySync.enabled).isEqualTo(true)
+        assertThat(settings.settings.value.busySync.calendarId).isEqualTo(personal.id)
+        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = null, enabledNow = true))
+    }
+
+    @Test
+    fun onBusySyncToggle_on_withACalendarAlreadyChosen_leavesItAlone() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today, calendars = listOf(personal.copy(displayName = "Family"))), setOf(recordBusySyncSettingChanged)) },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(calendarId = 9L)))
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onBusySyncToggle(true)
+
+        assertThat(settings.settings.value.busySync.calendarId).isEqualTo(9L)
+        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = 9L, enabledNow = true))
+    }
+
+    @Test
+    fun onBusySyncToggle_off_dispatchesTheChangeWithTheStoredCalendarId() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), setOf(recordBusySyncSettingChanged)) },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = 9L)))
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onBusySyncToggle(false)
+
+        assertThat(settings.settings.value.busySync.enabled).isEqualTo(false)
+        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = 9L, enabledNow = false))
+    }
+
+    @Test
+    fun onBusyCalendarSelected_writesTheIdAndDispatchesTheChange() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), setOf(recordBusySyncSettingChanged)) },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = 1L)))
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onBusyCalendarSelected(hidden)
+
+        assertThat(settings.settings.value.busySync.calendarId).isEqualTo(hidden.id)
+        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = 1L, enabledNow = true))
+    }
+
     private val reloads = MutableSharedFlow<Action>(replay = 10)
     private val recordCalendarContentChanged = SideEffect<AppState> {
         actions.onEach { if (it is CalendarContentChanged) reloads.emit(it) }.filter { false }
@@ -157,5 +212,10 @@ class SettingsViewModelTest {
     private val testAlarms = MutableSharedFlow<Action>(replay = 10)
     private val recordTestAlarm = SideEffect<AppState> {
         actions.onEach { if (it is TestAlarm) testAlarms.emit(it) }.filter { false }
+    }
+
+    private val busySyncChanges = MutableSharedFlow<Action>(replay = 10)
+    private val recordBusySyncSettingChanged = SideEffect<AppState> {
+        actions.onEach { if (it is BusySyncSettingChanged) busySyncChanges.emit(it) }.filter { false }
     }
 }

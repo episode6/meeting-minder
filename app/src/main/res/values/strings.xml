@@ -22,6 +22,8 @@
     <string name="day_fab_clear_alarms">Clear alarms</string>
     <!-- FAB label once alarms are set -->
     <string name="day_fab_share">Share schedule</string>
+    <!-- FAB label once alarms are set, while busy-calendar sync (TODO.md §4.7) is effective -->
+    <string name="day_fab_sync_share">Sync &amp; Share</string>
     <!-- app bar subtitle once alarms are set, e.g. "3 alarms set · not shared yet" -->
     <plurals name="day_subtitle_alarms_set">
         <item quantity="one">%d alarm set</item>
@@ -105,6 +107,8 @@
     <string name="menu_licenses">Third-party license notices</string>
     <!-- overflow items shown only once the settled day has been shared (TODO.md §4.2) -->
     <string name="menu_share_again">Share again</string>
+    <!-- "Share again" while busy-calendar sync (TODO.md §4.7) is effective -->
+    <string name="menu_sync_share_again">Sync &amp; share again</string>
     <string name="menu_mark_not_shared">Mark as not shared</string>
     <string name="check_for_updates_no_browser">No app found to open the updates page</string>
 
@@ -129,6 +133,13 @@
     <string name="settings_section_calendars">Calendars</string>
     <!-- %1$s is the account email; the calendar has SYNC_EVENTS off and so holds no events (TODO.md §4.1) -->
     <string name="settings_calendar_not_syncing">%1$s · not syncing</string>
+    <string name="settings_section_busy_calendar">Busy calendar</string>
+    <string name="settings_busy_sync_title">Sync busy times to a calendar</string>
+    <string name="settings_busy_sync_description">When you share a day, add a \"busy\" block for each busy time to the calendar below. Only times are written, never titles.</string>
+    <!-- toggle subtitle when there's no calendar the app can write to (TODO.md §4.7) -->
+    <string name="settings_busy_sync_no_writable">No calendar you can write to</string>
+    <!-- shown under the radio list when the stored calendar id no longer resolves to a writable calendar -->
+    <string name="settings_busy_sync_pick">Pick a calendar to sync to</string>
     <string name="settings_section_about">About</string>
     <!-- Permissions row subtitle: every required onboarding permission is granted -->
     <string name="settings_permissions_all_granted">All granted</string>
@@ -217,4 +228,6 @@
     <!-- banner when only the selection differs from what was shared -->
     <string name="day_banner_selection_changed">Your picks changed since you shared</string>
     <string name="day_banner_reshare">Re-share</string>
+    <!-- "Re-share" while busy-calendar sync (TODO.md §4.7) is effective -->
+    <string name="day_banner_sync_reshare">Sync &amp; re-share</string>
 </resources>

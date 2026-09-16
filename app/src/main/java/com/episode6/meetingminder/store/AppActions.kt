@@ -211,3 +211,14 @@ data class DismissAlarm(val alarmId: Long) : AsyncAction
  * full-screen wake-up) can be checked end to end (`TestAlarmSideEffects`).
  */
 data object TestAlarm : AsyncAction
+
+/**
+ * Settings → "Sync busy times to a calendar" was turned off, or its target calendar was
+ * changed, from [previousCalendarId] (null if none was chosen before); [enabledNow] is the
+ * toggle's new value (TODO.md §4.7). **Deliberate no-op in PR-15a**: nothing subscribes to
+ * this action yet — PR-15c adds the side effect that deletes today's and future busy blocks
+ * (from [previousCalendarId] when it's a calendar switch, or from the current one when
+ * [enabledNow] is false). Dispatched now, by both `SettingsViewModel` callbacks, so the
+ * wiring doesn't have to touch the Settings screen again.
+ */
+data class BusySyncSettingChanged(val previousCalendarId: Long?, val enabledNow: Boolean) : AsyncAction

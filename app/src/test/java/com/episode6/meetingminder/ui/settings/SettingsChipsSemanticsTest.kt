@@ -5,10 +5,13 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollToNode
+import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import org.junit.Rule
 import org.junit.Test
@@ -45,6 +48,8 @@ class SettingsChipsSemanticsTest {
                     onTestAlarmClick = {},
                     onCalendarToggle = { _, _ -> },
                     onShowDeclinedToggle = {},
+                    onBusySyncToggle = {},
+                    onBusyCalendarSelected = {},
                     onPermissionsClick = {},
                     onLicensesClick = {},
                 )
@@ -54,5 +59,46 @@ class SettingsChipsSemanticsTest {
         composeRule.onNodeWithText("All").assert(radioButton)
         composeRule.onNodeWithText("System only").assert(radioButton)
         composeRule.onAllNodes(hasText(" min", substring = true)).onFirst().assert(radioButton)
+    }
+
+    @Test
+    fun busyCalendarRadioRows_readAsRadioButtons() {
+        val family = CalendarInfo(
+            id = 1,
+            accountName = "me@example.com",
+            accountType = "com.google",
+            displayName = "Family",
+            color = 0xFF0B8043.toInt(),
+            visible = true,
+            syncEvents = true,
+            ownerAccount = "me@example.com",
+            isPrimary = false,
+            accessLevel = 700,
+            canOrganizerRespond = false,
+        )
+
+        composeRule.setContent {
+            MeetingMinderTheme {
+                SettingsScreen(
+                    state = SettingsUiState(busySyncEnabled = true, writableCalendars = listOf(family)),
+                    snackbarHostState = SnackbarHostState(),
+                    onBackClick = {},
+                    onLeadTimeSelected = {},
+                    onSnoozeLengthSelected = {},
+                    onAutoTimeoutSelected = {},
+                    onSoundPoolSelected = {},
+                    onTestAlarmClick = {},
+                    onCalendarToggle = { _, _ -> },
+                    onShowDeclinedToggle = {},
+                    onBusySyncToggle = {},
+                    onBusyCalendarSelected = {},
+                    onPermissionsClick = {},
+                    onLicensesClick = {},
+                )
+            }
+        }
+
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("Family"))
+        composeRule.onNodeWithText("Family").assert(radioButton)
     }
 }

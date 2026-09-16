@@ -9,9 +9,13 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.time.LocalDate
 
-/** The app bar's "shared …" subtitle (TODO.md §4.2): a bare time only when the share happened on the day being viewed. */
+/**
+ * The FAB's label while busy-calendar sync (TODO.md §4.7) is effective: "Sync & Share"
+ * instead of "Share schedule". PR-15a wires only the label; the calendar write itself is
+ * PR-15b/c.
+ */
 @RunWith(RobolectricTestRunner::class)
-class DayScreenSubtitleTest {
+class DayScreenFabLabelTest {
 
     @get:Rule
     val composeRule = createComposeRule()
@@ -42,23 +46,16 @@ class DayScreenSubtitleTest {
     }
 
     @Test
-    fun aDaySharedOnTheDayItself_showsJustTheTime() {
-        show(DayUiState(anchorDate = today, meetingCount = 3, fabState = FabState.Share(syncs = false), armedCount = 3, sharedAt = today.atTime(8, 12)))
+    fun syncNotEffective_readsPlainShareLabel() {
+        show(DayUiState(anchorDate = today, meetingCount = 3, fabState = FabState.Share(syncs = false), armedCount = 3))
 
-        composeRule.onNodeWithText("shared 8:12 AM").assertExists()
+        composeRule.onNodeWithText("Share schedule", useUnmergedTree = true).assertExists()
     }
 
     @Test
-    fun aDaySharedOnAnotherDay_namesThatDay() {
-        // tomorrow's schedule, shared tonight: "shared 9:00 PM" on tomorrow's page would read as tomorrow evening
-        val tomorrow = today.plusDays(1)
-        show(
-            DayUiState(
-                anchorDate = today, date = tomorrow, meetingCount = 3, fabState = FabState.Share(syncs = false), armedCount = 3,
-                sharedAt = today.atTime(21, 0),
-            ),
-        )
+    fun syncEffective_readsSyncAndShareLabel() {
+        show(DayUiState(anchorDate = today, meetingCount = 3, fabState = FabState.Share(syncs = true), armedCount = 3))
 
-        composeRule.onNodeWithText("shared Sep 14, 9:00 PM").assertExists()
+        composeRule.onNodeWithText("Sync & Share", useUnmergedTree = true).assertExists()
     }
 }

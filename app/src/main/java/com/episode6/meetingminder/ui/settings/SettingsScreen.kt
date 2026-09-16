@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
@@ -33,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -82,6 +84,8 @@ fun SettingsScreen(
     onTestAlarmClick: () -> Unit,
     onCalendarToggle: (CalendarInfo, Boolean) -> Unit,
     onShowDeclinedToggle: (Boolean) -> Unit,
+    onBusySyncToggle: (Boolean) -> Unit,
+    onBusyCalendarSelected: (CalendarInfo) -> Unit,
     onPermissionsClick: () -> Unit,
     onLicensesClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -149,6 +153,41 @@ fun SettingsScreen(
             section(R.string.settings_section_calendars)
             items(state.calendars, key = { it.info.id }) { row ->
                 CalendarRowItem(row = row, onToggle = { included -> onCalendarToggle(row.info, included) })
+            }
+            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+
+            section(R.string.settings_section_busy_calendar)
+            item {
+                ToggleRow(
+                    title = stringResource(R.string.settings_busy_sync_title),
+                    description = if (state.writableCalendars.isEmpty()) {
+                        stringResource(R.string.settings_busy_sync_no_writable)
+                    } else {
+                        stringResource(R.string.settings_busy_sync_description)
+                    },
+                    checked = state.busySyncEnabled,
+                    enabled = state.writableCalendars.isNotEmpty(),
+                    onCheckedChange = onBusySyncToggle,
+                )
+            }
+            if (state.busySyncEnabled) {
+                items(state.writableCalendars, key = { it.id }) { calendar ->
+                    BusyCalendarRow(
+                        calendar = calendar,
+                        selected = calendar.id == state.busySyncCalendarId,
+                        onSelected = { onBusyCalendarSelected(calendar) },
+                    )
+                }
+                if (state.writableCalendars.none { it.id == state.busySyncCalendarId }) {
+                    item {
+                        Text(
+                            stringResource(R.string.settings_busy_sync_pick),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
             }
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
 
@@ -249,12 +288,18 @@ private fun AlarmSoundPool.label(): String = when (this) {
 }
 
 @Composable
-private fun ToggleRow(title: String, description: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun ToggleRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+) {
     Row(
         // the whole row is the switch, so TalkBack reads its title with its state
         modifier = Modifier
             .fillMaxWidth()
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .toggleable(value = checked, role = Role.Switch, enabled = enabled, onValueChange = onCheckedChange)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -263,7 +308,31 @@ private fun ToggleRow(title: String, description: String, checked: Boolean, onCh
             Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = null)
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+    }
+}
+
+/**
+ * One writable calendar in the "Busy calendar" radio list (TODO.md §4.7): name, account
+ * email and the calendar's own colour dot, exactly like [CalendarRowItem] but a single-choice
+ * radio row like [SoundPoolRow]'s chips rather than an independent switch.
+ */
+@Composable
+private fun BusyCalendarRow(calendar: CalendarInfo, selected: Boolean, onSelected: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelected)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Box(modifier = Modifier.size(12.dp).clip(RoundedCornerShape(50)).background(Color(calendar.color)))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(calendar.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(calendar.accountName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        RadioButton(selected = selected, onClick = null)
     }
 }
 
@@ -329,6 +398,8 @@ internal fun SettingsScreenPreview() {
             onTestAlarmClick = {},
             onCalendarToggle = { _, _ -> },
             onShowDeclinedToggle = {},
+            onBusySyncToggle = {},
+            onBusyCalendarSelected = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )
@@ -351,6 +422,8 @@ internal fun SettingsScreenDarkPreview() {
             onTestAlarmClick = {},
             onCalendarToggle = { _, _ -> },
             onShowDeclinedToggle = {},
+            onBusySyncToggle = {},
+            onBusyCalendarSelected = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )
@@ -372,6 +445,36 @@ internal fun SettingsScreenLargeFontPreview() {
             onTestAlarmClick = {},
             onCalendarToggle = { _, _ -> },
             onShowDeclinedToggle = {},
+            onBusySyncToggle = {},
+            onBusyCalendarSelected = {},
+            onPermissionsClick = {},
+            onLicensesClick = {},
+        )
+    }
+}
+
+/** Toggle on, Family selected (TODO.md §4.7): the radio list under the toggle in render. */
+@Preview(showBackground = true)
+@Composable
+internal fun SettingsScreenBusySyncOnPreview() {
+    MeetingMinderTheme {
+        SettingsScreen(
+            state = previewState.copy(
+                busySyncEnabled = true,
+                busySyncCalendarId = previewFamily.id,
+                writableCalendars = listOf(previewWork, previewFamily),
+            ),
+            snackbarHostState = SnackbarHostState(),
+            onBackClick = {},
+            onLeadTimeSelected = {},
+            onSnoozeLengthSelected = {},
+            onAutoTimeoutSelected = {},
+            onSoundPoolSelected = {},
+            onTestAlarmClick = {},
+            onCalendarToggle = { _, _ -> },
+            onShowDeclinedToggle = {},
+            onBusySyncToggle = {},
+            onBusyCalendarSelected = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )

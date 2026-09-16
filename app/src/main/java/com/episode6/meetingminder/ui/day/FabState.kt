@@ -13,5 +13,11 @@ sealed interface FabState {
      * cancels; the FAB reads "Clear alarms" then.
      */
     data class SetAlarms(val count: Int) : FabState
-    data object Share : FabState
+
+    /**
+     * [syncs] is true while busy-calendar sync (TODO.md §4.7) is effective — the toggle is
+     * on and it points at a calendar that's still writable — which swaps the FAB's label to
+     * "Sync & Share". The write itself is wired in PR-15c; sharing already runs unconditionally.
+     */
+    data class Share(val syncs: Boolean) : FabState
 }

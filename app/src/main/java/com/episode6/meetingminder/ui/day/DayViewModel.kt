@@ -3,8 +3,11 @@ package com.episode6.meetingminder.ui.day
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.data.calendar.effectiveBusyCalendar
+import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
+import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
@@ -28,6 +31,7 @@ import com.episode6.meetingminder.store.ShowMessage
 import com.episode6.meetingminder.store.ToggleEvent
 import com.episode6.meetingminder.store.UiMessage
 import com.episode6.meetingminder.store.startShare
+import com.episode6.redux.mapStore
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
@@ -59,7 +63,7 @@ private const val MILLIS_PER_MINUTE = 60_000L
 @Inject
 @ViewModelKey(DayViewModel::class)
 @ContributesIntoMap(AppScope::class)
-class DayViewModel(private val store: AppStore, private val clock: Clock) : ViewModel() {
+class DayViewModel(private val store: AppStore, private val clock: Clock, private val settings: SettingsRepository) : ViewModel() {
 
     private val minuteTicks: Flow<LocalDateTime> = flow {
         while (true) {
@@ -69,12 +73,21 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
         }
     }
 
-    val state: StateFlow<DayUiState> = combine(store, minuteTicks) { state, now -> state.toDayUiState(now, clock.zone) }
+    /** Busy-calendar sync's effective state (TODO.md §4.7): drives the FAB/menu/banner labels. */
+    private val busySyncs: Flow<Boolean> = combine(
+        settings.settings.map { it.busySync },
+        store.mapStore { it.calendars },
+    ) { busySync, calendars -> effectiveBusyCalendar(busySync, calendars) != null }
+
+    val state: StateFlow<DayUiState> = combine(store, minuteTicks, busySyncs) { state, now, syncs -> state.toDayUiState(now, clock.zone, syncs) }
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            store.state.toDayUiState(LocalDateTime.now(clock), clock.zone),
+            // The settings flow's first emission is asynchronous, so this seeds with
+            // syncs = false for one frame at most; the real preference follows almost
+            // immediately (see SettingsViewModel.state for the same pattern).
+            store.state.toDayUiState(LocalDateTime.now(clock), clock.zone, busySyncs = false),
         )
 
     /** Each pending snackbar message once; call [onMessageShown] as it is displayed. */
@@ -119,7 +132,7 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
         val state = store.state
         when (state.dayPlans[state.settledDate].toFabState()) {
             is FabState.SetAlarms -> store.dispatch(SetAlarms(state.settledDate))
-            FabState.Share -> store.startShare(state.settledDate)
+            is FabState.Share -> store.startShare(state.settledDate)
             FabState.Hidden -> Unit
         }
     }
@@ -166,13 +179,13 @@ class DayViewModel(private val store: AppStore, private val clock: Clock) : View
     }
 }
 
-/** [DayUiState] for the store's loaded window at wall-clock time [now] in [zone]. */
-internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId) = DayUiState(
+/** [DayUiState] for the store's loaded window at wall-clock time [now] in [zone], with busy-calendar sync's effective state [busySyncs] (TODO.md §4.7). */
+internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId, busySyncs: Boolean = false) = DayUiState(
     anchorDate = anchorDate,
     date = settledDate,
     isToday = settledDate == anchorDate,
     meetingCount = eventsByDay[settledDate]?.events?.count { it.isMeeting },
-    fabState = dayPlans[settledDate].toFabState(),
+    fabState = dayPlans[settledDate].toFabState(busySyncs),
     armedCount = dayPlans[settledDate]?.selected?.values?.count { it.alarmId != null } ?: 0,
     sharedAt = dayPlans[settledDate]?.sharedAt?.let { LocalDateTime.ofInstant(it, zone) },
     days = eventsByDay.mapValues { (date, day) ->
@@ -180,6 +193,7 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId) = DayUiStat
     },
     initialFirstVisibleHour = eventsByDay[anchorDate]?.let { initialFirstVisibleHour(it.date, it.events, zone) },
     changeBanner = changeBannerFor(settledDate, zone),
+    busySyncs = busySyncs,
 )
 
 /**
@@ -210,10 +224,10 @@ internal fun AppState.changeBannerFor(date: LocalDate, zone: ZoneId): ScheduleCh
  * [DayPlan.armedKeys] is non-empty the FAB stays even with nothing selected — as
  * `SetAlarms(0)`, which [DayScreen] labels "Clear alarms".
  */
-internal fun DayPlan?.toFabState(): FabState {
+internal fun DayPlan?.toFabState(syncs: Boolean = false): FabState {
     val selected = this?.selected.orEmpty()
     return when {
-        this?.alarmsSetAt != null -> FabState.Share
+        this?.alarmsSetAt != null -> FabState.Share(syncs)
         selected.isEmpty() && this?.armedKeys.orEmpty().isEmpty() -> FabState.Hidden
         else -> FabState.SetAlarms(selected.size)
     }

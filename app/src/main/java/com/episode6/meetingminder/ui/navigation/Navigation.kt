@@ -303,6 +303,8 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                 onTestAlarmClick = viewModel::onTestAlarmClick,
                 onCalendarToggle = { calendar, included -> viewModel.onCalendarToggle(calendar, included) },
                 onShowDeclinedToggle = viewModel::onShowDeclinedToggle,
+                onBusySyncToggle = viewModel::onBusySyncToggle,
+                onBusyCalendarSelected = viewModel::onBusyCalendarSelected,
                 onPermissionsClick = { navController.navigate(Route.Onboarding) },
                 onLicensesClick = { navController.navigate(Route.Licenses) },
             )
