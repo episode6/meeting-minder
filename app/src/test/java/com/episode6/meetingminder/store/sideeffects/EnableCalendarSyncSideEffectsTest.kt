@@ -51,6 +51,7 @@ class EnableCalendarSyncSideEffectsTest {
     fun aCalendarThatIsGone_isASnackbar_andNoSync() = runTest {
         val output = enableCalendarSync().output(EnableCalendarSync(99)).toList()
 
+        assertThat(repository.syncEnabledCalendarIds).containsExactly(99L)
         assertThat(syncRequests).isEqualTo(0)
         assertThat((output.single() as ShowMessage).message.text).isEqualTo(R.string.busy_sync_enable_calendar_failed)
     }

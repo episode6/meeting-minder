@@ -1061,7 +1061,9 @@ to — a calendar Android isn't syncing yet (`SYNC_EVENTS` off, the usual state 
 in Google Calendar) is listed too, labelled "sync off, pick to turn on", and picking
 it sets `SYNC_EVENTS = 1` on that calendar, requests a sync and reloads the list (the third thing
 the app writes; never turned off again, never any other calendar). Turning the toggle on with no calendar chosen yet auto-picks the first writable calendar
-named "Family" (case-insensitive, trimmed); with no Family calendar the list shows nothing
+named "Family" (case-insensitive, trimmed) — *writable* meaning already syncing: the auto-pick
+never chooses a not-yet-syncing Family, because turning a calendar's sync on only ever follows an
+explicit pick of its row; with no Family calendar the list shows nothing
 selected and the sync stays dormant until the user picks one. The sync runs only with the
 **Share** action — the FAB, the overflow's "Share again", the banner's "Re-share" and the
 notification's "Share update" deep link all go through `ShareDay`, so all four sync; background

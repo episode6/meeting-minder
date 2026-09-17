@@ -151,6 +151,11 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
      * toggle on with no calendar chosen in between. Either way, [BusySyncSettingChanged] is
      * dispatched, with the calendar before and after, so PR-15c's cleanup side effect can
      * react (to the toggle going off; a toggle-on changes nothing on the calendar).
+     *
+     * The auto-pick deliberately draws from [writable] (`SYNC_EVENTS` on), not [insertable]:
+     * [EnableCalendarSync] must only ever follow an explicit pick of a row, so a "Family"
+     * calendar that isn't syncing yet leaves the toggle on with nothing chosen and the
+     * "Pick a calendar to sync to" hint showing.
      */
     fun onBusySyncToggle(enabled: Boolean) = viewModelScope.launch {
         val previousCalendarId = settings.current().busySync.calendarId
