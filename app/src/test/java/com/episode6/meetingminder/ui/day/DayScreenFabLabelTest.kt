@@ -1,5 +1,7 @@
 package com.episode6.meetingminder.ui.day
 
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
@@ -11,8 +13,8 @@ import java.time.LocalDate
 
 /**
  * The FAB's label while busy-calendar sync (TODO.md §4.7) is effective: "Sync & Share"
- * instead of "Share schedule". PR-15a wires only the label; the calendar write itself is
- * PR-15b/c.
+ * instead of "Share schedule" — and where in the semantics tree that label lives, which
+ * is how `BusyCalendarSyncDeviceTest` finds the button to tap.
  */
 @RunWith(RobolectricTestRunner::class)
 class DayScreenFabLabelTest {
@@ -57,5 +59,20 @@ class DayScreenFabLabelTest {
         show(DayUiState(anchorDate = today, meetingCount = 3, fabState = FabState.Share(syncs = true), armedCount = 3))
 
         composeRule.onNodeWithText("Sync & Share", useUnmergedTree = true).assertExists()
+    }
+
+    /**
+     * The Material 3 extended FAB wraps its label in `clearAndSetSemantics`, so the label
+     * exists in the **unmerged** tree only — not on the FAB's clickable node, and not as a
+     * descendant of it in the merged tree. `BusyCalendarSyncDeviceTest` therefore taps that
+     * unmerged text node (a `performClick` is an injected touch, which lands on the FAB
+     * under it); pinned here so the two can't drift apart.
+     */
+    @Test
+    fun theFabsLabelIsFoundOnlyInTheUnmergedTree() {
+        show(DayUiState(anchorDate = today, meetingCount = 3, fabState = FabState.Share(syncs = true), armedCount = 3))
+
+        composeRule.onAllNodes(hasText("Sync & Share")).assertCountEquals(0)
+        composeRule.onAllNodes(hasText("Sync & Share"), useUnmergedTree = true).assertCountEquals(1)
     }
 }

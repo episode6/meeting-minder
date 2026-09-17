@@ -11,7 +11,6 @@ import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
 import android.util.Log
 import androidx.compose.ui.test.ComposeTimeoutException
-import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -123,12 +122,20 @@ class BusyCalendarSyncDeviceTest {
             await("the seeded meeting to load") { loadedKey() != null }
             val key = loadedKey()!!
 
+            // the sync is only "effective" once the chosen calendar is in the store as a
+            // writable one; asserted on its own so a failure here can't read as a bad label
+            await("the Family calendar to load") { graph.appStore.state.calendars.any { it.id == calendarId } }
             graph.appStore.dispatch(ToggleEvent(today, key))
             await("the meeting to be selected") { graph.appStore.state.dayPlans[today]?.selected?.containsKey(key) == true }
             graph.appStore.dispatch(SetAlarms(today))
-            await("the FAB to offer \"Sync & Share\"") { syncAndShareFab().isNotEmpty() }
+            // every selection armed or skipped records alarms_set_at, which is what turns
+            // the FAB into the share button (here: skipped, the meeting is in the past)
+            await("the day's alarms to be reconciled") { graph.appStore.state.dayPlans[today]?.alarmsSetAt != null }
+            await("the FAB to read \"Sync & Share\"") { syncAndShareFab().isNotEmpty() }
 
-            composeRule.onNode(hasText(context.getString(R.string.day_fab_sync_share)) and hasClickAction()).performClick()
+            // an injected touch on the label lands on the FAB under it: the M3 extended FAB
+            // clears its label out of the merged tree (DayScreenFabLabelTest pins this)
+            composeRule.onNode(hasText(context.getString(R.string.day_fab_sync_share)), useUnmergedTree = true).performClick()
 
             await("the busy block on the Family calendar") { busyBlocks().size == 1 }
             val block = busyBlocks().single()
@@ -150,7 +157,7 @@ class BusyCalendarSyncDeviceTest {
             val reloaded = graph.appStore.state.eventsByDay.getValue(today).events.map { it.eventId }
             assertThat(reloaded).contains(meetingId)
             assertThat(reloaded).doesNotContain(block.id)
-            assertThat(composeRule.onAllNodes(hasText("busy")).fetchSemanticsNodes()).isEmpty()
+            assertThat(composeRule.onAllNodes(hasText("busy"), useUnmergedTree = true).fetchSemanticsNodes()).isEmpty()
 
             // deselect and re-share (what the overflow's "Share again" dispatches): an empty
             // day's sync reconciles to nothing, so the block goes away again
@@ -174,7 +181,7 @@ class BusyCalendarSyncDeviceTest {
         graph.appStore.state.eventsByDay[today]?.events?.firstOrNull { it.title == title }?.key
 
     private fun syncAndShareFab() =
-        composeRule.onAllNodes(hasText(context.getString(R.string.day_fab_sync_share)) and hasClickAction()).fetchSemanticsNodes()
+        composeRule.onAllNodes(hasText(context.getString(R.string.day_fab_sync_share)), useUnmergedTree = true).fetchSemanticsNodes()
 
     /** One `Events` row on the Family calendar, as the partner's calendar would see it. */
     private data class Block(val id: Long, val title: String?, val description: String?, val location: String?, val begin: Long, val end: Long)
@@ -227,10 +234,18 @@ class BusyCalendarSyncDeviceTest {
 
     private fun await(what: String, condition: () -> Boolean) {
         if (!waitFor(STEP_TIMEOUT_MILLIS, condition)) {
-            runCatching { composeRule.onAllNodes(isRoot()).printToLog(LOG_TAG, maxDepth = Int.MAX_VALUE) }
-            throw AssertionError("timed out waiting for $what")
+            runCatching { composeRule.onAllNodes(isRoot(), useUnmergedTree = true).printToLog(LOG_TAG, maxDepth = Int.MAX_VALUE) }
+            throw AssertionError("timed out waiting for $what; $storeSummary")
         }
     }
+
+    /** What the day looked like when a wait gave up — the logcat may not survive the run. */
+    private val storeSummary: String
+        get() = with(graph.appStore.state) {
+            "settled=$settledDate, plan=${dayPlans[today]}, " +
+                "calendars=${calendars.map { listOf(it.id, it.displayName, it.accessLevel, it.syncEvents).joinToString(":") }}, " +
+                "busySync=${runBlocking { graph.settingsRepository.current().busySync }}, events=${eventsByDay[today]?.events?.size}"
+        }
 
     /** [condition] under the compose rule's clock (see the class doc); false on timeout. */
     private fun waitFor(timeoutMillis: Long, condition: () -> Boolean): Boolean = try {
