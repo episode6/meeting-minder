@@ -341,6 +341,7 @@ class FakeCalendarProvider : ContentProvider() {
         updates += uri to ContentValues(values)
         return when (matcher.match(uri)) {
             MATCH_ATTENDEES_ID -> db.update(ATTENDEES, values, "${Attendees._ID} = ?", arrayOf(uri.lastPathSegment))
+            MATCH_CALENDAR_ID -> db.update(CALENDARS, values, "${Calendars._ID} = ?", arrayOf(uri.lastPathSegment))
             else -> throw UnsupportedOperationException("update on $uri")
         }
     }
@@ -357,10 +358,12 @@ class FakeCalendarProvider : ContentProvider() {
         const val MATCH_EXCEPTION_ID = 5
         const val MATCH_EVENTS = 6
         const val MATCH_EVENT_ID = 7
+        const val MATCH_CALENDAR_ID = 8
         const val EPOCH_JULIAN_DAY = 2440588
 
         val matcher = UriMatcher(UriMatcher.NO_MATCH).apply {
             addURI(CalendarContract.AUTHORITY, "calendars", MATCH_CALENDARS)
+            addURI(CalendarContract.AUTHORITY, "calendars/#", MATCH_CALENDAR_ID)
             addURI(CalendarContract.AUTHORITY, "instances/when/#/#", MATCH_INSTANCES_WHEN)
             addURI(CalendarContract.AUTHORITY, "attendees", MATCH_ATTENDEES)
             addURI(CalendarContract.AUTHORITY, "attendees/#", MATCH_ATTENDEES_ID)

@@ -1057,8 +1057,13 @@ details.
 
 **Product behaviour.** Settings gains a "Busy calendar" section: a toggle "Sync busy times to a
 calendar" (off by default) and, once on, a single-choice list of the calendars the app can write
-to. Turning the toggle on with no calendar chosen yet auto-picks the first writable calendar
-named "Family" (case-insensitive, trimmed); with no Family calendar the list shows nothing
+to — a calendar Android isn't syncing yet (`SYNC_EVENTS` off, the usual state of one just created
+in Google Calendar) is listed too, labelled "sync off, pick to turn on", and picking
+it sets `SYNC_EVENTS = 1` on that calendar, requests a sync and reloads the list (the third thing
+the app writes; never turned off again, never any other calendar). Turning the toggle on with no calendar chosen yet auto-picks the first writable calendar
+named "Family" (case-insensitive, trimmed) — *writable* meaning already syncing: the auto-pick
+never chooses a not-yet-syncing Family, because turning a calendar's sync on only ever follows an
+explicit pick of its row; with no Family calendar the list shows nothing
 selected and the sync stays dormant until the user picks one. The sync runs only with the
 **Share** action — the FAB, the overflow's "Share again", the banner's "Re-share" and the
 notification's "Share update" deep link all go through `ShareDay`, so all four sync; background
@@ -1090,7 +1095,9 @@ Family default is applied once, by the ViewModel, at the moment the toggle turns
 rename of the calendar can't silently move the sync). `data/calendar/BusyCalendars.kt` has three
 pure, unit-tested functions: `List<CalendarInfo>.writable()` (`SYNC_EVENTS` on and
 `CAL_ACCESS_CONTRIBUTOR` (500) or better — `CAL_ACCESS_RESPOND`, what the RSVP needs, cannot
-insert), `defaultBusyCalendar(calendars)` (first writable "Family", case/whitespace
+insert; `insertable()` is the same without the `SYNC_EVENTS` condition and is what the Settings
+list shows, with `EnableCalendarSync` → `CalendarRepository.enableCalendarSync` turning the flag
+on for the picked one), `defaultBusyCalendar(calendars)` (first writable "Family", case/whitespace
 insensitive), and `effectiveBusyCalendar(settings, calendars)` (the calendar the sync would write
 to right now, or null when off, unset, or the stored id no longer resolves), plus
 `busyBlockTitle(firstName)`, the single definition of a block's title. `CalendarRepository`

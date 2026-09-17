@@ -96,7 +96,7 @@ class SettingsChipsSemanticsTest {
                         calendars = listOf(CalendarRow(family, included = true)),
                         busySyncEnabled = true,
                         busySyncCalendarId = family.id,
-                        writableCalendars = listOf(family),
+                        busyCalendars = listOf(family),
                     ),
                     snackbarHostState = SnackbarHostState(),
                     onBackClick = {},
@@ -127,7 +127,7 @@ class SettingsChipsSemanticsTest {
         composeRule.setContent {
             MeetingMinderTheme {
                 SettingsScreen(
-                    state = SettingsUiState(busySyncEnabled = true, busySyncCalendarId = family.id, writableCalendars = emptyList()),
+                    state = SettingsUiState(busySyncEnabled = true, busySyncCalendarId = family.id, busyCalendars = emptyList()),
                     snackbarHostState = SnackbarHostState(),
                     onBackClick = {},
                     onLeadTimeSelected = {},
@@ -156,7 +156,7 @@ class SettingsChipsSemanticsTest {
         composeRule.setContent {
             MeetingMinderTheme {
                 SettingsScreen(
-                    state = SettingsUiState(busySyncEnabled = false, writableCalendars = emptyList()),
+                    state = SettingsUiState(busySyncEnabled = false, busyCalendars = emptyList()),
                     snackbarHostState = SnackbarHostState(),
                     onBackClick = {},
                     onLeadTimeSelected = {},

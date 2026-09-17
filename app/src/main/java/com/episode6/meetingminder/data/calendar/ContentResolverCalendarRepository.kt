@@ -131,6 +131,11 @@ class ContentResolverCalendarRepository(
         contentResolver.delete(ContentUris.withAppendedId(Events.CONTENT_URI, eventId), null, null) > 0
     }
 
+    override suspend fun enableCalendarSync(calendarId: Long): Boolean = withContext(ioDispatcher) {
+        val values = ContentValues().apply { put(Calendars.SYNC_EVENTS, 1) }
+        contentResolver.update(ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId), values, null, null) > 0
+    }
+
     override suspend fun syncedEventIds(eventIds: Collection<Long>): Set<Long> = withContext(ioDispatcher) {
         val ids = eventIds.toSortedSet()
         if (ids.isEmpty()) return@withContext emptySet()
