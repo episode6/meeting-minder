@@ -100,6 +100,24 @@ class DataStoreSettingsRepositoryTest {
     }
 
     @Test
+    fun setBusySyncEnabled_andCalendar_persistAndClearIndependently() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-busy-sync-test"))
+
+        assertThat(repository.current().busySync).isEqualTo(BusySync())
+
+        repository.setBusySyncEnabled(true)
+        repository.setBusySyncCalendar(42L)
+
+        assertThat(repository.current().busySync).isEqualTo(BusySync(enabled = true, calendarId = 42L))
+
+        repository.setBusySyncCalendar(null)
+        assertThat(repository.current().busySync).isEqualTo(BusySync(enabled = true, calendarId = null))
+
+        repository.setBusySyncEnabled(false)
+        assertThat(repository.current().busySync).isEqualTo(BusySync(enabled = false, calendarId = null))
+    }
+
+    @Test
     fun markPermissionRequested_persistsEveryPermissionAsked_withoutTouchingTheSettings() = runTest {
         val repository = DataStoreSettingsRepository(dataStore("settings-permissions-test"))
 

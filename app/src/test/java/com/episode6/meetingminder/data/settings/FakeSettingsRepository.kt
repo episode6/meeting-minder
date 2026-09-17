@@ -32,6 +32,14 @@ internal class FakeSettingsRepository(initial: Settings = Settings()) : Settings
         settings.value = settings.value.copy(calendarOverrides = overrides)
     }
 
+    override suspend fun setBusySyncEnabled(enabled: Boolean) {
+        settings.value = settings.value.copy(busySync = settings.value.busySync.copy(enabled = enabled))
+    }
+
+    override suspend fun setBusySyncCalendar(calendarId: Long?) {
+        settings.value = settings.value.copy(busySync = settings.value.busySync.copy(calendarId = calendarId))
+    }
+
     override val requestedPermissions = MutableStateFlow(emptySet<String>())
 
     override suspend fun markPermissionRequested(permission: String) {

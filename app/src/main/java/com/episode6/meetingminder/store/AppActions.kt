@@ -211,3 +211,19 @@ data class DismissAlarm(val alarmId: Long) : AsyncAction
  * full-screen wake-up) can be checked end to end (`TestAlarmSideEffects`).
  */
 data object TestAlarm : AsyncAction
+
+/**
+ * Settings → Busy calendar changed (TODO.md §4.7): the toggle was turned on or off, or its
+ * target calendar was changed. [previousCalendarId] and [calendarId] are the chosen
+ * calendar before and after (null while none is chosen), [enabledNow] the toggle's new
+ * value; the action carries both ids so a handler can tell a switch away from a calendar
+ * (`previousCalendarId != calendarId`) from the toggle going on with that same calendar
+ * still chosen without re-reading the settings. `BusyCalendarSyncSideEffects` deletes the
+ * busy blocks of **today and every later day** (never `AppState.anchorDate`, which is only
+ * current while the UI is visible): every calendar's when [enabledNow] is false, and
+ * [previousCalendarId]'s when the target calendar changed; a toggle-on, or a re-pick of
+ * the calendar already chosen, deletes nothing. Past days are left as history, and nothing
+ * is written eagerly to a newly chosen calendar — the next share of each day does that,
+ * since a share is the user's signal that the day's plan is current.
+ */
+data class BusySyncSettingChanged(val previousCalendarId: Long?, val calendarId: Long?, val enabledNow: Boolean) : AsyncAction

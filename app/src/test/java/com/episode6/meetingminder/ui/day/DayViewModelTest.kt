@@ -11,6 +11,11 @@ import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
 import assertk.assertions.prop
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.data.settings.BusySync
+import com.episode6.meetingminder.data.settings.FakeSettingsRepository
+import com.episode6.meetingminder.data.settings.Settings
+import com.episode6.meetingminder.data.settings.SettingsRepository
+import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
@@ -34,7 +39,10 @@ import com.episode6.redux.sideeffects.SideEffect
 import com.episode6.redux.testsupport.runStoreTest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
@@ -67,6 +75,25 @@ class DayViewModelTest {
     private val designReview = testCalendarEvent(3, at(today, 14), at(today, 15), title = "Design review")
     private val holiday = testCalendarEvent(4, at(today, 0), at(tomorrow, 0), title = "Holiday", meeting = false, allDay = true)
     private val lateShow = testCalendarEvent(5, at(today, 23), at(tomorrow, 0), title = "Late show", meeting = false)
+
+    private val family = CalendarInfo(
+        id = 7,
+        accountName = "me@example.com",
+        accountType = "com.google",
+        displayName = "Family",
+        color = 0,
+        visible = true,
+        syncEvents = true,
+        ownerAccount = "me@example.com",
+        isPrimary = false,
+        accessLevel = 700,
+        canOrganizerRespond = false,
+    )
+
+    /** A [SettingsRepository] whose flow never emits, like DataStore before its first disk read completes. */
+    private class NeverEmittingSettingsRepository : SettingsRepository by FakeSettingsRepository() {
+        override val settings: Flow<Settings> = flow { awaitCancellation() }
+    }
 
     @Before
     fun setUp() {
@@ -129,7 +156,45 @@ class DayViewModelTest {
 
     @Test
     fun state_followsTheStore() = runStoreTest({ createAppStore(this, AppState(anchorDate = today), emptySet()) }) { store ->
-        val viewModel = DayViewModel(store, clock)
+        val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
+        viewModel.state.test {
+            assertThat(awaitItem()).isEqualTo(DayUiState(anchorDate = today))
+
+            viewModel.onPageSettled(tomorrow)
+
+            assertThat(awaitItem()).isEqualTo(DayUiState(anchorDate = today, date = tomorrow, isToday = false))
+        }
+    }
+
+    @Test
+    fun state_labelsTheShareFabAsSyncing_onceTheSettingsFlowSaysTheSyncIsEffective() = runStoreTest(
+        {
+            createAppStore(
+                this,
+                AppState(anchorDate = today, calendars = listOf(family), dayPlans = mapOf(today to DayPlan(today, alarmsSetAt = Instant.EPOCH))),
+                emptySet(),
+            )
+        },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = family.id)))
+        val viewModel = DayViewModel(store, clock, settings)
+
+        viewModel.state.test {
+            val synced = awaitItem()
+            assertThat(synced.fabState).isEqualTo(FabState.Share(syncs = true))
+            assertThat(synced.busySyncs).isEqualTo(true)
+
+            settings.setBusySyncEnabled(false)
+
+            assertThat(awaitItem().fabState).isEqualTo(FabState.Share(syncs = false))
+        }
+    }
+
+    @Test
+    fun state_followsTheStore_beforeTheSettingsHaveBeenRead() = runStoreTest({ createAppStore(this, AppState(anchorDate = today), emptySet()) }) { store ->
+        // DataStore's first emission is a disk read; a store change in that window must
+        // still reach the screen (with the sync read as off until the settings land)
+        val viewModel = DayViewModel(store, clock, NeverEmittingSettingsRepository())
         viewModel.state.test {
             assertThat(awaitItem()).isEqualTo(DayUiState(anchorDate = today))
 
@@ -146,7 +211,7 @@ class DayViewModelTest {
             actions.onEach { if (it is LoadDay) loads.emit(it) }.filter { false }
         }
         runStoreTest({ createAppStore(this, AppState(anchorDate = today), setOf(recordLoads)) }) { store ->
-            val viewModel = DayViewModel(store, clock)
+            val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
 
             viewModel.onPageSettled(tomorrow)
 
@@ -171,7 +236,7 @@ class DayViewModelTest {
             )
         },
     ) { store ->
-        val viewModel = DayViewModel(store, clock)
+        val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
 
         assertThat(viewModel.calendarEventFor(lateShow.key)).isEqualTo(lateShow)
         assertThat(viewModel.calendarEventFor(EventKey(99, 0))).isNull()
@@ -181,7 +246,7 @@ class DayViewModelTest {
     fun messages_emitEachMessageOnce_andShowingOneClearsIt() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today), emptySet()) },
     ) { store ->
-        val viewModel = DayViewModel(store, clock)
+        val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
         val message = UiMessage(id = 1, text = 1)
         viewModel.messages.test {
             store.dispatch(ShowMessage(message))
@@ -198,7 +263,7 @@ class DayViewModelTest {
     fun pendingShare_emitsEachShareOnce_andLaunchingItClearsIt() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today), emptySet()) },
     ) { store ->
-        val viewModel = DayViewModel(store, clock)
+        val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
         val share = PendingShare.next(today, "text")
         viewModel.pendingShare.test {
             store.dispatch(SetPendingShare(share))
@@ -219,7 +284,7 @@ class DayViewModelTest {
     fun onOpenInCalendarFailed_showsTheNoCalendarAppMessage() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today), emptySet()) },
     ) { store ->
-        val viewModel = DayViewModel(store, clock)
+        val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
         viewModel.messages.test {
             viewModel.onOpenInCalendarFailed()
 
@@ -231,7 +296,7 @@ class DayViewModelTest {
     fun onCheckForUpdatesFailed_showsTheNoBrowserMessage() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today), emptySet()) },
     ) { store ->
-        val viewModel = DayViewModel(store, clock)
+        val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
         viewModel.messages.test {
             viewModel.onCheckForUpdatesFailed()
 
@@ -246,7 +311,7 @@ class DayViewModelTest {
             actions.onEach { if (it is ToggleEvent) toggles.emit(it) }.filter { false }
         }
         runStoreTest({ createAppStore(this, AppState(anchorDate = today), setOf(recordToggles)) }) { store ->
-            val viewModel = DayViewModel(store, clock)
+            val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
 
             // the event loaded on today's page, but the tap came from tomorrow's (an event
             // spanning midnight can appear on both, each with its own selection)
@@ -266,7 +331,7 @@ class DayViewModelTest {
         runStoreTest(
             { createAppStore(this, AppState(anchorDate = today, settledDate = tomorrow, dayPlans = mapOf(tomorrow to selected)), setOf(record)) },
         ) { store ->
-            val viewModel = DayViewModel(store, clock)
+            val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
 
             viewModel.onFabClick()
 
@@ -284,7 +349,7 @@ class DayViewModelTest {
         runStoreTest(
             { createAppStore(this, AppState(anchorDate = today, dayPlans = mapOf(today to armed)), setOf(record)) },
         ) { store ->
-            val viewModel = DayViewModel(store, clock)
+            val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
 
             viewModel.onFabClick()
 
@@ -302,7 +367,7 @@ class DayViewModelTest {
         runStoreTest(
             { createAppStore(this, AppState(anchorDate = today, dayPlans = mapOf(today to armed)), setOf(record)) },
         ) { store ->
-            val viewModel = DayViewModel(store, clock)
+            val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
 
             viewModel.onFabClick()
             // a fast double tap, and "Share again" while the chooser is still coming up
@@ -329,7 +394,7 @@ class DayViewModelTest {
             actions.onEach { if (it is ShareDay) dispatched.emit(it) }.filter { false }
         }
         runStoreTest({ createAppStore(this, AppState(anchorDate = today, settledDate = tomorrow), setOf(record)) }) { store ->
-            val viewModel = DayViewModel(store, clock)
+            val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
 
             viewModel.onShareAgainClick()
 
@@ -344,7 +409,7 @@ class DayViewModelTest {
             actions.onEach { if (it is MarkNotShared) dispatched.emit(it) }.filter { false }
         }
         runStoreTest({ createAppStore(this, AppState(anchorDate = today), setOf(record)) }) { store ->
-            val viewModel = DayViewModel(store, clock)
+            val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
 
             viewModel.onMarkNotSharedClick()
 
@@ -356,7 +421,7 @@ class DayViewModelTest {
     fun onShareLaunched_clearsThePendingShare() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today, pendingShare = PendingShare.next(today, "text")), emptySet()) },
     ) { store ->
-        val viewModel = DayViewModel(store, clock)
+        val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
         val share = store.state.pendingShare!!
 
         viewModel.onShareLaunched(share)
@@ -368,7 +433,7 @@ class DayViewModelTest {
     fun onFabClick_withNothingSelected_doesNothing() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today), emptySet()) },
     ) { store ->
-        val viewModel = DayViewModel(store, clock)
+        val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
         viewModel.messages.test {
             viewModel.onFabClick()
 
@@ -392,7 +457,7 @@ class DayViewModelTest {
 
         val ui = state.toDayUiState(now, zone)
 
-        assertThat(ui.fabState).isEqualTo(FabState.Share)
+        assertThat(ui.fabState).isEqualTo(FabState.Share(syncs = false))
         assertThat(ui.armedCount).isEqualTo(1)
     }
 
@@ -432,7 +497,7 @@ class DayViewModelTest {
         assertThat(selected.toFabState()).isEqualTo(FabState.SetAlarms(1))
 
         val armed = selected.copy(alarmsSetAt = Instant.EPOCH)
-        assertThat(armed.toFabState()).isEqualTo(FabState.Share)
+        assertThat(armed.toFabState()).isEqualTo(FabState.Share(syncs = false))
     }
 
     @Test
@@ -455,7 +520,7 @@ class DayViewModelTest {
         runStoreTest(
             { createAppStore(this, AppState(anchorDate = today, dayPlans = mapOf(today to deselected)), setOf(record)) },
         ) { store ->
-            val viewModel = DayViewModel(store, clock)
+            val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
             assertThat(viewModel.state.value.fabState).isEqualTo(FabState.SetAlarms(0))
 
             viewModel.onFabClick()

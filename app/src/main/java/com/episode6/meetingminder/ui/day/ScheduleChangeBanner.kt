@@ -42,9 +42,12 @@ import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 @Immutable
 data class ScheduleChangeBannerState(val lines: List<ScheduleChangeLine>)
 
-/** Error-container card with the change count, the change lines (two at most, ellipsised) and "Re-share". */
+/**
+ * Error-container card with the change count, the change lines (two at most, ellipsised) and
+ * "Re-share" — "Sync & re-share" while [syncs] (busy-calendar sync, TODO.md §4.7) is effective.
+ */
 @Composable
-fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () -> Unit, modifier: Modifier = Modifier, syncs: Boolean = false) {
     val resources = LocalResources.current
     Surface(
         modifier = modifier
@@ -91,7 +94,10 @@ fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () ->
                 onClick = onReshareClick,
                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
             ) {
-                Text(stringResource(R.string.day_banner_reshare), fontWeight = FontWeight.Bold)
+                Text(
+                    stringResource(if (syncs) R.string.day_banner_sync_reshare else R.string.day_banner_reshare),
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
     }

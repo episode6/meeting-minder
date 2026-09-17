@@ -1048,6 +1048,70 @@ ORGANIZER/ACCEPTED), run the flow, then check `selfAttendeeStatus == 1` and `dir
 `adb shell content query`. Before release, verify on a real Google account that the response
 reaches calendar.google.com for a one-off invite and for one instance of a recurring invite.
 
+### 4.7 Busy-calendar sync ("Sync & Share")
+
+An opt-in feature (PR-15a/b/c): when the user shares a day, the app also writes the day's busy
+time ranges to one calendar of their choosing (defaulting to a calendar named "Family") as bare
+events titled `busy`, so a partner's calendar shows when they're busy without any meeting
+details.
+
+**Product behaviour.** Settings gains a "Busy calendar" section: a toggle "Sync busy times to a
+calendar" (off by default) and, once on, a single-choice list of the calendars the app can write
+to. Turning the toggle on with no calendar chosen yet auto-picks the first writable calendar
+named "Family" (case-insensitive, trimmed); with no Family calendar the list shows nothing
+selected and the sync stays dormant until the user picks one. The sync runs only with the
+**Share** action — the FAB, the overflow's "Share again", the banner's "Re-share" and the
+notification's "Share update" deep link all go through `ShareDay`, so all four sync; background
+change detection never writes, it only nags to re-share. While the sync is *effective* (toggle on
+**and** a chosen calendar that still exists and is writable) the FAB reads "Sync & Share", the
+overflow item "Sync & share again" and the banner's button "Sync & re-share"; otherwise every
+label stays as it is today. Each merged busy range of the day becomes one event on the chosen
+calendar: title exactly `busy`, the range's begin/end, availability busy, no description,
+location, attendees, reminders or colour, device zone as the event time zone — nothing else about
+the meeting ever reaches that calendar. Re-sharing a day reconciles that day's blocks against the
+new ranges (unchanged ranges keep their event, moved/removed ranges are deleted, new ranges are
+inserted); only events the app itself wrote are ever touched. "Mark as not shared" deletes that
+day's blocks; turning the toggle off deletes today's and future blocks (past days are left as
+history); switching calendars deletes today's and future blocks from the old calendar and lets
+the next share of each day recreate them on the new one. The app's own blocks are hidden from the
+itinerary, meeting counts, share text, change-detection baseline and change notifications, even
+on a visible calendar. A sync that fails never blocks the share — the chooser still opens and a
+snackbar says "Couldn't sync busy times to Family"; a `SecurityException` re-checks permissions
+the way the RSVP write does. No new permission: `WRITE_CALENDAR` (already pinned for the RSVP)
+covers inserts and deletes, and the account's own sync adapter uploads the event — the app never
+talks to the network itself.
+
+**Design.** `Settings.busySync` is a `BusySync(enabled, calendarId)`, stored explicitly (the
+Family default is applied once, by the ViewModel, at the moment the toggle turns on — a later
+rename of the calendar can't silently move the sync). `data/calendar/BusyCalendars.kt` has three
+pure, unit-tested functions: `List<CalendarInfo>.writable()` (`SYNC_EVENTS` on and
+`CAL_ACCESS_CONTRIBUTOR` (500) or better — `CAL_ACCESS_RESPOND`, what the RSVP needs, cannot
+insert), `defaultBusyCalendar(calendars)` (first writable "Family", case/whitespace
+insensitive), and `effectiveBusyCalendar(settings, calendars)` (the calendar the sync would write
+to right now, or null when off, unset, or the stored id no longer resolves). `CalendarRepository`
+gains `insertBusyBlock(calendarId, range, zone)` and `deleteOwnEvent(eventId)` — the second and
+third kinds of write this app makes, after the RSVP. Room's `busy_block` table (database version
+6) is the source of truth for "what the app wrote": one row per inserted `Events._ID`, with the
+day, calendar and range it belongs to. `share/BusyBlockReconciler.kt`'s pure
+`reconcileBusyBlocks(existing, desired, calendarId)` decides keep/delete/insert by exact-instant
+matching (a moved range is delete + insert, never an update); `share/BusyCalendarSyncer` runs the
+plan against the repository and the dao, deleting first (a delete that finds the row already gone
+still drops it — the user deleted it by hand and the app doesn't fight that) then inserting,
+upserting each row as its insert returns so a crash mid-way leaves the table truthful.
+`ShareDay` fans out `SyncBusyCalendar(date, ranges)` right after `SetPendingShare` whenever the
+setting is enabled, so the chooser and the sync run concurrently and the chooser never waits on
+provider IO; `MarkNotShared` and a new `BusySyncSettingChanged(previousCalendarId, calendarId, enabledNow)`
+action drive the two cleanup paths. Hiding relies on `CalendarEvent.ownedByApp` (read from
+`Instances.CUSTOM_APP_PACKAGE`, written on insert as an ownership marker) **and** a lookup against
+`busy_block`'s ids, applied by `List<CalendarEvent>.excludeOwnBlocks(ownedIds)` at every read site
+next to `excludeDeclined`, so a block survives being hidden even if the marker doesn't stick
+through a sync round trip.
+
+**Work plan** (PR-15a/b/c, §5 Phase 5): PR-15a adds the setting, the pure calendar-selection
+functions and the FAB/menu/banner labels (no calendar write yet); PR-15b adds the provider write,
+the `busy_block` table, the reconciler and the syncer (unwired); PR-15c wires the sync into
+`ShareDay`, the cleanup actions, the hiding at every read site, and the end-to-end device test.
+
 ## 5. Work plan (PR-sized chunks)
 
 Each PR: draft, CHANGELOG bullet, docs updated in the same PR, CI green, one Claude review on
@@ -1167,6 +1231,18 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   `RELEASE_CHECKLIST.md` cuts it from a green `main`, so it happens via `release-branch-skill`
   once the PR-1..PR-14 stack has merged to `main`, not as part of this PR.
 
+### Phase 5 — Busy-calendar sync
+
+- [ ] **PR-15a: Busy-calendar setting and labels.** `[Sonnet 5, effort medium]` `Settings.busySync`,
+  `writable`/`defaultBusyCalendar`/`effectiveBusyCalendar`, the Settings "Busy calendar" section,
+  `FabState.Share(syncs)` and the three label pairs — no calendar write yet.
+- [ ] **PR-15b: Provider write, `busy_block` table, reconciler, syncer.** `[Fable 5.1, effort high]`
+  `insertBusyBlock`/`deleteOwnEvent`, `CalendarEvent.ownedByApp` + `excludeOwnBlocks`, the
+  `busy_block` Room table (database version 6), `reconcileBusyBlocks`, `BusyCalendarSyncer` — unwired.
+- [ ] **PR-15c: Wire the sync into Share, cleanup, hiding, device test.** `[Opus 5, effort high]`
+  `SyncBusyCalendar` fan-out from `ShareDay`, `MarkNotShared`/`BusySyncSettingChanged` cleanup,
+  `excludeOwnBlocks` at every read site, the instrumented `BusyCalendarSyncDeviceTest`.
+
 Later / v2 ideas (not scheduled): home-screen widget with today's busy ranges, "tomorrow evening
 heads-up" share, per-event lead time, wearable alarm mirroring, a "commute" buffer before the
 first meeting.
@@ -1214,6 +1290,9 @@ the rationale. "Effort" is the reasoning-effort hint for the implementing agent.
 | PR-12 | Sonnet 5 | medium | Settings screen over DataStore; UI plumbing. |
 | PR-13 | Opus 5 | high | A grab-bag of edge cases (midnight rollover, timezone changes, TalkBack) that needs judgement about what to test. |
 | PR-14 | Sonnet 5 | medium | Icons, README, licence reconciliation. Release branch per the checklist follows separately once the stack has merged. |
+| PR-15a | Sonnet 5 | medium | Settings screen and label plumbing over a spec that already lists every branch, no calendar write yet. |
+| PR-15b | Fable 5.1 | high | Writes to, and deletes from, the user's real calendar, on a calendar other people read; the column set, the non-sync-adapter delete semantics and the "never touch a row we didn't write" guarantee are the whole feature, and mistakes are visible to the partner. |
+| PR-15c | Opus 5 | high | The hard rules are all written down; the work is careful wiring across the store, the monitor and the UI with several test layers, and judgement about which tests carry the guarantees. |
 
 Reviewers should be a **different** model than the implementer where practical (Fable reviews
 Opus/Sonnet work; Opus reviews Fable work). Escalate one tier when a PR's CI or device tests
