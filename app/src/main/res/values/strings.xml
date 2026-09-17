@@ -146,7 +146,7 @@
     <!-- snackbar after a share whose busy-block write failed; %1$s is the calendar's name. The share itself still went out -->
     <string name="busy_sync_failed">Couldn\'t sync busy times to %1$s</string>
     <!-- %1$s is the account email; a Busy calendar radio row whose calendar has SYNC_EVENTS off (TODO.md §4.7) -->
-    <string name="settings_busy_calendar_not_syncing">%1$s · not syncing, picking it turns sync on</string>
+    <string name="settings_busy_calendar_not_syncing">%1$s · sync off, pick to turn on</string>
     <string name="busy_sync_enable_calendar_failed">Couldn\'t turn on sync for that calendar</string>
     <string name="busy_sync_failed_unknown_calendar">Couldn\'t sync busy times</string>
     <string name="settings_section_about">About</string>

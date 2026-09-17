@@ -1058,7 +1058,7 @@ details.
 **Product behaviour.** Settings gains a "Busy calendar" section: a toggle "Sync busy times to a
 calendar" (off by default) and, once on, a single-choice list of the calendars the app can write
 to — a calendar Android isn't syncing yet (`SYNC_EVENTS` off, the usual state of one just created
-in Google Calendar) is listed too, labelled "not syncing, picking it turns sync on", and picking
+in Google Calendar) is listed too, labelled "sync off, pick to turn on", and picking
 it sets `SYNC_EVENTS = 1` on that calendar, requests a sync and reloads the list (the third thing
 the app writes; never turned off again, never any other calendar). Turning the toggle on with no calendar chosen yet auto-picks the first writable calendar
 named "Family" (case-insensitive, trimmed); with no Family calendar the list shows nothing
