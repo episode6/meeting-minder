@@ -101,14 +101,16 @@ class ContentResolverCalendarRepository(
      * `ORGANIZER`, `GUESTS_*` and `RRULE` are never set. Not a sync-adapter insert, so the
      * provider marks the row `DIRTY` and the account's adapter uploads it.
      * `CUSTOM_APP_PACKAGE` is the ownership marker [CalendarEvent.ownedByApp] reads back.
+     * `EVENT_TIMEZONE` is this repository's own [zone] — the one every read uses too — so
+     * there is a single zone authority here, and a test that pins the zone pins the insert's.
      */
-    override suspend fun insertBusyBlock(calendarId: Long, range: BusyRange, zone: ZoneId): Long = withContext(ioDispatcher) {
+    override suspend fun insertBusyBlock(calendarId: Long, range: BusyRange): Long = withContext(ioDispatcher) {
         val values = ContentValues().apply {
             put(Events.CALENDAR_ID, calendarId)
             put(Events.DTSTART, range.begin.toEpochMilli())
             put(Events.DTEND, range.end.toEpochMilli())
             put(Events.TITLE, BUSY_BLOCK_TITLE)
-            put(Events.EVENT_TIMEZONE, zone.id)
+            put(Events.EVENT_TIMEZONE, zone().id)
             put(Events.AVAILABILITY, Events.AVAILABILITY_BUSY)
             put(Events.HAS_ALARM, 0)
             put(Events.ACCESS_LEVEL, Events.ACCESS_DEFAULT)

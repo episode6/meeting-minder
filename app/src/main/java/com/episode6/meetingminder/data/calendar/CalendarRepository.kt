@@ -5,7 +5,6 @@ import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.EventResponse
 import java.time.LocalDate
-import java.time.ZoneId
 
 /** Which calendars an [CalendarRepository.eventsOn] query draws from. */
 sealed interface CalendarFilter {
@@ -65,21 +64,27 @@ interface CalendarRepository {
 
     /**
      * Inserts a bare busy block (TODO.md §4.7) on [calendarId] — title `busy`, [range]'s
-     * begin/end, availability busy, [zone] as the event time zone, and the app's package as
-     * the `CUSTOM_APP_PACKAGE` ownership marker; never a description, location, colour,
-     * organizer, attendees, reminders or recurrence — and returns the new `Events._ID`.
-     * A plain (non-sync-adapter) insert, so the row is `DIRTY = 1` and the account's own
-     * sync adapter uploads it; the app never talks to the network. Throws when the provider
-     * refuses the write (missing `WRITE_CALENDAR`, insert returned nothing).
+     * begin/end, availability busy, the device zone (the same one [eventsOn] reads in) as
+     * the event time zone, and the app's package as the `CUSTOM_APP_PACKAGE` ownership
+     * marker; never a description, location, colour, organizer, attendees, reminders or
+     * recurrence — and returns the new `Events._ID`. A plain (non-sync-adapter) insert, so
+     * the row is `DIRTY = 1` and the account's own sync adapter uploads it; the app never
+     * talks to the network. Throws when the provider refuses the write (missing
+     * `WRITE_CALENDAR`, insert returned nothing).
      */
-    suspend fun insertBusyBlock(calendarId: Long, range: BusyRange, zone: ZoneId): Long
+    suspend fun insertBusyBlock(calendarId: Long, range: BusyRange): Long
 
     /**
      * Deletes an event the app itself inserted: an [insertBusyBlock] id recorded in
      * `busy_block`, and nothing else is ever passed here. A plain (non-sync-adapter) delete,
      * so the provider marks the row deleted and the account's sync adapter removes it
-     * upstream. Returns false when the row was already gone (the user deleted it by hand),
-     * which callers treat as done rather than as a failure.
+     * upstream. Returns false when the provider no longer had a row for the id, which
+     * callers treat as done rather than as a failure. That is all `false` means: on a
+     * synced calendar a row the user deleted in Google Calendar stays (as `DELETED = 1`)
+     * until the adapter uploads that deletion, and a delete of it in that window still
+     * answers true; only on a `LOCAL` calendar, where a delete removes the row outright, is
+     * `false` the same thing as "the user deleted it by hand". Don't build on the
+     * distinction.
      */
     suspend fun deleteOwnEvent(eventId: Long): Boolean
 }

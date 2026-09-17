@@ -20,10 +20,8 @@ import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarInfo
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
-import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 
 /**
  * [BusyCalendarSyncer] over the fakes (TODO.md §4.7): when it writes nothing, the order it
@@ -31,11 +29,9 @@ import java.time.ZoneId
  */
 class BusyCalendarSyncerTest {
 
-    private val zone: ZoneId = ZoneId.of("America/New_York")
     private val today = LocalDate.of(2026, 9, 14)
     private val tomorrow = today.plusDays(1)
     private val yesterday = today.minusDays(1)
-    private val clock: Clock = Clock.fixed(Instant.parse("2026-09-14T12:00:00Z"), zone)
 
     private val ten = Instant.parse("2026-09-14T14:00:00Z")
     private val eleven = Instant.parse("2026-09-14T15:00:00Z")
@@ -48,7 +44,7 @@ class BusyCalendarSyncerTest {
     private val repository = FakeCalendarRepository(calendars = listOf(family, work))
     private val dao = FakeBusyBlockDao()
     private val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = family.id)))
-    private val syncer = BusyCalendarSyncer(repository, dao, settings, clock)
+    private val syncer = BusyCalendarSyncer(repository, dao, settings)
 
     private fun calendar(id: Long, name: String, accessLevel: Int = Calendars.CAL_ACCESS_OWNER) = CalendarInfo(
         id = id, accountName = "me@example.com", accountType = "com.google", displayName = name, color = 0, visible = true,
@@ -106,15 +102,15 @@ class BusyCalendarSyncerTest {
     }
 
     @Test
-    fun aFreshDay_insertsEveryRangeInOrder_onTheChosenCalendarInTheClocksZone_andRecordsEachId() = runTest {
+    fun aFreshDay_insertsEveryRangeInOrder_onTheChosenCalendar_andRecordsEachId() = runTest {
         repository.nextBusyBlockId = 100
 
         val result = syncer.sync(today, listOf(BusyRange(ten, eleven), BusyRange(noon, one)))
 
         assertThat(result).isEqualTo(BusySyncResult.Synced("Family", inserted = 2, deleted = 0))
         assertThat(repository.busyBlockInserts).containsExactly(
-            FakeCalendarRepository.BusyBlockInsert(family.id, BusyRange(ten, eleven), zone),
-            FakeCalendarRepository.BusyBlockInsert(family.id, BusyRange(noon, one), zone),
+            FakeCalendarRepository.BusyBlockInsert(family.id, BusyRange(ten, eleven)),
+            FakeCalendarRepository.BusyBlockInsert(family.id, BusyRange(noon, one)),
         )
         assertThat(dao.entries).containsExactly(row(100, ten, eleven), row(101, noon, one))
     }
@@ -132,6 +128,20 @@ class BusyCalendarSyncerTest {
         assertThat(repository.busyBlockInserts.map { it.range }).containsExactly(moved)
         assertThat(dao.entries).containsExactly(row(1, ten, eleven), row(100, moved.begin, moved.end))
         assertThat(repository.ownEvents).isEqualTo(setOf(1L, 100L))
+    }
+
+    @Test
+    fun aRowOnAnotherCalendar_isDeletedAndReInsertedOnTheChosenOne_neverReHomed() = runTest {
+        // written while Work was the target, before the user switched to Family
+        seed(row(1, ten, eleven, calendarId = work.id))
+        repository.nextBusyBlockId = 100
+
+        val result = syncer.sync(today, listOf(BusyRange(ten, eleven)))
+
+        assertThat(result).isEqualTo(BusySyncResult.Synced("Family", inserted = 1, deleted = 1))
+        assertThat(repository.deletedEventIds).containsExactly(1L)
+        assertThat(repository.busyBlockInserts).containsExactly(FakeCalendarRepository.BusyBlockInsert(family.id, BusyRange(ten, eleven)))
+        assertThat(dao.entries).containsExactly(row(100, ten, eleven))
     }
 
     @Test

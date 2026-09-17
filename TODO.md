@@ -1089,7 +1089,7 @@ pure, unit-tested functions: `List<CalendarInfo>.writable()` (`SYNC_EVENTS` on a
 insert), `defaultBusyCalendar(calendars)` (first writable "Family", case/whitespace
 insensitive), and `effectiveBusyCalendar(settings, calendars)` (the calendar the sync would write
 to right now, or null when off, unset, or the stored id no longer resolves). `CalendarRepository`
-gains `insertBusyBlock(calendarId, range, zone)` and `deleteOwnEvent(eventId)` — the second and
+gains `insertBusyBlock(calendarId, range)` and `deleteOwnEvent(eventId)` — the second and
 third kinds of write this app makes, after the RSVP. Room's `busy_block` table (database version
 6) is the source of truth for "what the app wrote": one row per inserted `Events._ID`, with the
 day, calendar and range it belongs to. `share/BusyBlockReconciler.kt`'s pure

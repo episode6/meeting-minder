@@ -5,7 +5,6 @@ import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.EventResponse
 import java.time.LocalDate
-import java.time.ZoneId
 
 /**
  * In-memory [CalendarRepository] for store and side-effect tests: seed [calendars] and
@@ -79,7 +78,7 @@ class FakeCalendarRepository(
     }
 
     /** One recorded `insertBusyBlock` call. */
-    data class BusyBlockInsert(val calendarId: Long, val range: BusyRange, val zone: ZoneId)
+    data class BusyBlockInsert(val calendarId: Long, val range: BusyRange)
 
     /** Every `insertBusyBlock` call, in order, whether or not it threw. */
     val busyBlockInserts = mutableListOf<BusyBlockInsert>()
@@ -99,8 +98,8 @@ class FakeCalendarRepository(
     /** Thrown from `deleteOwnEvent` while non-null. */
     var deleteOwnEventError: Exception? = null
 
-    override suspend fun insertBusyBlock(calendarId: Long, range: BusyRange, zone: ZoneId): Long {
-        busyBlockInserts += BusyBlockInsert(calendarId, range, zone)
+    override suspend fun insertBusyBlock(calendarId: Long, range: BusyRange): Long {
+        busyBlockInserts += BusyBlockInsert(calendarId, range)
         error?.let { throw it }
         busyBlockInsertError(range)?.let { throw it }
         return nextBusyBlockId++.also { ownEvents += it }

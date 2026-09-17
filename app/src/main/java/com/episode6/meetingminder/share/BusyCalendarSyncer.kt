@@ -13,7 +13,6 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.time.Clock
 import java.time.LocalDate
 
 private const val TAG = "MeetingMinderBusySync"
@@ -43,11 +42,19 @@ sealed interface BusySyncResult {
  *
  * Ordering inside [sync]: deletes first, then inserts, and each row is recorded the moment
  * its provider write returns, so a crash between two writes leaves the table describing
- * exactly what is on the calendar. A `false` from [CalendarRepository.deleteOwnEvent] (the
- * row was already gone: the user deleted it by hand) still drops the table row — the app
- * doesn't fight a deletion the user made. The calendar is resolved over a fresh
- * [CalendarRepository.calendars] read, never the store's cached list, so a calendar removed
- * or made read-only since the last load is noticed before anything is written.
+ * exactly what is on the calendar — with one window: a crash between
+ * [CalendarRepository.insertBusyBlock] returning and the [BusyBlockDao.upsert] right after
+ * it leaves an **orphan**, a `busy` event on the calendar that the table never learns
+ * about. The app can never delete it (only table ids are ever deleted), the next share
+ * inserts the range again beside it, and it stays hidden on this device only by its
+ * `CUSTOM_APP_PACKAGE` marker. The window is one Room write wide, and the alternative
+ * (recording the row before the insert, with a placeholder id) would break "the table only
+ * ever names events that exist", so it is accepted and written down here. A `false` from
+ * [CalendarRepository.deleteOwnEvent] (the provider no longer had the row) still drops the
+ * table row — the app doesn't fight a deletion made behind its back. The calendar is
+ * resolved over a fresh [CalendarRepository.calendars] read, never the store's cached list,
+ * so a calendar removed or made read-only since the last load is noticed before anything
+ * is written.
  */
 @Inject
 @SingleIn(AppScope::class)
@@ -55,7 +62,6 @@ class BusyCalendarSyncer(
     private val repository: CalendarRepository,
     private val dao: BusyBlockDao,
     private val settings: SettingsRepository,
-    private val clock: Clock,
 ) {
     // a share's sync and a cleanup can overlap (share, then "Mark as not shared" at once);
     // one pass at a time so neither reads rows the other is half-way through changing
@@ -81,7 +87,7 @@ class BusyCalendarSyncer(
                 deleted++
             }
             for (range in plan.insert) {
-                val eventId = repository.insertBusyBlock(calendar.id, range, clock.zone)
+                val eventId = repository.insertBusyBlock(calendar.id, range)
                 dao.upsert(
                     BusyBlockEntity(
                         eventId = eventId,

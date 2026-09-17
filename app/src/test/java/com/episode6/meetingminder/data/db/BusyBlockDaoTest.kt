@@ -2,6 +2,7 @@ package com.episode6.meetingminder.data.db
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
@@ -97,5 +98,21 @@ class BusyBlockDaoTest {
         dao.upsert(row(2, tomorrow))
 
         assertThat(dao.observeEventIds().first()).isEqualTo(setOf(1L, 2L))
+    }
+
+    @Test
+    fun observeEventIds_doesNotReEmit_whenAnUpsertOnlyRefreshesAnExistingId() = runTest {
+        dao.upsert(row(1, today))
+
+        dao.observeEventIds().test {
+            assertThat(awaitItem()).isEqualTo(setOf(1L))
+
+            // a re-share re-recording the same block: same id set, so nothing to emit
+            dao.upsert(row(1, today, begin = 2_000))
+            expectNoEvents()
+
+            dao.upsert(row(2, tomorrow))
+            assertThat(awaitItem()).isEqualTo(setOf(1L, 2L))
+        }
     }
 }

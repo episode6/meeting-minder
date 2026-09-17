@@ -38,7 +38,10 @@ import java.time.ZoneOffset
  * instance row from them (the way the provider would for a non-recurring event, with the
  * calendar's columns joined in) so a follow-up `eventsOn` sees it as a dirty event; a
  * `delete` on `events/{id}` removes the event and its instances ([deletes]) and answers
- * with the rows affected, 0 for an id that was never there.
+ * with the rows affected, 0 for an id that was never there — the `LOCAL`-calendar hard
+ * delete; a synced calendar's soft delete (`DELETED = 1` until the adapter uploads it, still
+ * answering 1) is not modelled, which is why `deleteOwnEvent`'s `false` must never mean
+ * more than "no row".
  */
 class FakeCalendarProvider : ContentProvider() {
 

@@ -61,7 +61,7 @@ class ContentResolverCalendarRepositoryBusyBlockTest {
 
     @Test
     fun insertBusyBlock_writesExactlyTheBareColumnSet_andNothingAboutTheMeeting() = runTest {
-        repository.insertBusyBlock(familyCalendar, range, zone)
+        repository.insertBusyBlock(familyCalendar, range)
 
         val (uri, values) = provider.inserts.single()
         assertThat(uri).isEqualTo(Events.CONTENT_URI)
@@ -97,7 +97,7 @@ class ContentResolverCalendarRepositoryBusyBlockTest {
 
     @Test
     fun insertBusyBlock_isAPlainInsert_notASyncAdapterOne_soTheRowIsDirty() = runTest {
-        val id = repository.insertBusyBlock(familyCalendar, range, zone)
+        val id = repository.insertBusyBlock(familyCalendar, range)
 
         val (uri, _) = provider.inserts.single()
         assertThat(uri.getQueryParameter(CalendarContract.CALLER_IS_SYNCADAPTER) ?: "false").isEqualTo("false")
@@ -109,7 +109,7 @@ class ContentResolverCalendarRepositoryBusyBlockTest {
     fun insertBusyBlock_returnsTheNewEventsId_whichAFollowUpReadSeesAsOwnedByApp() = runTest {
         provider.nextEventId = 4242
 
-        val id = repository.insertBusyBlock(familyCalendar, range, zone)
+        val id = repository.insertBusyBlock(familyCalendar, range)
 
         assertThat(id).isEqualTo(4242)
         val block = repository.eventsOn(today).single()
@@ -124,7 +124,7 @@ class ContentResolverCalendarRepositoryBusyBlockTest {
 
     @Test
     fun deleteOwnEvent_isABareEventsIdDelete_andReturnsTrueForARowThatWasThere() = runTest {
-        val id = repository.insertBusyBlock(familyCalendar, range, zone)
+        val id = repository.insertBusyBlock(familyCalendar, range)
 
         assertThat(repository.deleteOwnEvent(id)).isTrue()
 
@@ -135,7 +135,7 @@ class ContentResolverCalendarRepositoryBusyBlockTest {
 
     @Test
     fun deleteOwnEvent_returnsFalseForARowThatIsAlreadyGone() = runTest {
-        val id = repository.insertBusyBlock(familyCalendar, range, zone)
+        val id = repository.insertBusyBlock(familyCalendar, range)
         assertThat(repository.deleteOwnEvent(id)).isTrue()
 
         assertThat(repository.deleteOwnEvent(id)).isFalse()

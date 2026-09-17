@@ -152,7 +152,12 @@ sync on, wait for the sync (or pull to refresh in Google Calendar), then run the
 appear on calendar.google.com with the title `busy` and nothing else, and `customAppPackage`
 should still equal the app's package. If the column comes back empty, the marker degrades to
 a same-device hint and the `busy_block` table alone does the hiding (spec §2.6, decision 8):
-nothing else changes, but say so in the PR.
+nothing else changes, but say so in the PR. Two more things only a real account can answer,
+checked on the same block: that it shows as **busy** on calendar.google.com (the
+`availability` mapping is what the partner's free/busy view relies on), and that **no
+reminder fires** on the phone at its start — `hasAlarm=0` with no `reminders` rows doesn't
+necessarily reach Google as `reminders.useDefault = false`, and the calendar's default
+notification would make every busy block buzz.
 
 ## Core flow to exercise
 

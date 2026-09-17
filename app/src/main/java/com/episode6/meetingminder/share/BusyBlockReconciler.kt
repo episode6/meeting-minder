@@ -20,8 +20,11 @@ data class BusyBlockPlan(
  * Reconciles a day's [existing] `busy_block` rows against the [desired] busy ranges of a
  * fresh share, for the calendar the sync writes to now ([calendarId]):
  * - an existing row on [calendarId] whose begin/end equal a desired range is kept, and that
- *   range is satisfied (a second identical row, left behind by a crash between the provider
- *   insert and the table write of a retry, is deleted: the range is already satisfied);
+ *   range is satisfied (a second identical row is deleted rather than kept twice — nothing
+ *   in the syncer produces one, since a crash between the provider insert and the table
+ *   write leaves the calendar with an extra event and the table with nothing, not the
+ *   other way round; the branch is defensive so the table can never hold two rows for one
+ *   range whatever put them there);
  * - every other existing row — different times, or a different calendar (the user switched
  *   calendars since) — is deleted;
  * - every unsatisfied desired range is inserted, once, even if [desired] repeats it.
