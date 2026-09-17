@@ -58,6 +58,7 @@ class ContentResolverCalendarRepositoryTest {
         provider.addCalendar(id = 1, ownerAccount = me)
         repository = ContentResolverCalendarRepository(
             contentResolver = ApplicationProvider.getApplicationContext<Context>().contentResolver,
+            packageName = TEST_PACKAGE,
             zone = { zone },
             ioDispatcher = Dispatchers.Unconfined,
         )
@@ -96,9 +97,21 @@ class ContentResolverCalendarRepositoryTest {
                 selfAttendeeId = 1,
                 isRecurringInstance = false,
                 calendarAccessLevel = Calendars.CAL_ACCESS_OWNER,
+                ownedByApp = false,
             ),
         )
         assertThat(events.single().isMeeting).isTrue()
+    }
+
+    @Test
+    fun ownedByApp_isTrueOnlyForThisBuildsOwnCustomAppPackage() = runTest {
+        provider.addInstance(instanceId = 100, eventId = 10, begin = today.at(9, zone = zone), end = today.at(10, zone = zone), zone = zone, customAppPackage = TEST_PACKAGE)
+        provider.addInstance(instanceId = 101, eventId = 11, begin = today.at(11, zone = zone), end = today.at(12, zone = zone), zone = zone, customAppPackage = "$TEST_PACKAGE.snapshot")
+        provider.addInstance(instanceId = 102, eventId = 12, begin = today.at(13, zone = zone), end = today.at(14, zone = zone), zone = zone, customAppPackage = null)
+
+        val events = repository.eventsOn(today)
+
+        assertThat(events.map { it.eventId to it.ownedByApp }).containsExactly(10L to true, 11L to false, 12L to false)
     }
 
     @Test

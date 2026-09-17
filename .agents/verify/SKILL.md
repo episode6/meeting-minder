@@ -107,6 +107,58 @@ Google account the response should appear on calendar.google.com within a minute
 of the next sync — that is the release gate for this feature, and it can't be checked on
 a `LOCAL` calendar.
 
+### Seeding a "Family" calendar for the busy-block sync
+
+The busy-calendar sync (TODO.md §4.7) writes one bare `busy` event per merged busy range
+of a shared day to the calendar chosen in Settings → Busy calendar, defaulting to the one
+named "Family". A second `LOCAL` calendar with that display name is enough to exercise the
+write path on an emulator (the write and its bookkeeping landed in PR-15b; the Share wiring
+and the Settings toggle's cleanup are PR-15c's, so until that lands the sync can't be
+triggered from the UI):
+
+```bash
+FAM='content://com.android.calendar/calendars?caller_is_syncadapter=true&account_name=me@test.com&account_type=LOCAL'
+adb shell content insert --uri "$FAM" --bind account_name:s:me@test.com --bind account_type:s:LOCAL \
+  --bind name:s:family --bind calendar_displayName:s:"Family" --bind calendar_color:i:-43776 \
+  --bind calendar_access_level:i:700 --bind ownerAccount:s:me@test.com --bind visible:i:1 --bind sync_events:i:1 \
+  --bind calendar_timezone:s:America/New_York
+```
+
+Then Settings → Busy calendar → turn on "Sync busy times to a calendar" (Family is
+auto-picked; the FAB reads "Sync & Share"), select a meeting, set alarms, tap "Sync &
+Share" and dismiss the chooser. Check the calendar:
+
+```bash
+# one row per busy range: title=busy, the range's dtstart/dtend, eventTimezone = the device zone,
+# availability=0 (busy), hasAlarm=0, customAppPackage = the installed build's applicationId,
+# an EMPTY description/eventLocation/eventColor/organizer, and dirty=1 (a plain insert waiting
+# for the — here non-existent — sync adapter)
+adb shell content query --uri content://com.android.calendar/events --where "title='busy'" \
+  --projection _id:calendar_id:title:dtstart:dtend:eventTimezone:availability:hasAlarm:customAppPackage:description:eventLocation:eventColor:organizer:dirty
+adb shell content query --uri content://com.android.calendar/attendees --where "event_id=<busy id>"   # no rows
+```
+
+No "busy" chip may appear in the day view, and re-sharing the same selection must leave the
+same `_id` in place (an unchanged range keeps its event); deselecting and re-sharing, or
+"Mark as not shared", must remove it (`deleted=1` on a synced calendar, gone outright on a
+`LOCAL` one).
+
+**Human gate before PR-15b merges — a real Google "Family" calendar.** A `LOCAL` calendar
+has no sync adapter, so it can't answer the one question the emulator can't: whether
+`customAppPackage` survives a sync round trip (the block goes up, Google's adapter writes it
+back down). On a phone with a Google account that has a Family calendar, share a day with the
+sync on, wait for the sync (or pull to refresh in Google Calendar), then run the same
+`content query` with `--where "title='busy'"`: `dirty` should now read `0`, the block should
+appear on calendar.google.com with the title `busy` and nothing else, and `customAppPackage`
+should still equal the app's package. If the column comes back empty, the marker degrades to
+a same-device hint and the `busy_block` table alone does the hiding (spec §2.6, decision 8):
+nothing else changes, but say so in the PR. Two more things only a real account can answer,
+checked on the same block: that it shows as **busy** on calendar.google.com (the
+`availability` mapping is what the partner's free/busy view relies on), and that **no
+reminder fires** on the phone at its start — `hasAlarm=0` with no `reminders` rows doesn't
+necessarily reach Google as `reminders.useDefault = false`, and the calendar's default
+notification would make every busy block buzz.
+
 ## Core flow to exercise
 
 The full v1.0 flow (TODO.md PR-1 through PR-13) is implemented, so every step below should

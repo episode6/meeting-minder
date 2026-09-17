@@ -49,6 +49,7 @@ class ContentResolverCalendarRepositoryRsvpTest {
         provider.addCalendar(id = 1, ownerAccount = me)
         repository = ContentResolverCalendarRepository(
             contentResolver = ApplicationProvider.getApplicationContext<Context>().contentResolver,
+            packageName = TEST_PACKAGE,
             zone = { zone },
             ioDispatcher = Dispatchers.Unconfined,
         )

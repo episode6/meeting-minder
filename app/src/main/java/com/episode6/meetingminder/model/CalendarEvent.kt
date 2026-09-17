@@ -47,6 +47,14 @@ data class CalendarEvent(
     val isRecurringInstance: Boolean,
     /** `Calendars.CALENDAR_ACCESS_LEVEL`; [CALENDAR_ACCESS_RESPOND] (300) is what an RSVP needs. */
     val calendarAccessLevel: Int,
+    /**
+     * `Instances.CUSTOM_APP_PACKAGE` equals this build's package: a busy block the app itself
+     * wrote (TODO.md §4.7), to be hidden from the itinerary, the counts, the share text and
+     * change detection by `excludeOwnBlocks`. Each build flavour has its own `applicationId`,
+     * so a debug build recognises only its own blocks. The marker is a hint that may not
+     * survive a sync round trip; the `busy_block` table is the authority.
+     */
+    val ownedByApp: Boolean,
 ) {
     /**
      * THE definition of "meeting" (TODO.md §3.4): a timed, un-cancelled, busy block that you

@@ -28,6 +28,7 @@ class CalendarEventTest {
         selfAttendeeId = 7,
         isRecurringInstance = false,
         calendarAccessLevel = 700,
+        ownedByApp = false,
     )
 
     @Test

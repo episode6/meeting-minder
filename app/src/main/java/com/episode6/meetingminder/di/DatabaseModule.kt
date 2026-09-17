@@ -2,6 +2,7 @@ package com.episode6.meetingminder.di
 
 import android.content.Context
 import androidx.room.Room
+import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.DayPlanDao
 import com.episode6.meetingminder.data.db.MeetingMinderDatabase
@@ -33,4 +34,7 @@ interface DatabaseModule {
 
     @Provides
     fun changeSnapshotDao(database: MeetingMinderDatabase): ChangeSnapshotDao = database.changeSnapshotDao()
+
+    @Provides
+    fun busyBlockDao(database: MeetingMinderDatabase): BusyBlockDao = database.busyBlockDao()
 }

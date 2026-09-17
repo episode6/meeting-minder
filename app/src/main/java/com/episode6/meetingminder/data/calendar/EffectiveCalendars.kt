@@ -28,3 +28,16 @@ fun effectiveCalendarFilter(calendars: List<CalendarInfo>, overrides: Map<Long, 
  */
 fun List<CalendarEvent>.excludeDeclined(showDeclined: Boolean): List<CalendarEvent> =
     if (showDeclined) this else filterNot { it.selfStatus == SelfStatus.DECLINED }
+
+/**
+ * Drops the busy blocks the app itself wrote (TODO.md §4.7): an event whose
+ * [CalendarEvent.ownedByApp] marker is set **or** whose [CalendarEvent.eventId] is in
+ * [ownedIds] (the `busy_block` table's ids). Both are checked because each covers the
+ * other's gap: the table catches a block whose `CUSTOM_APP_PACKAGE` marker didn't survive
+ * the sync round trip, and the marker catches a stale block after a reinstall wiped the
+ * table. To be applied next to [excludeDeclined] at every read site (the day load, the
+ * change monitor's fresh read and the share's cold-process read), or a block could be
+ * selected and fold back into the next share.
+ */
+fun List<CalendarEvent>.excludeOwnBlocks(ownedIds: Set<Long>): List<CalendarEvent> =
+    filterNot { it.ownedByApp || it.eventId in ownedIds }

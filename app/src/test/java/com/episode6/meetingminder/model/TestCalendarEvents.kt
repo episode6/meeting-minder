@@ -14,6 +14,7 @@ internal fun testCalendarEvent(
     meeting: Boolean = true,
     allDay: Boolean = false,
     calendarId: Long = 1,
+    ownedByApp: Boolean = false,
 ) = CalendarEvent(
     key = EventKey(id, 0),
     eventId = id,
@@ -33,4 +34,5 @@ internal fun testCalendarEvent(
     selfAttendeeId = if (meeting) id * 10 else null,
     isRecurringInstance = false,
     calendarAccessLevel = 700,
+    ownedByApp = ownedByApp,
 )

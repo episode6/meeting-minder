@@ -98,7 +98,9 @@ class DayViewDeviceTest {
         val title = "Inserted before launch ${System.nanoTime()}"
         insertEventToday(title)
         // the same query the app runs: if this fails the provider is at fault, not the UI
-        val seenByRepository = runBlocking { ContentResolverCalendarRepository(resolver).eventsOn(LocalDate.now(zone)) }
+        val seenByRepository = runBlocking {
+            ContentResolverCalendarRepository(resolver, packageName = instrumentation.targetContext.packageName).eventsOn(LocalDate.now(zone))
+        }
         assertThat(seenByRepository.map { it.title }).contains(title)
 
         ActivityScenario.launch(MainActivity::class.java).use {

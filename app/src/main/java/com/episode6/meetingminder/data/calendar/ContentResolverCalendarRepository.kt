@@ -9,6 +9,7 @@ import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
 import android.provider.CalendarContract.Instances
 import com.episode6.meetingminder.model.Availability
+import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.EventKey
@@ -28,10 +29,14 @@ import java.time.ZoneId
  * `Events` + `Calendars` column joined in), never from `Events` directly.
  *
  * [zone] is read per query so a timezone change while the app is alive is picked up; tests
- * pin it to a negative-offset zone to exercise the all-day gotcha.
+ * pin it to a negative-offset zone to exercise the all-day gotcha. [packageName] is the
+ * running build's `applicationId`: written as `CUSTOM_APP_PACKAGE` on every busy block the
+ * app inserts and compared against on every instance read ([CalendarEvent.ownedByApp]), so
+ * a debug build and a snapshot build sharing a device each recognise only their own blocks.
  */
 class ContentResolverCalendarRepository(
     private val contentResolver: ContentResolver,
+    private val packageName: String,
     private val zone: () -> ZoneId = { ZoneId.systemDefault() },
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : CalendarRepository {
@@ -88,6 +93,42 @@ class ContentResolverCalendarRepository(
             check(updated == 1) { "attendee update on $uri touched $updated rows" }
             event.eventId
         }
+    }
+
+    /**
+     * Exactly these columns and no others (TODO.md §4.7): a busy block must carry nothing
+     * about the meetings it stands in for, so `DESCRIPTION`, `EVENT_LOCATION`, `EVENT_COLOR`,
+     * `ORGANIZER`, `GUESTS_*` and `RRULE` are never set. Not a sync-adapter insert, so the
+     * provider marks the row `DIRTY` and the account's adapter uploads it.
+     * `CUSTOM_APP_PACKAGE` is the ownership marker [CalendarEvent.ownedByApp] reads back.
+     * `EVENT_TIMEZONE` is this repository's own [zone] — the one every read uses too — so
+     * there is a single zone authority here, and a test that pins the zone pins the insert's.
+     */
+    override suspend fun insertBusyBlock(calendarId: Long, range: BusyRange): Long = withContext(ioDispatcher) {
+        val values = ContentValues().apply {
+            put(Events.CALENDAR_ID, calendarId)
+            put(Events.DTSTART, range.begin.toEpochMilli())
+            put(Events.DTEND, range.end.toEpochMilli())
+            put(Events.TITLE, BUSY_BLOCK_TITLE)
+            put(Events.EVENT_TIMEZONE, zone().id)
+            put(Events.AVAILABILITY, Events.AVAILABILITY_BUSY)
+            put(Events.HAS_ALARM, 0)
+            put(Events.ACCESS_LEVEL, Events.ACCESS_DEFAULT)
+            put(Events.CUSTOM_APP_PACKAGE, packageName)
+        }
+        val inserted = contentResolver.insert(Events.CONTENT_URI, values)
+            ?: error("busy block insert on calendar $calendarId returned no row")
+        ContentUris.parseId(inserted)
+    }
+
+    /**
+     * A bare `events/{id}` delete with no selection: the id came out of our own `busy_block`
+     * table, so there is nothing to double-check it against, and a plain (non-sync-adapter)
+     * delete lets the account's adapter remove the event upstream. The provider answers with
+     * the rows affected: 0 when the event was already gone.
+     */
+    override suspend fun deleteOwnEvent(eventId: Long): Boolean = withContext(ioDispatcher) {
+        contentResolver.delete(ContentUris.withAppendedId(Events.CONTENT_URI, eventId), null, null) > 0
     }
 
     override suspend fun syncedEventIds(eventIds: Collection<Long>): Set<Long> = withContext(ioDispatcher) {
@@ -234,6 +275,7 @@ class ContentResolverCalendarRepository(
         val originalInstanceTime: Long?,
         val ownerAccount: String?,
         val calendarAccessLevel: Int,
+        val customAppPackage: String?,
     )
 
     private fun Cursor.toInstanceRow() = InstanceRow(
@@ -272,6 +314,7 @@ class ContentResolverCalendarRepository(
         originalInstanceTime = getLongOrNull(Instances.ORIGINAL_INSTANCE_TIME),
         ownerAccount = getStringOrNull(Instances.OWNER_ACCOUNT),
         calendarAccessLevel = getIntOrNull(Instances.CALENDAR_ACCESS_LEVEL) ?: Calendars.CAL_ACCESS_NONE,
+        customAppPackage = getStringOrNull(Instances.CUSTOM_APP_PACKAGE),
     )
 
     private fun InstanceRow.toCalendarEvent(attendees: AttendeeSummary): CalendarEvent {
@@ -300,6 +343,7 @@ class ContentResolverCalendarRepository(
             selfAttendeeId = attendees.selfAttendeeId,
             isRecurringInstance = isRecurring && !isException,
             calendarAccessLevel = calendarAccessLevel,
+            ownedByApp = customAppPackage == packageName,
         )
     }
 
@@ -325,6 +369,9 @@ class ContentResolverCalendarRepository(
     private companion object {
         /** SQLite caps bound variables; a day never has this many events, but chunk the `IN (…)` queries anyway. */
         const val ATTENDEE_QUERY_CHUNK = 500
+
+        /** The literal, lowercase title of every busy block the app writes (TODO.md §4.7). */
+        const val BUSY_BLOCK_TITLE = "busy"
 
         val CALENDAR_PROJECTION = arrayOf(
             Calendars._ID,
@@ -366,6 +413,7 @@ class ContentResolverCalendarRepository(
             Instances.CALENDAR_ACCESS_LEVEL,
             Instances.START_DAY,
             Instances.END_DAY,
+            Instances.CUSTOM_APP_PACKAGE,
         )
 
         val ATTENDEE_PROJECTION = arrayOf(
