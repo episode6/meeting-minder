@@ -23,7 +23,7 @@ Tap meetings to select them, set alarms, then share your busy time ranges — no
 - **RSVP** — setting alarms marks each chosen meeting "Yes, going" in the calendar
 - **Busy-calendar sync** — opt in (Settings → Busy calendar) and sharing a day also puts a bare `busy` block on one calendar of your choosing — times only, never titles; add your first name in the same section and it reads "Geoff busy" — so your partner's calendar shows when you're busy. Re-sharing reconciles them, turning it off takes today's and future ones away, and the app only ever touches the blocks it wrote itself
 
-Every calendar on every account is read through the Android Calendar Provider. **The app has no network access — ever**, and must never request the `INTERNET` permission; the only things it writes back are your RSVP and, if you opt in, the `busy` blocks of the busy-calendar sync (which the account's own sync adapter carries upstream).
+Every calendar on every account is read through the Android Calendar Provider. **The app has no network access — ever**, and must never request the `INTERNET` permission; the only things it writes back are your RSVP and, if you opt in, the `busy` blocks of the busy-calendar sync (which the account's own sync adapter carries upstream) plus the sync flag of the calendar you pick for them, turned on if Android wasn't syncing it yet.
 
 ## Tech stack
 

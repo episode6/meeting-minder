@@ -3,6 +3,7 @@ package com.episode6.meetingminder.data.calendar
 import android.content.ContentUris
 import android.content.Context
 import android.provider.CalendarContract
+import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
 import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
@@ -150,5 +151,25 @@ class ContentResolverCalendarRepositoryBusyBlockTest {
         val (bare, named) = provider.inserts.map { it.second }
         assertThat(named.getAsString(Events.TITLE)).isEqualTo("Geoff busy")
         assertThat(named.keySet()).isEqualTo(bare.keySet())
+    }
+
+    @Test
+    fun enableCalendarSync_writesOnlySyncEvents_toThatCalendar() = runTest {
+        provider.addCalendar(id = 8, displayName = "New", syncEvents = false, visible = false)
+
+        assertThat(repository.enableCalendarSync(8)).isTrue()
+
+        val (uri, values) = provider.updates.single()
+        assertThat(uri).isEqualTo(ContentUris.withAppendedId(Calendars.CONTENT_URI, 8))
+        assertThat(values.keySet()).containsExactlyInAnyOrder(Calendars.SYNC_EVENTS)
+        assertThat(values.getAsInteger(Calendars.SYNC_EVENTS)).isEqualTo(1)
+        val calendar = repository.calendars().single { it.id == 8L }
+        assertThat(calendar.syncEvents).isTrue()
+        assertThat(calendar.visible).isFalse()
+    }
+
+    @Test
+    fun enableCalendarSync_returnsFalseForACalendarThatIsGone() = runTest {
+        assertThat(repository.enableCalendarSync(999)).isFalse()
     }
 }

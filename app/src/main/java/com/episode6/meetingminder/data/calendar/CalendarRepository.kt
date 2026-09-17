@@ -16,11 +16,12 @@ sealed interface CalendarFilter {
 }
 
 /**
- * Read access to every calendar on every account (TODO.md §4.1), plus the three kinds of
- * write the app ever makes: the RSVP of [respondToInstance] (§4.6) — "Yes, going" when
+ * Read access to every calendar on every account (TODO.md §4.1), plus the only writes
+ * the app ever makes: the RSVP of [respondToInstance] (§4.6) — "Yes, going" when
  * alarms are set, or the answer picked from a chip's long-press menu — and the busy-calendar
  * sync's [insertBusyBlock] and [deleteOwnEvent] (§4.7), which only ever touch events the
- * app itself inserted.
+ * app itself inserted, plus its [enableCalendarSync], which turns `SYNC_EVENTS` on for the
+ * calendar the user picked as the sync's target.
  *
  * The reads need `READ_CALENDAR` and the writes `WRITE_CALENDAR`; without them the
  * provider throws `SecurityException`, so callers gate on the permission state first.
@@ -89,4 +90,14 @@ interface CalendarRepository {
      * distinction.
      */
     suspend fun deleteOwnEvent(eventId: Long): Boolean
+
+    /**
+     * Sets `SYNC_EVENTS = 1` on [calendarId] (TODO.md §4.7) — that one column and nothing
+     * else, one of the few a non-sync-adapter app may write — so the account's sync adapter
+     * starts syncing the calendar and busy blocks inserted into it get uploaded. Only ever
+     * called for the calendar the user just picked in Settings → Busy calendar; the app
+     * never turns sync *off*, and never touches `VISIBLE`. Returns false when the provider
+     * had no such calendar.
+     */
+    suspend fun enableCalendarSync(calendarId: Long): Boolean
 }

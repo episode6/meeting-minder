@@ -3,6 +3,7 @@ package com.episode6.meetingminder.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.data.calendar.defaultBusyCalendar
+import com.episode6.meetingminder.data.calendar.insertable
 import com.episode6.meetingminder.data.calendar.writable
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.data.settings.SettingsRepository
@@ -13,6 +14,7 @@ import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.BusySyncSettingChanged
 import com.episode6.meetingminder.store.CalendarContentChanged
 import com.episode6.meetingminder.store.ClearMessage
+import com.episode6.meetingminder.store.EnableCalendarSync
 import com.episode6.meetingminder.store.TestAlarm
 import com.episode6.meetingminder.store.UiMessage
 import com.episode6.redux.mapStore
@@ -74,8 +76,12 @@ data class SettingsUiState(
     val busySyncCalendarId: Long? = null,
     /** The first name busy blocks are titled with ("Geoff busy"); blank keeps the bare `busy`. */
     val busySyncFirstName: String = "",
-    /** The calendars the toggle's radio list offers; see [com.episode6.meetingminder.data.calendar.writable]. */
-    val writableCalendars: List<CalendarInfo> = emptyList(),
+    /**
+     * The calendars the toggle's radio list offers; see
+     * [com.episode6.meetingminder.data.calendar.insertable]. One with `SYNC_EVENTS` off is
+     * listed too, and picking it turns sync on.
+     */
+    val busyCalendars: List<CalendarInfo> = emptyList(),
 )
 
 /**
@@ -159,8 +165,14 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
         store.dispatch(BusySyncSettingChanged(previousCalendarId, calendarId, enabledNow = enabled))
     }
 
-    /** Settings → Busy calendar's radio row for [calendar]; a re-tap of the already selected calendar is a no-op. */
+    /**
+     * Settings → Busy calendar's radio row for [calendar]; a re-tap of the already selected
+     * calendar changes no setting. Either way a calendar with `SYNC_EVENTS` off gets
+     * [EnableCalendarSync]: blocks written to it would never be uploaded, and the re-tap is
+     * the retry when sync was turned off again (or the first attempt failed).
+     */
     fun onBusyCalendarSelected(calendar: CalendarInfo) = viewModelScope.launch {
+        if (!calendar.syncEvents) store.dispatch(EnableCalendarSync(calendar.id))
         val current = settings.current().busySync
         if (current.calendarId == calendar.id) return@launch
         settings.setBusySyncCalendar(calendar.id)
@@ -194,5 +206,5 @@ private fun Settings.toUiState(calendars: List<CalendarInfo>, permissionsStatus:
     busySyncEnabled = busySync.enabled,
     busySyncCalendarId = busySync.calendarId,
     busySyncFirstName = busySync.firstName,
-    writableCalendars = calendars.writable(),
+    busyCalendars = calendars.insertable(),
 )

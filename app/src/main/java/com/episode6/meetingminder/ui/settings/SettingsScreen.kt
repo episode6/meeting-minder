@@ -176,7 +176,7 @@ fun SettingsScreen(
             item {
                 ToggleRow(
                     title = stringResource(R.string.settings_busy_sync_title),
-                    description = if (state.writableCalendars.isEmpty()) {
+                    description = if (state.busyCalendars.isEmpty()) {
                         stringResource(R.string.settings_busy_sync_no_writable)
                     } else {
                         stringResource(R.string.settings_busy_sync_description)
@@ -185,7 +185,7 @@ fun SettingsScreen(
                     // Only disabled when off with nothing to turn it on to; once checked, a
                     // calendar removed or downgraded out from under it must not trap the user
                     // with a switch they can't reach to turn off.
-                    enabled = state.busySyncEnabled || state.writableCalendars.isNotEmpty(),
+                    enabled = state.busySyncEnabled || state.busyCalendars.isNotEmpty(),
                     onCheckedChange = onBusySyncToggle,
                 )
             }
@@ -194,7 +194,7 @@ fun SettingsScreen(
                     // One selectableGroup so TalkBack announces the radio rows as a single
                     // choice, matching the duration/sound-pool chip rows above.
                     Column(modifier = Modifier.selectableGroup()) {
-                        state.writableCalendars.forEach { calendar ->
+                        state.busyCalendars.forEach { calendar ->
                             BusyCalendarRow(
                                 calendar = calendar,
                                 selected = calendar.id == state.busySyncCalendarId,
@@ -203,7 +203,7 @@ fun SettingsScreen(
                         }
                     }
                 }
-                if (state.writableCalendars.none { it.id == state.busySyncCalendarId }) {
+                if (state.busyCalendars.none { it.id == state.busySyncCalendarId }) {
                     item {
                         Text(
                             stringResource(R.string.settings_busy_sync_pick),
@@ -356,7 +356,12 @@ private fun BusyCalendarRow(calendar: CalendarInfo, selected: Boolean, onSelecte
         Box(modifier = Modifier.size(12.dp).clip(RoundedCornerShape(50)).background(Color(calendar.color)))
         Column(modifier = Modifier.weight(1f)) {
             Text(calendar.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(calendar.accountName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val subtitle = if (calendar.syncEvents) {
+                calendar.accountName
+            } else {
+                stringResource(R.string.settings_busy_calendar_not_syncing, calendar.accountName)
+            }
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         RadioButton(selected = selected, onClick = null)
     }

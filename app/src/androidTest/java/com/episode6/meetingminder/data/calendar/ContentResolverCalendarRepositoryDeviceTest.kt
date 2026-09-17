@@ -28,10 +28,11 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 /**
- * The one test against the real Calendar Provider (TODO.md §3.6): a `LOCAL` calendar and an
+ * The repository against the real Calendar Provider (TODO.md §3.6): a `LOCAL` calendar and an
  * event are inserted as a sync adapter, the provider expands the instance, and the
- * repository must find it on its day. The calendar is deleted afterwards, which cascades
- * to its events.
+ * repository must find it on its day; and a `LOCAL` calendar inserted with `SYNC_EVENTS`
+ * off has it turned on by `enableCalendarSync`. Each calendar is deleted afterwards, which
+ * cascades to its events.
  */
 @RunWith(AndroidJUnit4::class)
 class ContentResolverCalendarRepositoryDeviceTest {
@@ -95,6 +96,38 @@ class ContentResolverCalendarRepositoryDeviceTest {
             }
             assertThat(events.single().isMeeting).isFalse()
             assertThat(repository.calendars().any { it.id == calendarId }).isTrue()
+        } finally {
+            resolver.delete(ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId).asSyncAdapter(), null, null)
+        }
+    }
+
+    /** The real provider lets a plain (non-sync-adapter) app turn a calendar's `SYNC_EVENTS` on (TODO.md §4.7). */
+    @Test
+    fun enableCalendarSync_turnsOnARealCalendarsSyncFlag() = runBlocking {
+        val calendarUri = resolver.insert(
+            Calendars.CONTENT_URI.asSyncAdapter(),
+            ContentValues().apply {
+                put(Calendars.ACCOUNT_NAME, account)
+                put(Calendars.ACCOUNT_TYPE, CalendarContract.ACCOUNT_TYPE_LOCAL)
+                put(Calendars.NAME, "meeting-minder-test-unsynced")
+                put(Calendars.CALENDAR_DISPLAY_NAME, "Meeting Minder unsynced test")
+                put(Calendars.CALENDAR_COLOR, 0xFF3F51B5.toInt())
+                put(Calendars.CALENDAR_ACCESS_LEVEL, Calendars.CAL_ACCESS_OWNER)
+                put(Calendars.OWNER_ACCOUNT, account)
+                put(Calendars.VISIBLE, 0)
+                put(Calendars.SYNC_EVENTS, 0)
+                put(Calendars.CALENDAR_TIME_ZONE, zone.id)
+            },
+        ) ?: error("calendar insert returned null")
+        val calendarId = ContentUris.parseId(calendarUri)
+        try {
+            assertThat(repository.calendars().single { it.id == calendarId }.syncEvents).isFalse()
+
+            assertThat(repository.enableCalendarSync(calendarId)).isTrue()
+
+            val calendar = repository.calendars().single { it.id == calendarId }
+            assertThat(calendar.syncEvents).isTrue()
+            assertThat(calendar.visible).isFalse()
         } finally {
             resolver.delete(ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId).asSyncAdapter(), null, null)
         }
