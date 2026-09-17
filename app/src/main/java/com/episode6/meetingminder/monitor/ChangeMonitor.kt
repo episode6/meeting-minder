@@ -5,6 +5,8 @@ import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.calendar.effectiveCalendarFilter
 import com.episode6.meetingminder.data.calendar.excludeDeclined
+import com.episode6.meetingminder.data.calendar.excludeOwnBlocks
+import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.DayPlanDao
@@ -51,6 +53,7 @@ class ChangeMonitor(
     private val repository: CalendarRepository,
     private val snapshotDao: ChangeSnapshotDao,
     private val dayPlanDao: DayPlanDao,
+    private val busyBlockDao: BusyBlockDao,
     private val permissionChecker: PermissionChecker,
     private val notifier: ScheduleChangeNotifier,
     private val scheduler: ChangeWorkScheduler,
@@ -80,7 +83,10 @@ class ChangeMonitor(
                 } else {
                     effectiveCalendarFilter(repository.calendars(), prefs.calendarOverrides)
                 }
-                for (snapshot in current) check(snapshot, filter, prefs.showDeclined)
+                // read once per pass, like the filter: our own busy blocks (TODO.md §4.7)
+                // must never read as a change, and a share can insert one between passes
+                val ownBlocks = busyBlockDao.eventIds()
+                for (snapshot in current) check(snapshot, filter, prefs.showDeclined, ownBlocks)
             }
             current.mapTo(sortedSetOf()) { it.date }
         } catch (e: CancellationException) {
@@ -104,12 +110,13 @@ class ChangeMonitor(
         scheduler.update(snapshotDao.all().mapNotNullTo(sortedSetOf()) { it.date.takeIf { day -> day >= today } }, ChangeCheckReason.IN_APP)
     }
 
-    // The fresh read uses the same calendar filter and "show declined" toggle as the
-    // LoadDay read the share's baseline came from (TODO.md §5 PR-12), so a calendar or
-    // event only one of them excludes never reads as New or Cancelled.
-    private suspend fun check(snapshot: ChangeSnapshotEntity, filter: CalendarFilter, showDeclined: Boolean) {
+    // The fresh read uses the same calendar filter, "show declined" toggle and own-block
+    // exclusion as the LoadDay read the share's baseline came from (TODO.md §5 PR-12,
+    // §4.7), so a calendar or event only one of them excludes never reads as New or
+    // Cancelled — in particular the `busy` blocks the share itself wrote a moment ago.
+    private suspend fun check(snapshot: ChangeSnapshotEntity, filter: CalendarFilter, showDeclined: Boolean, ownBlocks: Set<Long>) {
         val fresh = try {
-            repository.eventsOn(snapshot.date, filter).excludeDeclined(showDeclined)
+            repository.eventsOn(snapshot.date, filter).excludeDeclined(showDeclined).excludeOwnBlocks(ownBlocks)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

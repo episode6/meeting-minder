@@ -140,6 +140,8 @@
     <string name="settings_busy_sync_no_writable">No calendar you can write to</string>
     <!-- shown under the radio list when the stored calendar id no longer resolves to a writable calendar -->
     <string name="settings_busy_sync_pick">Pick a calendar to sync to</string>
+    <!-- snackbar after a share whose busy-block write failed; %1$s is the calendar's name. The share itself still went out -->
+    <string name="busy_sync_failed">Couldn\'t sync busy times to %1$s</string>
     <string name="settings_section_about">About</string>
     <!-- Permissions row subtitle: every required onboarding permission is granted -->
     <string name="settings_permissions_all_granted">All granted</string>

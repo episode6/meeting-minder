@@ -21,6 +21,8 @@ internal class FakeBusyBlockDao(rows: List<BusyBlockEntity> = emptyList()) : Bus
 
     override fun observeEventIdRows(): Flow<List<Long>> = rows.map { it.keys.sorted() }.distinctUntilChanged()
 
+    override suspend fun eventIdRows(): List<Long> = rows.value.keys.sorted()
+
     override suspend fun upsert(entity: BusyBlockEntity) {
         rows.value += entity.eventId to entity
     }

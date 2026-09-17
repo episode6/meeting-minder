@@ -112,9 +112,7 @@ a `LOCAL` calendar.
 The busy-calendar sync (TODO.md §4.7) writes one bare `busy` event per merged busy range
 of a shared day to the calendar chosen in Settings → Busy calendar, defaulting to the one
 named "Family". A second `LOCAL` calendar with that display name is enough to exercise the
-write path on an emulator (the write and its bookkeeping landed in PR-15b; the Share wiring
-and the Settings toggle's cleanup are PR-15c's, so until that lands the sync can't be
-triggered from the UI):
+whole flow on an emulator:
 
 ```bash
 FAM='content://com.android.calendar/calendars?caller_is_syncadapter=true&account_name=me@test.com&account_type=LOCAL'
@@ -138,12 +136,33 @@ adb shell content query --uri content://com.android.calendar/events --where "tit
 adb shell content query --uri content://com.android.calendar/attendees --where "event_id=<busy id>"   # no rows
 ```
 
-No "busy" chip may appear in the day view, and re-sharing the same selection must leave the
-same `_id` in place (an unchanged range keeps its event); deselecting and re-sharing, or
-"Mark as not shared", must remove it (`deleted=1` on a synced calendar, gone outright on a
-`LOCAL` one).
+No "busy" chip may appear in the day view (the Family calendar is visible, so the block is
+there to be read — it is `excludeOwnBlocks` that keeps it out), the day's meeting count must
+not move, and the "changed since you shared" banner must stay away: the write fires the app's
+own `ContentObserver`, and a block that reached a fresh read would come back as a new meeting.
+Re-sharing the same selection must leave the same `_id` in place (an unchanged range keeps its
+event, so the partner's calendar doesn't flicker); moving the meeting and re-sharing must
+replace it with a new `_id` at the new times; deselecting and re-sharing, or "Mark as not
+shared", must remove it (`deleted=1` on a synced calendar, gone outright on a `LOCAL` one).
 
-**Human gate before PR-15b merges — a real Google "Family" calendar.** A `LOCAL` calendar
+The two cleanup paths live in Settings → Busy calendar:
+
+```bash
+# after a share, with blocks on today and on a future day (share both days first):
+#  - turning the toggle OFF removes today's and the future day's rows, and leaves a
+#    yesterday block alone (share yesterday before midnight, or insert one by hand)
+#  - switching to a second writable calendar removes the OLD calendar's rows from today on
+#    and writes nothing to the new one until each day is shared again
+adb shell content query --uri content://com.android.calendar/events --where "title='busy'" \
+  --projection _id:calendar_id:dtstart:deleted
+```
+
+A sync that fails (revoke calendar access with `adb shell pm revoke <applicationId>
+android.permission.WRITE_CALENDAR` just before the tap) must still open the chooser, and
+show "Couldn't sync busy times to Family" afterwards — the share never waits on, or is
+blocked by, the calendar write.
+
+**Human gate before the stack merges — a real Google "Family" calendar.** A `LOCAL` calendar
 has no sync adapter, so it can't answer the one question the emulator can't: whether
 `customAppPackage` survives a sync round trip (the block goes up, Google's adapter writes it
 back down). On a phone with a Google account that has a Family calendar, share a day with the
@@ -198,7 +217,9 @@ Day view (launch screen) → swipe left/right between days → tap meetings to s
 alarm time, the RSVP goes to "Yes, going" in the calendar) → FAB becomes
 "Share schedule" → tap and confirm the share text lists busy ranges only, no titles.
 Then move or add an event in Google Calendar and confirm the "changed since you shared"
-notification and in-app banner arrive.
+notification and in-app banner arrive. With busy-calendar sync on (Settings → Busy calendar),
+the FAB reads "Sync & Share" instead and the same tap also writes the day's `busy` blocks —
+see "Seeding a \"Family\" calendar for the busy-block sync" for what to check afterwards.
 
 Settings (overflow → Settings): change the lead time, snooze length, auto-timeout and the
 "Alarm sounds" row (All / Bundled only / System only), toggle a calendar's include switch

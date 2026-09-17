@@ -10,6 +10,7 @@ import com.episode6.meetingminder.alarm.AlarmRinger
 import com.episode6.meetingminder.alarm.AlarmScheduler
 import com.episode6.meetingminder.alarm.RecentAlarmSounds
 import com.episode6.meetingminder.data.calendar.CalendarRepository
+import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmDao
 import com.episode6.meetingminder.monitor.ChangeMonitor
@@ -49,6 +50,9 @@ interface AppGraph : ViewModelGraph {
 
     /** For `CalendarChangeWorkerTest`, which seeds a shared day's baseline the way a share does. */
     val changeSnapshotDao: ChangeSnapshotDao
+
+    /** For `BusyCalendarSyncDeviceTest`, which reads back (and tidies up) what a real sync recorded. */
+    val busyBlockDao: BusyBlockDao
 
     /** For receivers: work that must outlive `onReceive` (under `goAsync()`) runs here. */
     val appCoroutineScope: CoroutineScope

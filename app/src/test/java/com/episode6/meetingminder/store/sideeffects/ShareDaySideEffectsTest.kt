@@ -3,13 +3,16 @@ package com.episode6.meetingminder.store.sideeffects
 import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.hasSize
+import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
 import assertk.assertions.isTrue
 import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
+import com.episode6.meetingminder.data.db.BusyBlockEntity
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.DayPlanEntity
+import com.episode6.meetingminder.data.db.FakeBusyBlockDao
 import com.episode6.meetingminder.data.db.FakeChangeSnapshotDao
 import com.episode6.meetingminder.data.db.FakeDayPlanDao
 import com.episode6.meetingminder.data.db.SelectedEventEntity
@@ -17,6 +20,7 @@ import com.episode6.meetingminder.data.db.decodeBusyRanges
 import com.episode6.meetingminder.data.db.decodeChangeSnapshotEvents
 import com.episode6.meetingminder.data.db.encodeBusyRanges
 import com.episode6.meetingminder.data.db.encodeScheduleChanges
+import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.model.BusyRange
@@ -31,9 +35,11 @@ import com.episode6.meetingminder.monitor.ChangeMonitor
 import com.episode6.meetingminder.monitor.FakeCalendarPermissionChecker
 import com.episode6.meetingminder.monitor.FakeChangeWorkScheduler
 import com.episode6.meetingminder.monitor.FakeScheduleChangeNotifier
+import com.episode6.meetingminder.share.BusyCalendarSyncer
 import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.SetPendingShare
 import com.episode6.meetingminder.store.ShareDay
+import com.episode6.meetingminder.store.SyncBusyCalendar
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -56,9 +62,14 @@ class ShareDaySideEffectsTest {
     private val repository = FakeCalendarRepository()
     private val notifier = FakeScheduleChangeNotifier()
     private val scheduler = FakeChangeWorkScheduler()
+    private val busyBlocks = FakeBusyBlockDao()
 
     private fun selection(event: CalendarEvent, date: LocalDate = today) =
         SelectedEventEntity(date, event.key.eventId, event.key.instanceTime, event.title, event.begin.toEpochMilli(), event.end.toEpochMilli())
+
+    private fun syncer(settings: FakeSettingsRepository) = BusyCalendarSyncer(repository, busyBlocks, settings, clock)
+
+    private fun busySyncOn(calendarId: Long = 1) = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = calendarId)))
 
     private fun loaded(vararg events: CalendarEvent) = CalendarGrantedAppState.copy(eventsByDay = mapOf(today to DayEvents(today, events.toList(), Instant.EPOCH)))
 
@@ -70,7 +81,8 @@ class ShareDaySideEffectsTest {
         dayPlanDao,
         changeSnapshotDao,
         repository,
-        ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock),
+        ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock),
+        busyBlocks,
         settings,
         clock,
     )
@@ -79,7 +91,7 @@ class ShareDaySideEffectsTest {
         snapshots: FakeChangeSnapshotDao = FakeChangeSnapshotDao(),
         settings: FakeSettingsRepository = FakeSettingsRepository(),
         state: com.episode6.meetingminder.store.AppState,
-    ) = (shareDay(this, snapshots, settings).output(ShareDay(today), state = state).toList().single() as SetPendingShare).share.text
+    ) = (shareDay(this, snapshots, settings).output(ShareDay(today), state = state).toList().first() as SetPendingShare).share.text
 
     @Test
     fun shareDay_formatsOnlySelectedEvents_andEmitsThePendingShare() = runTest {
@@ -243,8 +255,9 @@ class ShareDaySideEffectsTest {
     fun markNotShared_clearsSharedAtAndTheChangeSnapshot_andStopsMonitoring() = runTest {
         val dayPlanDao = FakeDayPlanDao(plans = listOf(DayPlanEntity(today, sharedAt = now.toEpochMilli())))
         val changeSnapshotDao = FakeChangeSnapshotDao(entities = listOf(ChangeSnapshotEntity(today, now.toEpochMilli(), "[]")))
-        val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, FakeCalendarPermissionChecker(), notifier, scheduler, FakeSettingsRepository(), clock)
-        val effect = object : ShareDaySideEffects {}.markNotShared(dayPlanDao, changeSnapshotDao, monitor)
+        val settings = FakeSettingsRepository()
+        val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock)
+        val effect = object : ShareDaySideEffects {}.markNotShared(dayPlanDao, changeSnapshotDao, monitor, syncer(settings))
 
         effect.output(MarkNotShared(today), state = CalendarGrantedAppState).toList()
 
@@ -252,5 +265,79 @@ class ShareDaySideEffectsTest {
         assertThat(changeSnapshotDao.forDate(today)).isNull()
         assertThat(notifier.cancelled).containsExactly(today)
         assertThat(scheduler.updates).containsExactly(emptySet<LocalDate>() to ChangeCheckReason.IN_APP)
+    }
+
+    @Test
+    fun shareDay_withBusySyncOn_fansOutTheSync_rightAfterThePendingShare() = runTest {
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
+
+        val output = shareDay(dayPlanDao, FakeChangeSnapshotDao(), busySyncOn()).output(ShareDay(today), state = loaded(standup)).toList()
+
+        // the order is load-bearing (TODO.md §4.7): the baseline is already written and the
+        // chooser already has its text before a single provider write is asked for
+        assertThat(output).containsExactly(
+            SetPendingShare((output.first() as SetPendingShare).share),
+            SyncBusyCalendar(today, listOf(BusyRange(standup.begin, standup.end))),
+        )
+    }
+
+    @Test
+    fun shareDay_withNothingSelected_syncsAnEmptyDay_whichTakesTheDaysBlocksBackOut() = runTest {
+        val dayPlanDao = FakeDayPlanDao()
+
+        val output = shareDay(dayPlanDao, FakeChangeSnapshotDao(), busySyncOn()).output(ShareDay(today), state = loaded()).toList()
+
+        assertThat(output.filterIsInstance<SyncBusyCalendar>()).containsExactly(SyncBusyCalendar(today, emptyList()))
+    }
+
+    @Test
+    fun shareDay_withBusySyncOff_neverFansOutTheSync() = runTest {
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
+
+        val output = shareDay(dayPlanDao, FakeChangeSnapshotDao()).output(ShareDay(today), state = loaded(standup)).toList()
+
+        assertThat(output.filterIsInstance<SyncBusyCalendar>()).isEmpty()
+    }
+
+    @Test
+    fun shareDay_fromANotificationBeforeTheStoreHasLoaded_leavesOurOwnBusyBlocksOutOfTheTextAndTheBaseline() = runTest {
+        // one block still carrying the CUSTOM_APP_PACKAGE marker, one whose marker didn't
+        // survive the sync round trip and is only known from the busy_block table (§4.7)
+        val markedBlock = testCalendarEvent(9, at(11), at(12), title = "busy", meeting = false, ownedByApp = true)
+        val tabledBlock = testCalendarEvent(10, at(13), at(14), title = "busy", meeting = false)
+        busyBlocks.upsert(
+            BusyBlockEntity(
+                eventId = tabledBlock.eventId, date = today, calendarId = tabledBlock.calendarId,
+                beginMillis = tabledBlock.begin.toEpochMilli(), endMillis = tabledBlock.end.toEpochMilli(),
+            ),
+        )
+        repository.events[today] = listOf(standup, markedBlock, tabledBlock)
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
+        val changeSnapshotDao = FakeChangeSnapshotDao()
+
+        val text = dayPlanDao.shareText(changeSnapshotDao, state = CalendarGrantedAppState)
+
+        // neither block is a busy range of the share ...
+        assertThat(text).isEqualTo("Mon Sep 14 — I'm in meetings:\n• 9:00 – 9:30 AM\nFree the rest of the day.")
+        // ... nor an event of the baseline, which the next check would otherwise diff against
+        assertThat(decodeChangeSnapshotEvents(changeSnapshotDao.forDate(today)!!.eventsJson).map { it.eventId })
+            .containsExactly(standup.eventId)
+    }
+
+    @Test
+    fun markNotShared_alsoDeletesTheDaysBusyBlocks_andLeavesAnotherDaysAlone() = runTest {
+        val dayPlanDao = FakeDayPlanDao(plans = listOf(DayPlanEntity(today, sharedAt = now.toEpochMilli())))
+        val changeSnapshotDao = FakeChangeSnapshotDao(entities = listOf(ChangeSnapshotEntity(today, now.toEpochMilli(), "[]")))
+        val settings = busySyncOn()
+        busyBlocks.upsert(BusyBlockEntity(eventId = 900, date = today, calendarId = 1, beginMillis = 0, endMillis = 1))
+        busyBlocks.upsert(BusyBlockEntity(eventId = 901, date = today.plusDays(1), calendarId = 1, beginMillis = 0, endMillis = 1))
+        repository.ownEvents += setOf(900L, 901L)
+        val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock)
+        val effect = object : ShareDaySideEffects {}.markNotShared(dayPlanDao, changeSnapshotDao, monitor, syncer(settings))
+
+        effect.output(MarkNotShared(today), state = CalendarGrantedAppState).toList()
+
+        assertThat(repository.deletedEventIds).containsExactly(900L)
+        assertThat(busyBlocks.entries.map { it.eventId }).containsExactly(901L)
     }
 }

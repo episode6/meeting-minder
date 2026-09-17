@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.store
 
+import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
@@ -227,3 +228,14 @@ data object TestAlarm : AsyncAction
  * since a share is the user's signal that the day's plan is current.
  */
 data class BusySyncSettingChanged(val previousCalendarId: Long?, val calendarId: Long?, val enabledNow: Boolean) : AsyncAction
+
+/**
+ * Write [ranges] — the merged busy ranges [ShareDay] just shared for [date] — to the
+ * user's chosen busy calendar (TODO.md §4.7), through
+ * `BusyCalendarSyncSideEffects` → `share.BusyCalendarSyncer`. Fanned out by the share
+ * itself, right after [SetPendingShare] and only while the feature is enabled, so the
+ * chooser opens without waiting on provider IO (the same shape as [RsvpAccept], which the
+ * alarm reconcile fans out). Carries the ranges rather than re-deriving them, so what
+ * lands on the calendar is exactly what the share text said.
+ */
+data class SyncBusyCalendar(val date: LocalDate, val ranges: List<BusyRange>) : AsyncAction

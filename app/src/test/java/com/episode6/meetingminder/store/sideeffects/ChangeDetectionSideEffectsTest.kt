@@ -8,6 +8,7 @@ import assertk.assertions.isEqualTo
 import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.FakeChangeSnapshotDao
+import com.episode6.meetingminder.data.db.FakeBusyBlockDao
 import com.episode6.meetingminder.data.db.FakeDayPlanDao
 import com.episode6.meetingminder.data.db.encodeScheduleChanges
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
@@ -65,7 +66,7 @@ class ChangeDetectionSideEffectsTest {
         val repository = FakeCalendarRepository(events = mutableMapOf(today to listOf(testCalendarEvent(1, at(today, 15), at(today, 16)))))
         val snapshots = FakeChangeSnapshotDao(listOf(ChangeSnapshotEntity(today, 1, "[]")))
         val scheduler = FakeChangeWorkScheduler()
-        val monitor = ChangeMonitor(repository, snapshots, FakeDayPlanDao(), FakeCalendarPermissionChecker(), FakeScheduleChangeNotifier(), scheduler, FakeSettingsRepository(), clock)
+        val monitor = ChangeMonitor(repository, snapshots, FakeDayPlanDao(), FakeBusyBlockDao(), FakeCalendarPermissionChecker(), FakeScheduleChangeNotifier(), scheduler, FakeSettingsRepository(), clock)
 
         val output = object : ChangeDetectionSideEffects {}.runChangeCheck(monitor).output(LoadDay(today), CalendarContentChanged).toList()
 
