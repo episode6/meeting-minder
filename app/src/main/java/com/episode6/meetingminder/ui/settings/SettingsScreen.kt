@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -56,6 +57,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -66,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.data.calendar.busyBlockTitle
 import com.episode6.meetingminder.data.settings.AlarmSoundPool
+import com.episode6.meetingminder.data.settings.BUSY_FIRST_NAME_MAX_LENGTH
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import java.time.Duration
@@ -75,9 +78,6 @@ internal object SettingsOptions {
     val LeadTimeMinutes = listOf(1L, 5L, 10L, 15L, 30L)
     val SnoozeMinutes = listOf(1L, 2L, 5L, 10L)
     val AutoTimeoutMinutes = listOf(1L, 3L, 5L, 10L)
-
-    /** The most the "Your first name" field takes: it ends up in a calendar event's title. */
-    const val FirstNameMaxLength = 30
 }
 
 /**
@@ -374,17 +374,22 @@ private fun BusyCalendarRow(calendar: CalendarInfo, selected: Boolean, onSelecte
 private fun BusyFirstNameRow(firstName: String, onFirstNameChanged: (String) -> Unit) {
     var text by rememberSaveable { mutableStateOf(firstName) }
     var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(firstName) { if (!focused) text = firstName }
+    val focusManager = LocalFocusManager.current
+    // keyed on the focus too: by the time Done gives the field up the stored name is usually
+    // already current, so it's the focus change, not a new value, that has to run this
+    LaunchedEffect(firstName, focused) { if (!focused) text = firstName }
     OutlinedTextField(
         value = text,
         onValueChange = { edited ->
-            text = edited.take(SettingsOptions.FirstNameMaxLength)
+            text = edited.take(BUSY_FIRST_NAME_MAX_LENGTH)
             onFirstNameChanged(text)
         },
         label = { Text(stringResource(R.string.settings_busy_sync_first_name)) },
         supportingText = { Text(stringResource(R.string.settings_busy_sync_first_name_description, busyBlockTitle(text))) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+        // Done gives the field up, so the stored (trimmed) name takes the buffer over at once
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)

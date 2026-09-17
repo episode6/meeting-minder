@@ -30,7 +30,7 @@ class BusyBlockReconcilerTest {
     fun aRowWhoseTimesEqualADesiredRange_isKept_andTheRangeIsNotInsertedAgain() {
         val kept = row(1, ten, eleven)
 
-        val plan = reconcileBusyBlocks(existing = listOf(kept), desired = listOf(BusyRange(ten, eleven)), calendarId = family)
+        val plan = reconcileBusyBlocks(existing = listOf(kept), desired = listOf(BusyRange(ten, eleven)), calendarId = family, title = "busy")
 
         assertThat(plan).isEqualTo(BusyBlockPlan(keep = listOf(kept), delete = emptyList(), insert = emptyList()))
     }
@@ -40,7 +40,7 @@ class BusyBlockReconcilerTest {
         val stale = row(1, ten, eleven)
         val movedByAMinute = BusyRange(ten.plusSeconds(60), eleven)
 
-        val plan = reconcileBusyBlocks(existing = listOf(stale), desired = listOf(movedByAMinute), calendarId = family)
+        val plan = reconcileBusyBlocks(existing = listOf(stale), desired = listOf(movedByAMinute), calendarId = family, title = "busy")
 
         assertThat(plan).isEqualTo(BusyBlockPlan(keep = emptyList(), delete = listOf(stale), insert = listOf(movedByAMinute)))
     }
@@ -49,7 +49,7 @@ class BusyBlockReconcilerTest {
     fun aRowOnAnotherCalendar_isDeleted_evenWhenItsTimesMatch_andTheRangeIsInsertedOnTheChosenOne() {
         val elsewhere = row(1, ten, eleven, calendarId = other)
 
-        val plan = reconcileBusyBlocks(existing = listOf(elsewhere), desired = listOf(BusyRange(ten, eleven)), calendarId = family)
+        val plan = reconcileBusyBlocks(existing = listOf(elsewhere), desired = listOf(BusyRange(ten, eleven)), calendarId = family, title = "busy")
 
         assertThat(plan).isEqualTo(BusyBlockPlan(keep = emptyList(), delete = listOf(elsewhere), insert = listOf(BusyRange(ten, eleven))))
     }
@@ -58,7 +58,7 @@ class BusyBlockReconcilerTest {
     fun noDesiredRanges_deletesEveryExistingRow() {
         val rows = listOf(row(1, ten, eleven), row(2, noon, one, calendarId = other))
 
-        val plan = reconcileBusyBlocks(existing = rows, desired = emptyList(), calendarId = family)
+        val plan = reconcileBusyBlocks(existing = rows, desired = emptyList(), calendarId = family, title = "busy")
 
         assertThat(plan).isEqualTo(BusyBlockPlan(keep = emptyList(), delete = rows, insert = emptyList()))
     }
@@ -67,7 +67,7 @@ class BusyBlockReconcilerTest {
     fun noExistingRows_insertsEveryDesiredRange_inOrder() {
         val desired = listOf(BusyRange(ten, eleven), BusyRange(noon, one))
 
-        val plan = reconcileBusyBlocks(existing = emptyList(), desired = desired, calendarId = family)
+        val plan = reconcileBusyBlocks(existing = emptyList(), desired = desired, calendarId = family, title = "busy")
 
         assertThat(plan).isEqualTo(BusyBlockPlan(keep = emptyList(), delete = emptyList(), insert = desired))
     }
@@ -76,11 +76,11 @@ class BusyBlockReconcilerTest {
     fun aRepeatedDesiredRange_isInsertedOnce_andSatisfiedByOneKeptRow() {
         val twice = listOf(BusyRange(ten, eleven), BusyRange(ten, eleven))
 
-        assertThat(reconcileBusyBlocks(existing = emptyList(), desired = twice, calendarId = family).insert)
+        assertThat(reconcileBusyBlocks(existing = emptyList(), desired = twice, calendarId = family, title = "busy").insert)
             .containsExactly(BusyRange(ten, eleven))
 
         val kept = row(1, ten, eleven)
-        val plan = reconcileBusyBlocks(existing = listOf(kept), desired = twice, calendarId = family)
+        val plan = reconcileBusyBlocks(existing = listOf(kept), desired = twice, calendarId = family, title = "busy")
         assertThat(plan.keep).containsExactly(kept)
         assertThat(plan.insert).isEmpty()
     }
@@ -90,7 +90,7 @@ class BusyBlockReconcilerTest {
         val first = row(1, ten, eleven)
         val duplicate = row(2, ten, eleven)
 
-        val plan = reconcileBusyBlocks(existing = listOf(first, duplicate), desired = listOf(BusyRange(ten, eleven)), calendarId = family)
+        val plan = reconcileBusyBlocks(existing = listOf(first, duplicate), desired = listOf(BusyRange(ten, eleven)), calendarId = family, title = "busy")
 
         assertThat(plan).isEqualTo(BusyBlockPlan(keep = listOf(first), delete = listOf(duplicate), insert = emptyList()))
     }
@@ -101,7 +101,7 @@ class BusyBlockReconcilerTest {
         val gone = row(2, noon, one)
         val added = BusyRange(one, one.plusSeconds(1800))
 
-        val plan = reconcileBusyBlocks(existing = listOf(unchanged, gone), desired = listOf(BusyRange(ten, eleven), added), calendarId = family)
+        val plan = reconcileBusyBlocks(existing = listOf(unchanged, gone), desired = listOf(BusyRange(ten, eleven), added), calendarId = family, title = "busy")
 
         assertThat(plan).isEqualTo(BusyBlockPlan(keep = listOf(unchanged), delete = listOf(gone), insert = listOf(added)))
     }

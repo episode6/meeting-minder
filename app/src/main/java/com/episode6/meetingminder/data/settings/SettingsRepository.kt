@@ -20,6 +20,9 @@ import java.time.Duration
  */
 enum class AlarmSoundPool { ALL, BUNDLED_ONLY, SYSTEM_ONLY }
 
+/** The most [BusySync.firstName] holds: it ends up in a calendar event's title. */
+const val BUSY_FIRST_NAME_MAX_LENGTH = 30
+
 /**
  * Settings → Busy calendar (TODO.md §4.7). [calendarId] is null until the user (or the Family
  * default) picks one. The repository stores only what the user chose; the "Family" default is
@@ -96,7 +99,7 @@ interface SettingsRepository {
     }
 
     /**
-     * Sets [BusySync.firstName], trimmed; blank clears it. Nothing on the calendar changes
+     * Sets [BusySync.firstName], trimmed and cut to [BUSY_FIRST_NAME_MAX_LENGTH]; blank clears it. Nothing on the calendar changes
      * at once: a day's blocks are re-titled by its next share (`reconcileBusyBlocks`).
      */
     suspend fun setBusySyncFirstName(firstName: String)
@@ -174,7 +177,7 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
     }
 
     override suspend fun setBusySyncFirstName(firstName: String) {
-        val name = firstName.trim()
+        val name = firstName.trim().take(BUSY_FIRST_NAME_MAX_LENGTH).trim()
         dataStore.edit { prefs ->
             if (name.isEmpty()) prefs.remove(Keys.BusySyncFirstName) else prefs[Keys.BusySyncFirstName] = name
         }

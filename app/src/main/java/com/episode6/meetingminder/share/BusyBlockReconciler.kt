@@ -1,6 +1,5 @@
 package com.episode6.meetingminder.share
 
-import com.episode6.meetingminder.data.calendar.BUSY_BLOCK_TITLE
 import com.episode6.meetingminder.data.db.BusyBlockEntity
 import com.episode6.meetingminder.model.BusyRange
 import java.time.Instant
@@ -42,7 +41,7 @@ fun reconcileBusyBlocks(
     existing: List<BusyBlockEntity>,
     desired: List<BusyRange>,
     calendarId: Long,
-    title: String = BUSY_BLOCK_TITLE,
+    title: String,
 ): BusyBlockPlan {
     val unsatisfied = desired.distinct().toMutableList()
     val keep = mutableListOf<BusyBlockEntity>()

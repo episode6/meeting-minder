@@ -5,11 +5,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import assertk.assertThat
@@ -88,5 +90,20 @@ class SettingsBusyFirstNameTest {
         setContent()
 
         composeRule.onNode(hasSetTextAction()).assertDoesNotExist()
+    }
+
+    @Test
+    fun done_givesTheFieldUp_soTheTrimmedStoredNameTakesTheBufferOver() {
+        setContent()
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasSetTextAction())
+        composeRule.onNode(hasSetTextAction()).performTextInput("Geoff ")
+        // the per-keystroke write has already come back, trimmed, while the field was focused
+        state = state.copy(busySyncFirstName = "Geoff")
+        composeRule.onNode(hasSetTextAction()).assert(hasText("Geoff "))
+
+        composeRule.onNode(hasSetTextAction()).performImeAction()
+
+        composeRule.onNode(hasSetTextAction()).assert(hasText("Geoff"))
+        composeRule.onNode(hasSetTextAction()).assertIsNotFocused()
     }
 }

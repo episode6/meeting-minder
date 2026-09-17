@@ -41,7 +41,7 @@ internal class FakeSettingsRepository(initial: Settings = Settings()) : Settings
     }
 
     override suspend fun setBusySyncFirstName(firstName: String) {
-        settings.value = settings.value.copy(busySync = settings.value.busySync.copy(firstName = firstName.trim()))
+        settings.value = settings.value.copy(busySync = settings.value.busySync.copy(firstName = firstName.trim().take(BUSY_FIRST_NAME_MAX_LENGTH).trim()))
     }
 
     override val requestedPermissions = MutableStateFlow(emptySet<String>())

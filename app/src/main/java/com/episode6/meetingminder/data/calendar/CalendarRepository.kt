@@ -74,7 +74,7 @@ interface CalendarRepository {
      * talks to the network. Throws when the provider refuses the write (missing
      * `WRITE_CALENDAR`, insert returned nothing).
      */
-    suspend fun insertBusyBlock(calendarId: Long, range: BusyRange, firstName: String = ""): Long
+    suspend fun insertBusyBlock(calendarId: Long, range: BusyRange, firstName: String): Long
 
     /**
      * Deletes an event the app itself inserted: an [insertBusyBlock] id recorded in
