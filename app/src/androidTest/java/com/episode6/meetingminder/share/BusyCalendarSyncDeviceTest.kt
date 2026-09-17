@@ -235,7 +235,13 @@ class BusyCalendarSyncDeviceTest {
         await("the day view to come up") { resumedActivities().any { it is MainActivity } }
     }
 
-    /** Finishes every day view this test started, so the next one begins from the launcher. */
+    /**
+     * Finishes every day view this test started, so the next one begins from the launcher.
+     * Waits for it to be gone as well: `finish()` only asks, and the next device test in
+     * this process launches its own `MainActivity` through `ActivityScenario` — which
+     * `ActivityScenario.close()` used to order for us by blocking until `DESTROYED`. A slow
+     * finish isn't worth failing teardown over, so the wait's result is ignored.
+     */
     private fun finishDayViews() {
         val monitor = ActivityLifecycleMonitorRegistry.getInstance()
         instrumentation.runOnMainSync {
@@ -244,6 +250,9 @@ class BusyCalendarSyncDeviceTest {
                 .flatMap { monitor.getActivitiesInStage(it) }
                 .filterIsInstance<MainActivity>()
                 .forEach { it.finish() }
+        }
+        if (!waitFor(STEP_TIMEOUT_MILLIS) { resumedActivities().none { it is MainActivity } }) {
+            Log.w(LOG_TAG, "a day view was still resumed when this test finished")
         }
     }
 
