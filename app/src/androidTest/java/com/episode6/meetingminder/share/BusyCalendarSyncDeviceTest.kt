@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.ContentUris
 import android.content.ContentValues
+import android.content.Intent
 import android.net.Uri
 import android.provider.CalendarContract
 import android.provider.CalendarContract.Attendees
@@ -16,7 +17,6 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.printToLog
-import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -34,7 +34,6 @@ import com.episode6.meetingminder.MainActivity
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.appGraph
 import com.episode6.meetingminder.model.EventKey
-import com.episode6.meetingminder.shell
 import com.episode6.meetingminder.store.CalendarContentChanged
 import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.SetAlarms
@@ -114,74 +113,83 @@ class BusyCalendarSyncDeviceTest {
             for (row in graph.busyBlockDao.blocksOn(today)) graph.busyBlockDao.delete(row.eventId)
         }
         resolver.delete(ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId).asSyncAdapter(), null, null)
+        finishDayViews()
     }
 
     @Test
     fun syncAndShare_writesOneBareBusyBlock_hidesItFromTheApp_andARoundTripTakesItAway() {
-        ActivityScenario.launch(MainActivity::class.java).use {
-            await("the seeded meeting to load") { loadedKey() != null }
-            val key = loadedKey()!!
+        startDayView()
+        await("the seeded meeting to load") { loadedKey() != null }
+        val key = loadedKey()!!
 
-            // the sync is only "effective" once the chosen calendar is in the store as a
-            // writable one; asserted on its own so a failure here can't read as a bad label
-            await("the Family calendar to load") { graph.appStore.state.calendars.any { it.id == calendarId } }
-            graph.appStore.dispatch(ToggleEvent(today, key))
-            await("the meeting to be selected") { graph.appStore.state.dayPlans[today]?.selected?.containsKey(key) == true }
-            graph.appStore.dispatch(SetAlarms(today))
-            // every selection armed or skipped records alarms_set_at, which is what turns
-            // the FAB into the share button (here: skipped, the meeting is in the past)
-            await("the day's alarms to be reconciled") { graph.appStore.state.dayPlans[today]?.alarmsSetAt != null }
-            await("the FAB to read \"Sync & Share\"") { syncAndShareFab().isNotEmpty() }
+        // the sync is only "effective" once the chosen calendar is in the store as a
+        // writable one; asserted on its own so a failure here can't read as a bad label
+        await("the Family calendar to load") { graph.appStore.state.calendars.any { it.id == calendarId } }
+        graph.appStore.dispatch(ToggleEvent(today, key))
+        await("the meeting to be selected") { graph.appStore.state.dayPlans[today]?.selected?.containsKey(key) == true }
+        graph.appStore.dispatch(SetAlarms(today))
+        // every selection armed or skipped records alarms_set_at, which is what turns
+        // the FAB into the share button (here: skipped, the meeting is in the past)
+        await("the day's alarms to be reconciled") { graph.appStore.state.dayPlans[today]?.alarmsSetAt != null }
+        await("the FAB to read \"Sync & Share\"") { syncAndShareFab().isNotEmpty() }
 
-            // an injected touch on the label lands on the FAB under it: the M3 extended FAB
-            // clears its label out of the merged tree (DayScreenFabLabelTest pins this)
-            composeRule.onNode(hasText(context.getString(R.string.day_fab_sync_share)), useUnmergedTree = true).performClick()
+        // an injected touch on the label lands on the FAB under it: the M3 extended FAB
+        // clears its label out of the merged tree (DayScreenFabLabelTest pins this)
+        composeRule.onNode(hasText(context.getString(R.string.day_fab_sync_share)), useUnmergedTree = true).performClick()
 
-            await("the busy block on the Family calendar") { busyBlocks().size == 1 }
-            val block = busyBlocks().single()
-            assertThat(block.title).isEqualTo("busy")
-            assertThat(block.begin).isEqualTo(begin.toEpochMilli())
-            assertThat(block.end).isEqualTo(end.toEpochMilli())
-            // nothing about the meeting itself ever reaches the partner's calendar
-            assertThat(block.description).isNull()
-            assertThat(block.location).isNull()
-            assertThat(attendeeCount(block.id)).isEqualTo(0)
-            // the syncer records the row right after the insert returns, so the event can be
-            // visible in the provider a moment before busy_block knows it: wait, don't read once
-            await("the busy_block row of the block") { runBlocking { graph.busyBlockDao.blocksOn(today) }.isNotEmpty() }
-            assertThat(runBlocking { graph.busyBlockDao.blocksOn(today) }.map { it.eventId }).containsExactly(block.id)
-            dismissChooser()
-
-            // the block sits on a visible calendar, so only excludeOwnBlocks keeps it out of
-            // the itinerary — and out of anything a later share or check could fold it into
-            val loadedBefore = graph.appStore.state.eventsByDay[today]?.loadedAt
-            graph.appStore.dispatch(CalendarContentChanged)
-            await("the day to be re-read after the write") { graph.appStore.state.eventsByDay[today]?.loadedAt != loadedBefore }
-            val reloaded = graph.appStore.state.eventsByDay.getValue(today).events.map { it.eventId }
-            assertThat(reloaded).contains(meetingId)
-            assertThat(reloaded).doesNotContain(block.id)
-            assertThat(composeRule.onAllNodes(hasText("busy"), useUnmergedTree = true).fetchSemanticsNodes()).isEmpty()
-
-            // deselect and re-share (what the overflow's "Share again" dispatches): an empty
-            // day's sync reconciles to nothing, so the block goes away again
-            graph.appStore.dispatch(ToggleEvent(today, key))
-            await("the selection to clear") { graph.appStore.state.dayPlans[today]?.selected.orEmpty().isEmpty() }
-            if (!waitFor(STEP_TIMEOUT_MILLIS) { !graph.appStore.state.shareInFlight }) graph.appStore.dispatch(ShareFinished)
-            graph.appStore.startShare(today)
-
-            await("the busy block to be deleted again") { busyBlocks().isEmpty() }
-            assertThat(runBlocking { graph.busyBlockDao.blocksOn(today) }).isEmpty()
-            dismissChooser()
-
-            // leave the day as we found it for whatever test runs next
-            graph.appStore.dispatch(MarkNotShared(today))
-            await("the day to be marked not shared") { graph.appStore.state.dayPlans[today]?.sharedAt == null }
+        // the syncer writes the provider first and records the row right after, so the
+        // event and its busy_block row appear a moment apart (and a replaced block leaves
+        // the table empty in between): wait for the two to agree, never read either once
+        await("the busy block on the Family calendar and its busy_block row") {
+            val blocks = busyBlocks()
+            blocks.size == 1 && recordedBlockIds() == blocks.map { it.id }
         }
+        val block = busyBlocks().single()
+        assertThat(recordedBlockIds()).containsExactly(block.id)
+        assertThat(block.title).isEqualTo("busy")
+        assertThat(block.begin).isEqualTo(begin.toEpochMilli())
+        assertThat(block.end).isEqualTo(end.toEpochMilli())
+        // nothing about the meeting itself ever reaches the partner's calendar
+        assertThat(block.description).isNull()
+        assertThat(block.location).isNull()
+        assertThat(attendeeCount(block.id)).isEqualTo(0)
+        returnToDayView()
+
+        // the block sits on a visible calendar, so only excludeOwnBlocks keeps it out of
+        // the itinerary — and out of anything a later share or check could fold it into
+        val loadedBefore = graph.appStore.state.eventsByDay[today]?.loadedAt
+        graph.appStore.dispatch(CalendarContentChanged)
+        await("the day to be re-read after the write") { graph.appStore.state.eventsByDay[today]?.loadedAt != loadedBefore }
+        val reloaded = graph.appStore.state.eventsByDay.getValue(today).events.map { it.eventId }
+        assertThat(reloaded).contains(meetingId)
+        assertThat(reloaded).doesNotContain(block.id)
+        assertThat(composeRule.onAllNodes(hasText("busy"), useUnmergedTree = true).fetchSemanticsNodes()).isEmpty()
+
+        // deselect and re-share (what the overflow's "Share again" dispatches): an empty
+        // day's sync reconciles to nothing, so the block goes away again
+        graph.appStore.dispatch(ToggleEvent(today, key))
+        await("the selection to clear") { graph.appStore.state.dayPlans[today]?.selected.orEmpty().isEmpty() }
+        if (!waitFor(STEP_TIMEOUT_MILLIS) { !graph.appStore.state.shareInFlight }) graph.appStore.dispatch(ShareFinished)
+        graph.appStore.startShare(today)
+
+        // the delete drops the table row after the provider one, so the table can still
+        // name a block the calendar has already let go: wait for both to be clear
+        await("the busy block to be deleted again") { busyBlocks().isEmpty() && recordedBlockIds().isEmpty() }
+        assertThat(recordedBlockIds()).isEmpty()
+        returnToDayView()
+
+        // leave the day as we found it for whatever test runs next
+        graph.appStore.dispatch(MarkNotShared(today))
+        await("the day to be marked not shared") { graph.appStore.state.dayPlans[today]?.sharedAt == null }
     }
 
     /** The seeded meeting's key, once the day view has loaded it (null until then). */
     private fun loadedKey(): EventKey? =
         graph.appStore.state.eventsByDay[today]?.events?.firstOrNull { it.title == title }?.key
+
+    /** The ids `busy_block` records for today: what the app believes it has written. */
+    private fun recordedBlockIds(): List<Long> =
+        runBlocking { graph.busyBlockDao.blocksOn(today) }.map { it.eventId }
 
     private fun syncAndShareFab() =
         composeRule.onAllNodes(hasText(context.getString(R.string.day_fab_sync_share)), useUnmergedTree = true).fetchSemanticsNodes()
@@ -214,16 +222,52 @@ class BusyCalendarSyncDeviceTest {
     )?.use { it.count } ?: 0
 
     /**
-     * The share chooser the FAB opened is a system activity on top of ours; back it out so
-     * the day view is in front again for the next step. Tolerant of a device where nothing
-     * came up: pressing back at the day view would close the app under the test.
+     * Starts the day view, the same way [returnToDayView] brings it back. Deliberately not
+     * `ActivityScenario`: it owns the one instance it launched, so its `close()` fails the
+     * test ("Activity never becomes requested state DESTROYED") once the system has
+     * destroyed that instance behind the chooser and [returnToDayView] has started
+     * another. This test tracks the activity through the lifecycle monitor instead, as
+     * `AlarmRingingDeviceTest` does with the ringing screen, and [finishDayViews] closes
+     * whatever is left.
      */
-    private fun dismissChooser() {
+    private fun startDayView() {
+        context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        await("the day view to come up") { resumedActivities().any { it is MainActivity } }
+    }
+
+    /** Finishes every day view this test started, so the next one begins from the launcher. */
+    private fun finishDayViews() {
+        val monitor = ActivityLifecycleMonitorRegistry.getInstance()
+        instrumentation.runOnMainSync {
+            Stage.values()
+                .filter { it != Stage.DESTROYED }
+                .flatMap { monitor.getActivitiesInStage(it) }
+                .filterIsInstance<MainActivity>()
+                .forEach { it.finish() }
+        }
+    }
+
+    /**
+     * Puts the day view back in front after the share chooser the FAB opened, so the next
+     * step sees the itinerary rather than a system activity. Started by intent — with
+     * `CLEAR_TOP`, which finishes the chooser above it in our task — rather than dismissed
+     * with a back press: the day view is stopped while the chooser is up and the system is
+     * free to destroy it there (an emulator routinely does), and a back press then leaves
+     * the task empty and brings the launcher forward instead, with nothing left to press
+     * back to. Starting it covers both: brought forward when it survived, created again
+     * when it didn't. `SINGLE_TOP` keeps a surviving instance rather than stacking a
+     * second, and the intent carries no data, so `DeepLinkInbox` ignores it.
+     */
+    private fun returnToDayView() {
         if (!waitFor(CHOOSER_TIMEOUT_MILLIS) { resumedActivities().none { it is MainActivity } }) {
-            Log.w(LOG_TAG, "no share chooser came up; nothing to dismiss")
+            Log.w(LOG_TAG, "no share chooser came up; the day view is already in front")
             return
         }
-        shell("input keyevent KEYCODE_BACK")
+        context.startActivity(
+            Intent(context, MainActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            ),
+        )
         await("the day view to come back") { resumedActivities().any { it is MainActivity } }
     }
 
