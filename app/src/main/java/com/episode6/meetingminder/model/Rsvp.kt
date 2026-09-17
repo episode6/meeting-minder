@@ -1,12 +1,6 @@
 package com.episode6.meetingminder.model
 
 /**
- * `Calendars.CALENDAR_ACCESS_LEVEL` at which the calendar lets us answer an invite
- * (`CAL_ACCESS_RESPOND`); duplicated here so this file stays free of Android imports.
- */
-const val CALENDAR_ACCESS_RESPOND = 300
-
-/**
  * Where one selection's RSVP stands (`selected_event.rsvp_state`, TODO.md §4.6). The
  * first three are decided by [rsvpDecision] when the event is armed; the rest by the
  * write itself and by later reloads of the day.

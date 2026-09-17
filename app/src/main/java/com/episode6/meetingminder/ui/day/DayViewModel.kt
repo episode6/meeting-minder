@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.data.calendar.effectiveBusyCalendar
+import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
@@ -45,6 +46,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import java.time.Clock
 import java.time.LocalDate
@@ -73,9 +75,14 @@ class DayViewModel(private val store: AppStore, private val clock: Clock, privat
         }
     }
 
-    /** Busy-calendar sync's effective state (TODO.md §4.7): drives the FAB/menu/banner labels. */
+    /**
+     * Busy-calendar sync's effective state (TODO.md §4.7): drives the FAB/menu/banner
+     * labels. DataStore's first emission is a disk read, so the settings side starts with
+     * the defaults (sync off): the `combine` below then never holds a store update back
+     * behind that read, and the labels switch to "Sync & Share" once the preference is in.
+     */
     private val busySyncs: Flow<Boolean> = combine(
-        settings.settings.map { it.busySync },
+        settings.settings.map { it.busySync }.onStart { emit(BusySync()) },
         store.mapStore { it.calendars },
     ) { busySync, calendars -> effectiveBusyCalendar(busySync, calendars) != null }
 
@@ -84,9 +91,6 @@ class DayViewModel(private val store: AppStore, private val clock: Clock, privat
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            // The settings flow's first emission is asynchronous, so this seeds with
-            // syncs = false for one frame at most; the real preference follows almost
-            // immediately (see SettingsViewModel.state for the same pattern).
             store.state.toDayUiState(LocalDateTime.now(clock), clock.zone, busySyncs = false),
         )
 

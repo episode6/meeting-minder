@@ -141,26 +141,28 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
      * chosen yet applies [defaultBusyCalendar] (the "Family" default) and writes its id
      * explicitly, as one [SettingsRepository.setBusySync] edit so a collector never sees the
      * toggle on with no calendar chosen in between. Either way, [BusySyncSettingChanged] is
-     * dispatched so PR-15c's cleanup side effect can react.
+     * dispatched, with the calendar before and after, so PR-15c's cleanup side effect can
+     * react (to the toggle going off; a toggle-on changes nothing on the calendar).
      */
     fun onBusySyncToggle(enabled: Boolean) = viewModelScope.launch {
-        val current = settings.current()
-        val previousCalendarId = current.busySync.calendarId
+        val previousCalendarId = settings.current().busySync.calendarId
+        val calendarId: Long?
         if (enabled && previousCalendarId == null) {
-            val defaultId = defaultBusyCalendar(store.state.calendars.writable())?.id
-            settings.setBusySync(enabled = true, calendarId = defaultId)
+            calendarId = defaultBusyCalendar(store.state.calendars.writable())?.id
+            settings.setBusySync(enabled = true, calendarId = calendarId)
         } else {
+            calendarId = previousCalendarId
             settings.setBusySyncEnabled(enabled)
         }
-        store.dispatch(BusySyncSettingChanged(previousCalendarId, enabledNow = enabled))
+        store.dispatch(BusySyncSettingChanged(previousCalendarId, calendarId, enabledNow = enabled))
     }
 
     /** Settings → Busy calendar's radio row for [calendar]; a re-tap of the already selected calendar is a no-op. */
     fun onBusyCalendarSelected(calendar: CalendarInfo) = viewModelScope.launch {
-        val previousCalendarId = settings.current().busySync.calendarId
-        if (previousCalendarId == calendar.id) return@launch
+        val current = settings.current().busySync
+        if (current.calendarId == calendar.id) return@launch
         settings.setBusySyncCalendar(calendar.id)
-        store.dispatch(BusySyncSettingChanged(previousCalendarId, enabledNow = settings.current().busySync.enabled))
+        store.dispatch(BusySyncSettingChanged(current.calendarId, calendar.id, enabledNow = current.enabled))
     }
 
     fun onTestAlarmClick() {

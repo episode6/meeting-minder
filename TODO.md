@@ -1100,7 +1100,7 @@ still drops it — the user deleted it by hand and the app doesn't fight that) t
 upserting each row as its insert returns so a crash mid-way leaves the table truthful.
 `ShareDay` fans out `SyncBusyCalendar(date, ranges)` right after `SetPendingShare` whenever the
 setting is enabled, so the chooser and the sync run concurrently and the chooser never waits on
-provider IO; `MarkNotShared` and a new `BusySyncSettingChanged(previousCalendarId, enabledNow)`
+provider IO; `MarkNotShared` and a new `BusySyncSettingChanged(previousCalendarId, calendarId, enabledNow)`
 action drive the two cleanup paths. Hiding relies on `CalendarEvent.ownedByApp` (read from
 `Instances.CUSTOM_APP_PACKAGE`, written on insert as an ownership marker) **and** a lookup against
 `busy_block`'s ids, applied by `List<CalendarEvent>.excludeOwnBlocks(ownedIds)` at every read site

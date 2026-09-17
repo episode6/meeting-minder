@@ -11,7 +11,11 @@ import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
 import assertk.assertions.prop
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
+import com.episode6.meetingminder.data.settings.Settings
+import com.episode6.meetingminder.data.settings.SettingsRepository
+import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
@@ -35,7 +39,10 @@ import com.episode6.redux.sideeffects.SideEffect
 import com.episode6.redux.testsupport.runStoreTest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
@@ -68,6 +75,25 @@ class DayViewModelTest {
     private val designReview = testCalendarEvent(3, at(today, 14), at(today, 15), title = "Design review")
     private val holiday = testCalendarEvent(4, at(today, 0), at(tomorrow, 0), title = "Holiday", meeting = false, allDay = true)
     private val lateShow = testCalendarEvent(5, at(today, 23), at(tomorrow, 0), title = "Late show", meeting = false)
+
+    private val family = CalendarInfo(
+        id = 7,
+        accountName = "me@example.com",
+        accountType = "com.google",
+        displayName = "Family",
+        color = 0,
+        visible = true,
+        syncEvents = true,
+        ownerAccount = "me@example.com",
+        isPrimary = false,
+        accessLevel = 700,
+        canOrganizerRespond = false,
+    )
+
+    /** A [SettingsRepository] whose flow never emits, like DataStore before its first disk read completes. */
+    private class NeverEmittingSettingsRepository : SettingsRepository by FakeSettingsRepository() {
+        override val settings: Flow<Settings> = flow { awaitCancellation() }
+    }
 
     @Before
     fun setUp() {
@@ -131,6 +157,44 @@ class DayViewModelTest {
     @Test
     fun state_followsTheStore() = runStoreTest({ createAppStore(this, AppState(anchorDate = today), emptySet()) }) { store ->
         val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
+        viewModel.state.test {
+            assertThat(awaitItem()).isEqualTo(DayUiState(anchorDate = today))
+
+            viewModel.onPageSettled(tomorrow)
+
+            assertThat(awaitItem()).isEqualTo(DayUiState(anchorDate = today, date = tomorrow, isToday = false))
+        }
+    }
+
+    @Test
+    fun state_labelsTheShareFabAsSyncing_onceTheSettingsFlowSaysTheSyncIsEffective() = runStoreTest(
+        {
+            createAppStore(
+                this,
+                AppState(anchorDate = today, calendars = listOf(family), dayPlans = mapOf(today to DayPlan(today, alarmsSetAt = Instant.EPOCH))),
+                emptySet(),
+            )
+        },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = family.id)))
+        val viewModel = DayViewModel(store, clock, settings)
+
+        viewModel.state.test {
+            val synced = awaitItem()
+            assertThat(synced.fabState).isEqualTo(FabState.Share(syncs = true))
+            assertThat(synced.busySyncs).isEqualTo(true)
+
+            settings.setBusySyncEnabled(false)
+
+            assertThat(awaitItem().fabState).isEqualTo(FabState.Share(syncs = false))
+        }
+    }
+
+    @Test
+    fun state_followsTheStore_beforeTheSettingsHaveBeenRead() = runStoreTest({ createAppStore(this, AppState(anchorDate = today), emptySet()) }) { store ->
+        // DataStore's first emission is a disk read; a store change in that window must
+        // still reach the screen (with the sync read as off until the settings land)
+        val viewModel = DayViewModel(store, clock, NeverEmittingSettingsRepository())
         viewModel.state.test {
             assertThat(awaitItem()).isEqualTo(DayUiState(anchorDate = today))
 

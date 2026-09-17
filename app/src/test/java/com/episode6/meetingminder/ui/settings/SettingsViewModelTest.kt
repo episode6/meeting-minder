@@ -2,6 +2,7 @@ package com.episode6.meetingminder.ui.settings
 
 import app.cash.turbine.test
 import assertk.assertThat
+import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
@@ -162,7 +163,7 @@ class SettingsViewModelTest {
 
         assertThat(settings.settings.value.busySync.enabled).isEqualTo(true)
         assertThat(settings.settings.value.busySync.calendarId).isEqualTo(personal.id)
-        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = null, enabledNow = true))
+        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = null, calendarId = personal.id, enabledNow = true))
     }
 
     @Test
@@ -175,7 +176,7 @@ class SettingsViewModelTest {
         viewModel.onBusySyncToggle(true)
 
         assertThat(settings.settings.value.busySync.calendarId).isEqualTo(9L)
-        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = 9L, enabledNow = true))
+        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = 9L, calendarId = 9L, enabledNow = true))
     }
 
     @Test
@@ -188,7 +189,7 @@ class SettingsViewModelTest {
         viewModel.onBusySyncToggle(false)
 
         assertThat(settings.settings.value.busySync.enabled).isEqualTo(false)
-        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = 9L, enabledNow = false))
+        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = 9L, calendarId = 9L, enabledNow = false))
     }
 
     @Test
@@ -201,7 +202,33 @@ class SettingsViewModelTest {
         viewModel.onBusyCalendarSelected(hidden)
 
         assertThat(settings.settings.value.busySync.calendarId).isEqualTo(hidden.id)
-        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = 1L, enabledNow = true))
+        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = 1L, calendarId = hidden.id, enabledNow = true))
+    }
+
+    @Test
+    fun onBusyCalendarSelected_reTappingTheChosenCalendar_writesAndDispatchesNothing() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), setOf(recordBusySyncSettingChanged)) },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = personal.id)))
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onBusyCalendarSelected(personal)
+
+        assertThat(settings.settings.value.busySync).isEqualTo(BusySync(enabled = true, calendarId = personal.id))
+        assertThat(busySyncChanges.replayCache).isEmpty()
+    }
+
+    @Test
+    fun onBusySyncToggle_on_withNoFamilyCalendar_leavesTheCalendarUnchosen() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today, calendars = listOf(personal)), setOf(recordBusySyncSettingChanged)) },
+    ) { store ->
+        val settings = FakeSettingsRepository()
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onBusySyncToggle(true)
+
+        assertThat(settings.settings.value.busySync).isEqualTo(BusySync(enabled = true, calendarId = null))
+        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = null, calendarId = null, enabledNow = true))
     }
 
     private val reloads = MutableSharedFlow<Action>(replay = 10)
