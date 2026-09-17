@@ -1,9 +1,11 @@
 package com.episode6.meetingminder.data.calendar
 
+import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.EventResponse
 import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * In-memory [CalendarRepository] for store and side-effect tests: seed [calendars] and
@@ -12,6 +14,10 @@ import java.time.LocalDate
  * [respondToInstance] records each event and answer in [responses] (the "Yes" ones also
  * in [accepted]) and answers with [rsvpEventIdFor] (the event's own id by default, as for
  * a plain event), or throws [acceptError]; [syncedEventIds] answers from [syncedIds].
+ * [insertBusyBlock] records each call in [busyBlockInserts], hands out ids from
+ * [nextBusyBlockId] and remembers them in [ownEvents] (or throws what [busyBlockInsertError]
+ * returns for the range); [deleteOwnEvent] records the id in [deletedEventIds] and answers
+ * whether it was in [ownEvents], removing it (or throws [deleteOwnEventError]).
  */
 class FakeCalendarRepository(
     var calendars: List<CalendarInfo> = emptyList(),
@@ -70,5 +76,40 @@ class FakeCalendarRepository(
         syncQueries += eventIds.toSet()
         error?.let { throw it }
         return eventIds.filter { it in syncedIds }.toSet()
+    }
+
+    /** One recorded `insertBusyBlock` call. */
+    data class BusyBlockInsert(val calendarId: Long, val range: BusyRange, val zone: ZoneId)
+
+    /** Every `insertBusyBlock` call, in order, whether or not it threw. */
+    val busyBlockInserts = mutableListOf<BusyBlockInsert>()
+
+    /** The id the next successful `insertBusyBlock` returns; incremented per insert. */
+    var nextBusyBlockId: Long = 5_000
+
+    /** Thrown from `insertBusyBlock` for a range while non-null; lets a test fail the second insert of three. */
+    var busyBlockInsertError: (BusyRange) -> Exception? = { null }
+
+    /** The event ids the (pretend) calendar currently holds of what the app inserted; `deleteOwnEvent` answers from it. */
+    val ownEvents = mutableSetOf<Long>()
+
+    /** Every `deleteOwnEvent` call's id, in order, whether or not it threw. */
+    val deletedEventIds = mutableListOf<Long>()
+
+    /** Thrown from `deleteOwnEvent` while non-null. */
+    var deleteOwnEventError: Exception? = null
+
+    override suspend fun insertBusyBlock(calendarId: Long, range: BusyRange, zone: ZoneId): Long {
+        busyBlockInserts += BusyBlockInsert(calendarId, range, zone)
+        error?.let { throw it }
+        busyBlockInsertError(range)?.let { throw it }
+        return nextBusyBlockId++.also { ownEvents += it }
+    }
+
+    override suspend fun deleteOwnEvent(eventId: Long): Boolean {
+        deletedEventIds += eventId
+        error?.let { throw it }
+        deleteOwnEventError?.let { throw it }
+        return ownEvents.remove(eventId)
     }
 }

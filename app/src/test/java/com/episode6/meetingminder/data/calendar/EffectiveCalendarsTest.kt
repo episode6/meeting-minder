@@ -49,4 +49,21 @@ class EffectiveCalendarsTest {
         assertThat(listOf(accepted, declined).excludeDeclined(showDeclined = true)).containsExactly(accepted, declined)
         assertThat(listOf(accepted, declined).excludeDeclined(showDeclined = false)).containsExactly(accepted)
     }
+
+    @Test
+    fun excludeOwnBlocks_dropsAnEventCarryingTheOwnershipMarker_evenWhenTheTableIsEmpty() {
+        val meeting = testCalendarEvent(1, Instant.EPOCH, Instant.EPOCH.plusSeconds(1800))
+        val marked = testCalendarEvent(2, Instant.EPOCH, Instant.EPOCH.plusSeconds(1800), title = "busy", meeting = false, ownedByApp = true)
+
+        assertThat(listOf(meeting, marked).excludeOwnBlocks(ownedIds = emptySet())).containsExactly(meeting)
+    }
+
+    @Test
+    fun excludeOwnBlocks_dropsAnEventWhoseIdTheTableHolds_evenWithoutTheMarker() {
+        val meeting = testCalendarEvent(1, Instant.EPOCH, Instant.EPOCH.plusSeconds(1800))
+        val unmarked = testCalendarEvent(2, Instant.EPOCH, Instant.EPOCH.plusSeconds(1800), title = "busy", meeting = false)
+
+        assertThat(listOf(meeting, unmarked).excludeOwnBlocks(ownedIds = setOf(2L))).containsExactly(meeting)
+        assertThat(listOf(meeting, unmarked).excludeOwnBlocks(ownedIds = setOf(99L))).containsExactly(meeting, unmarked)
+    }
 }

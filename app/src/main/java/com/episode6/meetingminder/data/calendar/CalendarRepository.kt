@@ -1,9 +1,11 @@
 package com.episode6.meetingminder.data.calendar
 
+import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.EventResponse
 import java.time.LocalDate
+import java.time.ZoneId
 
 /** Which calendars an [CalendarRepository.eventsOn] query draws from. */
 sealed interface CalendarFilter {
@@ -15,11 +17,13 @@ sealed interface CalendarFilter {
 }
 
 /**
- * Read access to every calendar on every account (TODO.md §4.1), plus the one kind of write
- * the app ever makes: the RSVP of [respondToInstance] (§4.6) — "Yes, going" when alarms are
- * set, or the answer picked from a chip's long-press menu.
+ * Read access to every calendar on every account (TODO.md §4.1), plus the three kinds of
+ * write the app ever makes: the RSVP of [respondToInstance] (§4.6) — "Yes, going" when
+ * alarms are set, or the answer picked from a chip's long-press menu — and the busy-calendar
+ * sync's [insertBusyBlock] and [deleteOwnEvent] (§4.7), which only ever touch events the
+ * app itself inserted.
  *
- * The reads need `READ_CALENDAR` and the write `WRITE_CALENDAR`; without them the
+ * The reads need `READ_CALENDAR` and the writes `WRITE_CALENDAR`; without them the
  * provider throws `SecurityException`, so callers gate on the permission state first.
  */
 interface CalendarRepository {
@@ -58,4 +62,24 @@ interface CalendarRepository {
      * directly because the `Instances` view does not expose `DIRTY`.
      */
     suspend fun syncedEventIds(eventIds: Collection<Long>): Set<Long>
+
+    /**
+     * Inserts a bare busy block (TODO.md §4.7) on [calendarId] — title `busy`, [range]'s
+     * begin/end, availability busy, [zone] as the event time zone, and the app's package as
+     * the `CUSTOM_APP_PACKAGE` ownership marker; never a description, location, colour,
+     * organizer, attendees, reminders or recurrence — and returns the new `Events._ID`.
+     * A plain (non-sync-adapter) insert, so the row is `DIRTY = 1` and the account's own
+     * sync adapter uploads it; the app never talks to the network. Throws when the provider
+     * refuses the write (missing `WRITE_CALENDAR`, insert returned nothing).
+     */
+    suspend fun insertBusyBlock(calendarId: Long, range: BusyRange, zone: ZoneId): Long
+
+    /**
+     * Deletes an event the app itself inserted: an [insertBusyBlock] id recorded in
+     * `busy_block`, and nothing else is ever passed here. A plain (non-sync-adapter) delete,
+     * so the provider marks the row deleted and the account's sync adapter removes it
+     * upstream. Returns false when the row was already gone (the user deleted it by hand),
+     * which callers treat as done rather than as a failure.
+     */
+    suspend fun deleteOwnEvent(eventId: Long): Boolean
 }

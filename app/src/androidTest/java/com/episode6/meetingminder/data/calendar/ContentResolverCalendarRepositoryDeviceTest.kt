@@ -40,9 +40,11 @@ class ContentResolverCalendarRepositoryDeviceTest {
     val calendarPermissions: GrantPermissionRule =
         GrantPermissionRule.grant(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
 
-    private val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
+    private val targetContext = InstrumentationRegistry.getInstrumentation().targetContext
+    private val resolver = targetContext.contentResolver
     private val zone: ZoneId = ZoneId.systemDefault()
     private val account = "meeting-minder-test@local"
+    private val repository = ContentResolverCalendarRepository(resolver, packageName = targetContext.packageName, zone = { zone })
 
     @Test
     fun findsAnEventInsertedIntoTheProvider() = runBlocking {
@@ -79,8 +81,7 @@ class ContentResolverCalendarRepositoryDeviceTest {
             ) ?: error("event insert returned null")
             val eventId = ContentUris.parseId(eventUri)
 
-            val events = ContentResolverCalendarRepository(resolver, zone = { zone })
-                .eventsOn(date, CalendarFilter.Only(setOf(calendarId)))
+            val events = repository.eventsOn(date, CalendarFilter.Only(setOf(calendarId)))
 
             assertThat(events).single().all {
                 prop(CalendarEvent::eventId).isEqualTo(eventId)
@@ -93,9 +94,7 @@ class ContentResolverCalendarRepositoryDeviceTest {
                 prop(CalendarEvent::calendarAccessLevel).isEqualTo(Calendars.CAL_ACCESS_OWNER)
             }
             assertThat(events.single().isMeeting).isFalse()
-            assertThat(
-                ContentResolverCalendarRepository(resolver, zone = { zone }).calendars().any { it.id == calendarId },
-            ).isTrue()
+            assertThat(repository.calendars().any { it.id == calendarId }).isTrue()
         } finally {
             resolver.delete(ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId).asSyncAdapter(), null, null)
         }

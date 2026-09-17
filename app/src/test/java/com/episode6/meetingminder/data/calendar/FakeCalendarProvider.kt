@@ -5,6 +5,7 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.UriMatcher
 import android.database.Cursor
+import android.database.DatabaseUtils
 import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.CalendarContract
@@ -31,6 +32,13 @@ import java.time.ZoneOffset
  * the real provider's exception logic is not emulated, only its addressing. A tiny
  * `events` table (`_id`, `dirty`) backs the sync-state query; like the real provider,
  * the instances table does **not** carry `dirty`.
+ *
+ * The busy-calendar writes (TODO.md §4.7) are emulated a little further: an `insert` on
+ * `events` assigns the next [nextEventId], records the values ([inserts]) and expands one
+ * instance row from them (the way the provider would for a non-recurring event, with the
+ * calendar's columns joined in) so a follow-up `eventsOn` sees it as a dirty event; a
+ * `delete` on `events/{id}` removes the event and its instances ([deletes]) and answers
+ * with the rows affected, 0 for an id that was never there.
  */
 class FakeCalendarProvider : ContentProvider() {
 
@@ -45,8 +53,14 @@ class FakeCalendarProvider : ContentProvider() {
     /** Every `insert` call, in order. */
     val inserts = mutableListOf<Pair<Uri, ContentValues>>()
 
+    /** Every `delete` call's URI, in order. */
+    val deletes = mutableListOf<Uri>()
+
     /** The id the next exception insert returns; incremented per insert. */
     var nextExceptionId: Long = 1_000
+
+    /** The id the next `events` insert returns; incremented per insert. */
+    var nextEventId: Long = 5_000
 
     override fun onCreate(): Boolean {
         db = SQLiteDatabase.create(null)
@@ -67,7 +81,8 @@ class FakeCalendarProvider : ContentProvider() {
                 ${Instances.IS_ORGANIZER} INTEGER, ${Instances.HAS_ATTENDEE_DATA} INTEGER, ${Instances.AVAILABILITY} INTEGER,
                 ${Instances.RRULE} TEXT, ${Instances.RDATE} TEXT, ${Instances.ORIGINAL_ID} INTEGER,
                 ${Instances.ORIGINAL_INSTANCE_TIME} INTEGER, ${Events.DELETED} INTEGER, ${Instances.OWNER_ACCOUNT} TEXT,
-                ${Instances.CALENDAR_ACCESS_LEVEL} INTEGER, ${Instances.VISIBLE} INTEGER, ${Instances.EVENT_TIMEZONE} TEXT)""",
+                ${Instances.CALENDAR_ACCESS_LEVEL} INTEGER, ${Instances.VISIBLE} INTEGER, ${Instances.EVENT_TIMEZONE} TEXT,
+                ${Instances.CUSTOM_APP_PACKAGE} TEXT)""",
         )
         db.execSQL("CREATE TABLE $EVENTS (${Events._ID} INTEGER PRIMARY KEY, ${Events.DIRTY} INTEGER)")
         db.execSQL(
@@ -169,6 +184,7 @@ class FakeCalendarProvider : ContentProvider() {
         ownerAccount: String? = "me@example.com",
         accessLevel: Int = Calendars.CAL_ACCESS_OWNER,
         visible: Boolean = true,
+        customAppPackage: String? = null,
     ) {
         val dayZone = if (allDay) ZoneOffset.UTC else zone
         val startDay = julianDay(begin, dayZone)
@@ -207,6 +223,7 @@ class FakeCalendarProvider : ContentProvider() {
                 put(Instances.CALENDAR_ACCESS_LEVEL, accessLevel)
                 put(Instances.VISIBLE, visible.toInt())
                 put(Instances.EVENT_TIMEZONE, dayZone.id)
+                put(Instances.CUSTOM_APP_PACKAGE, customAppPackage)
             },
         )
         db.insertWithOnConflict(
@@ -247,6 +264,11 @@ class FakeCalendarProvider : ContentProvider() {
         db.query(ATTENDEES, arrayOf(Attendees.ATTENDEE_STATUS), "${Attendees._ID} = ?", arrayOf(id.toString()), null, null, null)
             .use { if (it.moveToFirst()) it.getInt(0) else null }
 
+    /** Whether an `events` row with this id exists (an inserted busy block, until it is deleted). */
+    fun hasEvent(id: Long): Boolean =
+        db.query(EVENTS, arrayOf(Events._ID), "${Events._ID} = ?", arrayOf(id.toString()), null, null, null)
+            .use { it.moveToFirst() }
+
     override fun getType(uri: Uri): String? = null
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
@@ -254,11 +276,63 @@ class FakeCalendarProvider : ContentProvider() {
         return when (matcher.match(uri)) {
             // CalendarProvider2 answers an exception insert with the new event's events/{id} uri
             MATCH_EXCEPTION_ID -> ContentUris.withAppendedId(Events.CONTENT_URI, nextExceptionId++)
+            MATCH_EVENTS -> ContentUris.withAppendedId(Events.CONTENT_URI, insertEvent(requireNotNull(values)))
             else -> throw UnsupportedOperationException("insert on $uri")
         }
     }
 
-    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<String>?): Int = throw UnsupportedOperationException()
+    /**
+     * A plain (non-sync-adapter) event insert: the row is dirty, and its one instance is
+     * expanded from `DTSTART`/`DTEND` with the calendar's columns joined in. The Julian days
+     * are computed in the event's own `EVENT_TIMEZONE`, which for the app's writes is the
+     * device zone the real provider would use.
+     */
+    private fun insertEvent(values: ContentValues): Long {
+        val eventId = nextEventId++
+        val calendarId = requireNotNull(values.getAsLong(Events.CALENDAR_ID)) { "insert without CALENDAR_ID" }
+        val calendar = db.query(CALENDARS, null, "${Calendars._ID} = ?", arrayOf(calendarId.toString()), null, null, null).use { cursor ->
+            require(cursor.moveToFirst()) { "insert on unknown calendar $calendarId" }
+            ContentValues().also { DatabaseUtils.cursorRowToContentValues(cursor, it) }
+        }
+        addInstance(
+            instanceId = eventId,
+            eventId = eventId,
+            begin = requireNotNull(values.getAsLong(Events.DTSTART)) { "insert without DTSTART" },
+            end = requireNotNull(values.getAsLong(Events.DTEND)) { "insert without DTEND" },
+            zone = ZoneId.of(requireNotNull(values.getAsString(Events.EVENT_TIMEZONE)) { "insert without EVENT_TIMEZONE" }),
+            calendarId = calendarId,
+            title = values.getAsString(Events.TITLE),
+            location = values.getAsString(Events.EVENT_LOCATION),
+            allDay = values.getAsInteger(Events.ALL_DAY) == 1,
+            selfStatus = null,
+            status = values.getAsInteger(Events.STATUS),
+            displayColor = values.getAsInteger(Events.EVENT_COLOR) ?: calendar.getAsInteger(Calendars.CALENDAR_COLOR),
+            calendarColor = calendar.getAsInteger(Calendars.CALENDAR_COLOR),
+            organizer = values.getAsString(Events.ORGANIZER),
+            hasAttendeeData = values.getAsInteger(Events.HAS_ATTENDEE_DATA) == 1,
+            availability = values.getAsInteger(Events.AVAILABILITY),
+            rrule = values.getAsString(Events.RRULE),
+            rdate = values.getAsString(Events.RDATE),
+            dirty = true,
+            ownerAccount = calendar.getAsString(Calendars.OWNER_ACCOUNT),
+            accessLevel = calendar.getAsInteger(Calendars.CALENDAR_ACCESS_LEVEL) ?: Calendars.CAL_ACCESS_NONE,
+            visible = calendar.getAsInteger(Calendars.VISIBLE) == 1,
+            customAppPackage = values.getAsString(Events.CUSTOM_APP_PACKAGE),
+        )
+        return eventId
+    }
+
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<String>?): Int {
+        deletes += uri
+        return when (matcher.match(uri)) {
+            MATCH_EVENT_ID -> {
+                val id = uri.lastPathSegment
+                db.delete(INSTANCES, "${Instances.EVENT_ID} = ?", arrayOf(id))
+                db.delete(EVENTS, "${Events._ID} = ?", arrayOf(id))
+            }
+            else -> throw UnsupportedOperationException("delete on $uri")
+        }
+    }
 
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<String>?): Int {
         updates += uri to ContentValues(values)
@@ -279,6 +353,7 @@ class FakeCalendarProvider : ContentProvider() {
         const val MATCH_ATTENDEES_ID = 4
         const val MATCH_EXCEPTION_ID = 5
         const val MATCH_EVENTS = 6
+        const val MATCH_EVENT_ID = 7
         const val EPOCH_JULIAN_DAY = 2440588
 
         val matcher = UriMatcher(UriMatcher.NO_MATCH).apply {
@@ -288,6 +363,7 @@ class FakeCalendarProvider : ContentProvider() {
             addURI(CalendarContract.AUTHORITY, "attendees/#", MATCH_ATTENDEES_ID)
             addURI(CalendarContract.AUTHORITY, "exception/#", MATCH_EXCEPTION_ID)
             addURI(CalendarContract.AUTHORITY, "events", MATCH_EVENTS)
+            addURI(CalendarContract.AUTHORITY, "events/#", MATCH_EVENT_ID)
         }
 
         fun julianDay(millis: Long, zone: ZoneId): Int =
@@ -301,6 +377,9 @@ class FakeCalendarProvider : ContentProvider() {
         fun Boolean.toInt() = if (this) 1 else 0
     }
 }
+
+/** The `packageName` the Robolectric repository tests construct the repository with: the busy-block ownership marker it writes and reads back. */
+internal const val TEST_PACKAGE = "com.episode6.meetingminder.test"
 
 /** The instant [time] on [date] in [zone], as provider millis. */
 internal fun LocalDate.at(hour: Int, minute: Int = 0, zone: ZoneId): Long =

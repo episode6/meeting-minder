@@ -22,7 +22,7 @@ interface CalendarModule {
     @Provides
     @SingleIn(AppScope::class)
     fun calendarRepository(context: Context): CalendarRepository =
-        ContentResolverCalendarRepository(context.contentResolver)
+        ContentResolverCalendarRepository(context.contentResolver, packageName = context.packageName)
 
     @Provides
     @SingleIn(AppScope::class)
