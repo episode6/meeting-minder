@@ -83,6 +83,17 @@ interface SettingsRepository {
     suspend fun setBusySyncCalendar(calendarId: Long?)
 
     /**
+     * Sets [BusySync.enabled] and [BusySync.calendarId] together. The ViewModel uses this
+     * (rather than [setBusySyncEnabled] followed by [setBusySyncCalendar]) when turning the
+     * toggle on applies the Family default in the same gesture, so a collector never observes
+     * the intermediate "enabled, no calendar chosen yet" state between two separate edits.
+     */
+    suspend fun setBusySync(enabled: Boolean, calendarId: Long?) {
+        setBusySyncEnabled(enabled)
+        setBusySyncCalendar(calendarId)
+    }
+
+    /**
      * The runtime permissions (`Manifest.permission` names) this app has asked the system
      * for at least once, ever. Not a preference, but it has to outlive the process: the
      * "two denials → Open settings" detection (TODO.md §4.1) can't tell a permanently denied
@@ -143,6 +154,13 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
 
     override suspend fun setBusySyncCalendar(calendarId: Long?) {
         dataStore.edit { prefs ->
+            if (calendarId == null) prefs.remove(Keys.BusySyncCalendarId) else prefs[Keys.BusySyncCalendarId] = calendarId
+        }
+    }
+
+    override suspend fun setBusySync(enabled: Boolean, calendarId: Long?) {
+        dataStore.edit { prefs ->
+            prefs[Keys.BusySyncEnabled] = enabled
             if (calendarId == null) prefs.remove(Keys.BusySyncCalendarId) else prefs[Keys.BusySyncCalendarId] = calendarId
         }
     }

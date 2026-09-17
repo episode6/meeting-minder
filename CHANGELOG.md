@@ -2,7 +2,7 @@
 
 ### v1.0.10 - Unreleased
 
-- Settings gains a "Busy calendar" section (TODO.md §4.7, PR-15a of 3): a toggle "Sync busy times to a calendar" and, once on, a single-choice list of the calendars the app can write to (auto-picking a "Family" calendar the first time it's turned on, if there is a writable one). While the sync would be effective, the FAB reads "Sync & Share", the overflow's "Share again" reads "Sync & share again" and the changed-schedule banner's button reads "Sync & re-share" — this PR only stores the preference and swaps the labels; the calendar write itself lands in PR-15b/c.
+- Settings gains a "Busy calendar" section (TODO.md §4.7, PR-15a of 3): a toggle "Sync busy times to a calendar" and, once on, a single-choice list of the calendars the app can write to (auto-picking a "Family" calendar the first time it's turned on, if there is a writable one, written together with the toggle so no frame shows "on" with nothing chosen). The toggle stays reachable to turn back off even if the calendar it was synced to is later removed or downgraded to read-only, the radio list reads as one TalkBack group, and re-tapping the already-selected calendar is a no-op. While the sync would be effective, the FAB reads "Sync & Share", the overflow's "Share again" reads "Sync & share again" and the changed-schedule banner's button reads "Sync & re-share" — this PR only stores the preference and swaps the labels; the calendar write itself lands in PR-15b/c.
 
 ### v1.0.0 - 2026-09-15
 

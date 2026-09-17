@@ -139,22 +139,26 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
     /**
      * Settings → Busy calendar's toggle (TODO.md §4.7). Turning it on with no calendar
      * chosen yet applies [defaultBusyCalendar] (the "Family" default) and writes its id
-     * explicitly. Either way, [BusySyncSettingChanged] is dispatched so PR-15c's cleanup
-     * side effect can react.
+     * explicitly, as one [SettingsRepository.setBusySync] edit so a collector never sees the
+     * toggle on with no calendar chosen in between. Either way, [BusySyncSettingChanged] is
+     * dispatched so PR-15c's cleanup side effect can react.
      */
     fun onBusySyncToggle(enabled: Boolean) = viewModelScope.launch {
         val current = settings.current()
         val previousCalendarId = current.busySync.calendarId
-        settings.setBusySyncEnabled(enabled)
         if (enabled && previousCalendarId == null) {
-            defaultBusyCalendar(store.state.calendars.writable())?.let { settings.setBusySyncCalendar(it.id) }
+            val defaultId = defaultBusyCalendar(store.state.calendars.writable())?.id
+            settings.setBusySync(enabled = true, calendarId = defaultId)
+        } else {
+            settings.setBusySyncEnabled(enabled)
         }
         store.dispatch(BusySyncSettingChanged(previousCalendarId, enabledNow = enabled))
     }
 
-    /** Settings → Busy calendar's radio row for [calendar]. */
+    /** Settings → Busy calendar's radio row for [calendar]; a re-tap of the already selected calendar is a no-op. */
     fun onBusyCalendarSelected(calendar: CalendarInfo) = viewModelScope.launch {
         val previousCalendarId = settings.current().busySync.calendarId
+        if (previousCalendarId == calendar.id) return@launch
         settings.setBusySyncCalendar(calendar.id)
         store.dispatch(BusySyncSettingChanged(previousCalendarId, enabledNow = settings.current().busySync.enabled))
     }

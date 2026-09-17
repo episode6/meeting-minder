@@ -166,17 +166,26 @@ fun SettingsScreen(
                         stringResource(R.string.settings_busy_sync_description)
                     },
                     checked = state.busySyncEnabled,
-                    enabled = state.writableCalendars.isNotEmpty(),
+                    // Only disabled when off with nothing to turn it on to; once checked, a
+                    // calendar removed or downgraded out from under it must not trap the user
+                    // with a switch they can't reach to turn off.
+                    enabled = state.busySyncEnabled || state.writableCalendars.isNotEmpty(),
                     onCheckedChange = onBusySyncToggle,
                 )
             }
             if (state.busySyncEnabled) {
-                items(state.writableCalendars, key = { it.id }) { calendar ->
-                    BusyCalendarRow(
-                        calendar = calendar,
-                        selected = calendar.id == state.busySyncCalendarId,
-                        onSelected = { onBusyCalendarSelected(calendar) },
-                    )
+                item {
+                    // One selectableGroup so TalkBack announces the radio rows as a single
+                    // choice, matching the duration/sound-pool chip rows above.
+                    Column(modifier = Modifier.selectableGroup()) {
+                        state.writableCalendars.forEach { calendar ->
+                            BusyCalendarRow(
+                                calendar = calendar,
+                                selected = calendar.id == state.busySyncCalendarId,
+                                onSelected = { onBusyCalendarSelected(calendar) },
+                            )
+                        }
+                    }
                 }
                 if (state.writableCalendars.none { it.id == state.busySyncCalendarId }) {
                     item {
@@ -453,31 +462,38 @@ internal fun SettingsScreenLargeFontPreview() {
     }
 }
 
-/** Toggle on, Family selected (TODO.md §4.7): the radio list under the toggle in render. */
+/**
+ * Toggle on, Family selected (TODO.md §4.7): the "Busy calendar" section's toggle row and
+ * radio list on their own, not the full [SettingsScreen] — the section sits below the fold
+ * in a full-screen preview at default height, which previously made this preview's recorded
+ * PNG byte-identical to [SettingsScreenPreview]'s (nothing new was ever in frame).
+ */
 @Preview(showBackground = true)
 @Composable
 internal fun SettingsScreenBusySyncOnPreview() {
     MeetingMinderTheme {
-        SettingsScreen(
-            state = previewState.copy(
-                busySyncEnabled = true,
-                busySyncCalendarId = previewFamily.id,
-                writableCalendars = listOf(previewWork, previewFamily),
-            ),
-            snackbarHostState = SnackbarHostState(),
-            onBackClick = {},
-            onLeadTimeSelected = {},
-            onSnoozeLengthSelected = {},
-            onAutoTimeoutSelected = {},
-            onSoundPoolSelected = {},
-            onTestAlarmClick = {},
-            onCalendarToggle = { _, _ -> },
-            onShowDeclinedToggle = {},
-            onBusySyncToggle = {},
-            onBusyCalendarSelected = {},
-            onPermissionsClick = {},
-            onLicensesClick = {},
-        )
+        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            section(R.string.settings_section_busy_calendar)
+            item {
+                ToggleRow(
+                    title = stringResource(R.string.settings_busy_sync_title),
+                    description = stringResource(R.string.settings_busy_sync_description),
+                    checked = true,
+                    onCheckedChange = {},
+                )
+            }
+            item {
+                Column(modifier = Modifier.selectableGroup()) {
+                    listOf(previewWork, previewFamily).forEach { calendar ->
+                        BusyCalendarRow(
+                            calendar = calendar,
+                            selected = calendar.id == previewFamily.id,
+                            onSelected = {},
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
