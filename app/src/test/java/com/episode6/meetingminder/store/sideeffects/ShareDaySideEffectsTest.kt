@@ -67,7 +67,7 @@ class ShareDaySideEffectsTest {
     private fun selection(event: CalendarEvent, date: LocalDate = today) =
         SelectedEventEntity(date, event.key.eventId, event.key.instanceTime, event.title, event.begin.toEpochMilli(), event.end.toEpochMilli())
 
-    private fun syncer(settings: FakeSettingsRepository) = BusyCalendarSyncer(repository, busyBlocks, settings, clock)
+    private fun syncer(dayPlanDao: FakeDayPlanDao, settings: FakeSettingsRepository) = BusyCalendarSyncer(repository, busyBlocks, dayPlanDao, settings, clock)
 
     private fun busySyncOn(calendarId: Long = 1) = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = calendarId)))
 
@@ -257,7 +257,7 @@ class ShareDaySideEffectsTest {
         val changeSnapshotDao = FakeChangeSnapshotDao(entities = listOf(ChangeSnapshotEntity(today, now.toEpochMilli(), "[]")))
         val settings = FakeSettingsRepository()
         val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock)
-        val effect = object : ShareDaySideEffects {}.markNotShared(dayPlanDao, changeSnapshotDao, monitor, syncer(settings))
+        val effect = object : ShareDaySideEffects {}.markNotShared(dayPlanDao, changeSnapshotDao, monitor, syncer(dayPlanDao, settings))
 
         effect.output(MarkNotShared(today), state = CalendarGrantedAppState).toList()
 
@@ -333,7 +333,7 @@ class ShareDaySideEffectsTest {
         busyBlocks.upsert(BusyBlockEntity(eventId = 901, date = today.plusDays(1), calendarId = 1, beginMillis = 0, endMillis = 1))
         repository.ownEvents += setOf(900L, 901L)
         val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock)
-        val effect = object : ShareDaySideEffects {}.markNotShared(dayPlanDao, changeSnapshotDao, monitor, syncer(settings))
+        val effect = object : ShareDaySideEffects {}.markNotShared(dayPlanDao, changeSnapshotDao, monitor, syncer(dayPlanDao, settings))
 
         effect.output(MarkNotShared(today), state = CalendarGrantedAppState).toList()
 

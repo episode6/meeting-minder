@@ -38,4 +38,10 @@ internal class FakeBusyBlockDao(rows: List<BusyBlockEntity> = emptyList()) : Bus
         rows.value = before.filterValues { it.date != date }
         return before.size - rows.value.size
     }
+
+    override suspend fun deleteBefore(date: LocalDate): Int {
+        val before = rows.value
+        rows.value = before.filterValues { it.date >= date }
+        return before.size - rows.value.size
+    }
 }

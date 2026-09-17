@@ -166,8 +166,8 @@ interface ShareDaySideEffects {
                 // the day's busy blocks go with its bookkeeping, from inside this effect
                 // rather than a second one listening for the same action, so they are
                 // cleared in one order (and never half-way through a sync: every pass takes
-                // the syncer's lock — see BusyCalendarSyncSideEffects for what that doesn't
-                // promise)
+                // the syncer's lock, and a sync that arrives after this sees shared_at
+                // already null and skips — see BusyCalendarSyncer.sync)
                 try {
                     busyCalendarSyncer.clear(action.date)
                 } catch (e: CancellationException) {

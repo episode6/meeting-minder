@@ -58,4 +58,14 @@ interface BusyBlockDao {
     /** Forgets every block of [date]. Only for a day whose provider rows are already gone. */
     @Query("DELETE FROM busy_block WHERE date = :date")
     suspend fun deleteOn(date: LocalDate): Int
+
+    /**
+     * Forgets every block of a day before [date] — the table's history window, applied by
+     * `share/BusyCalendarSyncer` at each sync so the table stays a few rows per shared day
+     * of the last `BUSY_BLOCK_HISTORY_DAYS`, not of the app's lifetime. Table only: the
+     * events stay on the calendar as history (the `CUSTOM_APP_PACKAGE` marker keeps hiding
+     * them here). Returns the rows forgotten.
+     */
+    @Query("DELETE FROM busy_block WHERE date < :date")
+    suspend fun deleteBefore(date: LocalDate): Int
 }

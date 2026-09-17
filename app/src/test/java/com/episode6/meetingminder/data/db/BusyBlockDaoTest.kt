@@ -91,6 +91,17 @@ class BusyBlockDaoTest {
     }
 
     @Test
+    fun deleteBefore_forgetsEveryDayBeforeThatOne_andKeepsItAndLater() = runTest {
+        dao.upsert(row(1, yesterday))
+        dao.upsert(row(2, today))
+        dao.upsert(row(3, tomorrow))
+
+        assertThat(dao.deleteBefore(today)).isEqualTo(1)
+
+        assertThat(dao.blocksFrom(yesterday).map { it.eventId }).containsExactly(2L, 3L)
+    }
+
+    @Test
     fun observeEventIds_streamsEveryRecordedId_asASet() = runTest {
         assertThat(dao.observeEventIds().first()).isEmpty()
 

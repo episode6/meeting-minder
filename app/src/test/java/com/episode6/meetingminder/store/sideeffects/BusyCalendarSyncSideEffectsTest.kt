@@ -8,7 +8,9 @@ import assertk.assertions.isEqualTo
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
 import com.episode6.meetingminder.data.db.BusyBlockEntity
+import com.episode6.meetingminder.data.db.DayPlanEntity
 import com.episode6.meetingminder.data.db.FakeBusyBlockDao
+import com.episode6.meetingminder.data.db.FakeDayPlanDao
 import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
@@ -47,6 +49,7 @@ class BusyCalendarSyncSideEffectsTest {
 
     private val repository = FakeCalendarRepository(calendars = listOf(family, work))
     private val dao = FakeBusyBlockDao()
+    private val dayPlanDao = FakeDayPlanDao(plans = listOf(DayPlanEntity(today, sharedAt = 1)))
 
     private fun calendar(id: Long, name: String) = CalendarInfo(
         id = id, accountName = "me@example.com", accountType = "com.google", displayName = name, color = 0, visible = true,
@@ -57,13 +60,13 @@ class BusyCalendarSyncSideEffectsTest {
     private fun settings(enabled: Boolean = true, calendarId: Long? = family.id) =
         FakeSettingsRepository(Settings(busySync = BusySync(enabled = enabled, calendarId = calendarId)))
 
-    private fun syncer(settings: FakeSettingsRepository) = BusyCalendarSyncer(repository, dao, settings, clock)
+    private fun syncer(settings: FakeSettingsRepository) = BusyCalendarSyncer(repository, dao, dayPlanDao, settings, clock)
 
     private fun syncEffect(settings: FakeSettingsRepository = settings()) =
         object : BusyCalendarSyncSideEffects {}.syncBusyCalendar(syncer(settings))
 
     private fun cleanupEffect(settings: FakeSettingsRepository = settings()) =
-        object : BusyCalendarSyncSideEffects {}.busySyncSettingChanged(syncer(settings), settings, clock)
+        object : BusyCalendarSyncSideEffects {}.busySyncSettingChanged(syncer(settings), clock)
 
     private fun row(eventId: Long, date: LocalDate, calendarId: Long = family.id) =
         BusyBlockEntity(eventId = eventId, date = date, calendarId = calendarId, beginMillis = 0, endMillis = 1)
@@ -115,7 +118,7 @@ class BusyCalendarSyncSideEffectsTest {
     }
 
     @Test
-    fun syncBusyCalendar_whenTheReadBeforeTheWriteThrows_endsQuietly_ratherThanEndingTheEffect() = runTest {
+    fun syncBusyCalendar_whenTheReadBeforeTheWriteThrows_saysSoWithoutACalendarName_ratherThanEndingTheEffect() = runTest {
         // the syncer turns a failed provider *write* into Failed itself; this is what throws
         // before it (here the fresh calendar list), and must not escape the flow — an
         // exception out of flatMapMerge would end this effect for the rest of the process
@@ -123,8 +126,23 @@ class BusyCalendarSyncSideEffectsTest {
 
         val output = syncEffect().output(SyncBusyCalendar(today, listOf(BusyRange(nine, ten))), state = TestAppState).toList()
 
+        val message = (output.single() as ShowMessage).message
+        assertThat(message.text).isEqualTo(R.string.busy_sync_failed_unknown_calendar)
+        assertThat(message.formatArgs).isEmpty()
+        assertThat(repository.busyBlockInserts).isEmpty()
+    }
+
+    @Test
+    fun syncBusyCalendar_afterTheDayWasMarkedNotShared_writesNothing() = runTest {
+        // "Mark as not shared" cleared shared_at (and the day's blocks) before this queued
+        // sync took the syncer's lock: the cleared day must not get the share's inserts
+        dayPlanDao.setShared(today, sharedAt = null, sharedSnapshot = null)
+
+        val output = syncEffect().output(SyncBusyCalendar(today, listOf(BusyRange(nine, ten))), state = TestAppState).toList()
+
         assertThat(output).isEmpty()
         assertThat(repository.busyBlockInserts).isEmpty()
+        assertThat(dao.entries).isEmpty()
     }
 
     @Test
@@ -132,7 +150,7 @@ class BusyCalendarSyncSideEffectsTest {
         seed(row(1, yesterday), row(2, today), row(3, tomorrow, calendarId = work.id))
         val settings = settings(enabled = false)
 
-        cleanupEffect(settings).output(BusySyncSettingChanged(previousCalendarId = family.id, enabledNow = false), state = TestAppState).toList()
+        cleanupEffect(settings).output(BusySyncSettingChanged(previousCalendarId = family.id, calendarId = family.id, enabledNow = false), state = TestAppState).toList()
 
         // yesterday's block is history: it described a day that already happened
         assertThat(repository.deletedEventIds).containsExactly(2L, 3L)
@@ -144,7 +162,7 @@ class BusyCalendarSyncSideEffectsTest {
         seed(row(1, yesterday, calendarId = work.id), row(2, today, calendarId = work.id), row(3, today, calendarId = family.id))
 
         // the setting now points at Family; Work is where the blocks were written
-        cleanupEffect().output(BusySyncSettingChanged(previousCalendarId = work.id, enabledNow = true), state = TestAppState).toList()
+        cleanupEffect().output(BusySyncSettingChanged(previousCalendarId = work.id, calendarId = family.id, enabledNow = true), state = TestAppState).toList()
 
         assertThat(repository.deletedEventIds).containsExactly(2L)
         assertThat(dao.entries.map { it.eventId }).containsExactly(1L, 3L)
@@ -154,7 +172,7 @@ class BusyCalendarSyncSideEffectsTest {
     fun busySyncTurnedOn_withNothingWrittenYet_deletesNothing() = runTest {
         seed(row(1, today))
 
-        cleanupEffect().output(BusySyncSettingChanged(previousCalendarId = null, enabledNow = true), state = TestAppState).toList()
+        cleanupEffect().output(BusySyncSettingChanged(previousCalendarId = null, calendarId = family.id, enabledNow = true), state = TestAppState).toList()
 
         assertThat(repository.deletedEventIds).isEmpty()
         assertThat(dao.entries.map { it.eventId }).containsExactly(1L)
@@ -164,7 +182,7 @@ class BusyCalendarSyncSideEffectsTest {
     fun reSelectingTheCalendarItAlreadyHad_deletesNothing() = runTest {
         seed(row(1, today))
 
-        cleanupEffect().output(BusySyncSettingChanged(previousCalendarId = family.id, enabledNow = true), state = TestAppState).toList()
+        cleanupEffect().output(BusySyncSettingChanged(previousCalendarId = family.id, calendarId = family.id, enabledNow = true), state = TestAppState).toList()
 
         assertThat(repository.deletedEventIds).isEmpty()
         assertThat(dao.entries.map { it.eventId }).containsExactly(1L)
@@ -176,7 +194,7 @@ class BusyCalendarSyncSideEffectsTest {
         repository.deleteOwnEventError = SecurityException("revoked")
 
         val output = cleanupEffect(settings(enabled = false))
-            .output(BusySyncSettingChanged(previousCalendarId = family.id, enabledNow = false), state = TestAppState).toList()
+            .output(BusySyncSettingChanged(previousCalendarId = family.id, calendarId = family.id, enabledNow = false), state = TestAppState).toList()
 
         assertThat(output).containsExactly(PermissionsMaybeChanged)
     }

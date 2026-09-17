@@ -2,7 +2,6 @@ package com.episode6.meetingminder.store.sideeffects
 
 import android.util.Log
 import com.episode6.meetingminder.R
-import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.share.BusyCalendarSyncer
 import com.episode6.meetingminder.share.BusySyncResult
 import com.episode6.meetingminder.store.AppState
@@ -39,7 +38,9 @@ private const val TAG = "MeetingMinderBusySync"
  *   it never blocks or reverses it; [BusySyncResult.Synced] and [BusySyncResult.Skipped]
  *   say nothing at all (the share is the visible outcome; a second snackbar would be
  *   noise). A `SecurityException` (`WRITE_CALENDAR` revoked under us) re-checks permissions
- *   the way the RSVP write does.
+ *   the way the RSVP write does; anything else thrown before a write (the settings, the
+ *   fresh calendar list, a Room read) is the calendar-less "Couldn't sync busy times"
+ *   snackbar — the user asked for a sync that didn't happen — and never ends the effect.
  * - [BusySyncSettingChanged] is the Settings cleanup: the toggle going off deletes today's
  *   and every later day's blocks on every calendar, and a change of target calendar deletes
  *   the old calendar's. Nothing is written to a newly chosen calendar here; the next share
@@ -50,9 +51,10 @@ private const val TAG = "MeetingMinderBusySync"
  * rather than a third effect here, so the day's bookkeeping and its blocks are cleared by
  * one effect in one order. Every pass — a sync and both cleanups — runs under
  * [BusyCalendarSyncer]'s own lock, so two of them never read rows the other is half-way
- * through changing; what the lock does *not* do is order them, so "Mark as not shared"
- * tapped in the instant between a share's [SyncBusyCalendar] being dispatched and running
- * can still be followed by that sync's inserts. The next share (or toggle) reconciles it.
+ * through changing. The lock doesn't order them, so "Mark as not shared" tapped in the
+ * instant between a share's [SyncBusyCalendar] being dispatched and running can reach the
+ * lock first; the syncer then finds the day's `shared_at` already cleared and skips, so the
+ * cleared day never gets that share's inserts.
  */
 @ContributesTo(AppScope::class)
 interface BusyCalendarSyncSideEffects {
@@ -74,10 +76,13 @@ interface BusyCalendarSyncSideEffects {
                 } catch (e: Exception) {
                     // BusyCalendarSyncer turns a failed provider *write* into Failed itself;
                     // what lands here threw before it (the settings read, the fresh calendar
-                    // list, the busy_block read), so nothing was written and there is nothing
-                    // to tell the user — but it must not escape the flow, or this effect's
-                    // chain ends and no later share syncs for the rest of the process
+                    // list, a Room read), so nothing was written — the sync the user asked
+                    // for still didn't happen, hence the snackbar (no calendar name: it may
+                    // be the settings read that failed). It must not escape the flow, or
+                    // this effect's chain ends and no later share syncs for the rest of the
+                    // process.
                     Log.w(TAG, "busy sync of ${action.date} failed before anything was written", e)
+                    emit(ShowMessage(UiMessage.next(R.string.busy_sync_failed_unknown_calendar)))
                 }
             }
         }
@@ -85,7 +90,7 @@ interface BusyCalendarSyncSideEffects {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Provides @IntoSet
-    fun busySyncSettingChanged(syncer: BusyCalendarSyncer, settings: SettingsRepository, clock: Clock): SideEffect<AppState> = sideEffect {
+    fun busySyncSettingChanged(syncer: BusyCalendarSyncer, clock: Clock): SideEffect<AppState> = sideEffect {
         actions.filterIsInstance<BusySyncSettingChanged>().flatMapMerge { action ->
             flow<Action> {
                 val today = LocalDate.now(clock)
@@ -95,9 +100,9 @@ interface BusyCalendarSyncSideEffects {
                         // the feature is off: the blocks describe a plan nobody maintains any more
                         !action.enabledNow -> syncer.clearFrom(today)
                         // still on, but pointed somewhere else: only the calendar it left.
-                        // Re-picking the calendar it already had changes nothing, so the
-                        // radio row that was already selected can't wipe the day's blocks.
-                        previous != null && previous != settings.current().busySync.calendarId -> syncer.clearFrom(today, previous)
+                        // The action carries both ids, so a toggle-on with the same calendar
+                        // still chosen (previous == calendarId) is not read as a switch.
+                        previous != null && previous != action.calendarId -> syncer.clearFrom(today, previous)
                         // turned on, or a first calendar chosen: nothing was ever written
                         else -> Unit
                     }

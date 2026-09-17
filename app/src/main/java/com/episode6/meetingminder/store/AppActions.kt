@@ -236,6 +236,7 @@ data class BusySyncSettingChanged(val previousCalendarId: Long?, val calendarId:
  * itself, right after [SetPendingShare] and only while the feature is enabled, so the
  * chooser opens without waiting on provider IO (the same shape as [RsvpAccept], which the
  * alarm reconcile fans out). Carries the ranges rather than re-deriving them, so what
- * lands on the calendar is exactly what the share text said.
+ * lands on the calendar is what the share text said, cut down to [date] by the syncer (an
+ * event across midnight is shared whole from either of its pages but bookkept per day).
  */
 data class SyncBusyCalendar(val date: LocalDate, val ranges: List<BusyRange>) : AsyncAction
