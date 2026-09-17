@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.data.db
 
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
@@ -13,6 +14,9 @@ import androidx.room.TypeConverters
  * ringing screen and auto-timeout); version 5 adds `change_snapshot.changes_json` (PR-11's
  * record of what changed since a day was shared); version 6 adds `busy_block` (PR-15b's
  * record of the busy blocks the app wrote to the user's chosen calendar, TODO.md §4.7).
+ * Version 7 adds `busy_block.title` and is the first **real** migration (an [AutoMigration],
+ * the new column defaulting to `busy`): dropping `busy_block` would orphan every block
+ * already on the user's calendar, since the app only ever deletes ids it finds there.
  */
 @Database(
     entities = [
@@ -22,8 +26,9 @@ import androidx.room.TypeConverters
         ChangeSnapshotEntity::class,
         BusyBlockEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
+    autoMigrations = [AutoMigration(from = 6, to = 7)],
 )
 @TypeConverters(Converters::class)
 abstract class MeetingMinderDatabase : RoomDatabase() {

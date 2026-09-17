@@ -2,6 +2,7 @@ package com.episode6.meetingminder.share
 
 import android.util.Log
 import com.episode6.meetingminder.data.calendar.CalendarRepository
+import com.episode6.meetingminder.data.calendar.busyBlockTitle
 import com.episode6.meetingminder.data.calendar.effectiveBusyCalendar
 import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.BusyBlockEntity
@@ -96,8 +97,10 @@ class BusyCalendarSyncer(
      * it takes the lock) can't be followed by that sync's inserts — [BusySyncResult.Synced]
      * when every write went through, [BusySyncResult.Failed] when a provider write threw —
      * except a `SecurityException` (`WRITE_CALENDAR` revoked), which propagates so the
-     * caller can re-check permissions the way the RSVP write does. Each sync also forgets
-     * the table's rows older than [BUSY_BLOCK_HISTORY_DAYS].
+     * caller can re-check permissions the way the RSVP write does. Blocks are titled
+     * `busyBlockTitle` of the first name in Settings, and a kept row must carry that title,
+     * so the first re-share after the name changed replaces the day's blocks. Each sync also
+     * forgets the table's rows older than [BUSY_BLOCK_HISTORY_DAYS].
      */
     suspend fun sync(date: LocalDate, ranges: List<BusyRange>): BusySyncResult = mutex.withLock {
         val forgotten = dao.deleteBefore(LocalDate.now(clock).minusDays(BUSY_BLOCK_HISTORY_DAYS))
@@ -108,7 +111,8 @@ class BusyCalendarSyncer(
         }
         val busySync = settings.current().busySync
         val calendar = effectiveBusyCalendar(busySync, repository.calendars()) ?: return@withLock BusySyncResult.Skipped
-        val plan = reconcileBusyBlocks(dao.blocksOn(date), ranges.clipToDay(date, clock.zone), calendar.id)
+        val title = busyBlockTitle(busySync.firstName)
+        val plan = reconcileBusyBlocks(dao.blocksOn(date), ranges.clipToDay(date, clock.zone), calendar.id, title)
         var deleted = 0
         var inserted = 0
         try {
@@ -117,7 +121,7 @@ class BusyCalendarSyncer(
                 deleted++
             }
             for (range in plan.insert) {
-                val eventId = repository.insertBusyBlock(calendar.id, range)
+                val eventId = repository.insertBusyBlock(calendar.id, range, busySync.firstName)
                 dao.upsert(
                     BusyBlockEntity(
                         eventId = eventId,
@@ -125,6 +129,7 @@ class BusyCalendarSyncer(
                         calendarId = calendar.id,
                         beginMillis = range.begin.toEpochMilli(),
                         endMillis = range.end.toEpochMilli(),
+                        title = title,
                     ),
                 )
                 inserted++

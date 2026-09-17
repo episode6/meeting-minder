@@ -144,4 +144,24 @@ class DataStoreSettingsRepositoryTest {
 
         assertThat(repository.current()).isEqualTo(Settings())
     }
+
+    @Test
+    fun setBusySyncFirstName_persistsTrimmed_andBlankClearsIt() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-busy-first-name-test"))
+
+        repository.setBusySyncFirstName("  Geoff ")
+        assertThat(repository.current().busySync).isEqualTo(BusySync(firstName = "Geoff"))
+
+        repository.setBusySyncFirstName("   ")
+        assertThat(repository.current().busySync).isEqualTo(BusySync())
+    }
+
+    @Test
+    fun setBusySyncFirstName_cutsTheNameToTheLimit() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-busy-first-name-limit-test"))
+
+        repository.setBusySyncFirstName("x".repeat(BUSY_FIRST_NAME_MAX_LENGTH + 5))
+
+        assertThat(repository.current().busySync.firstName).isEqualTo("x".repeat(BUSY_FIRST_NAME_MAX_LENGTH))
+    }
 }

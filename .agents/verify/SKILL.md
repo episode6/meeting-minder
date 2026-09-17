@@ -130,7 +130,8 @@ Share" and dismiss the chooser. Check the calendar:
 # one row per busy range: title=busy, the range's dtstart/dtend, eventTimezone = the device zone,
 # availability=0 (busy), hasAlarm=0, customAppPackage = the installed build's applicationId,
 # an EMPTY description/eventLocation/eventColor/organizer, and dirty=1 (a plain insert waiting
-# for the — here non-existent — sync adapter)
+# for the — here non-existent — sync adapter). With Settings → Busy calendar → "Your first
+# name" filled in the title is "<first name> busy": query with --where "title LIKE '%busy'"
 adb shell content query --uri content://com.android.calendar/events --where "title='busy'" \
   --projection _id:calendar_id:title:dtstart:dtend:eventTimezone:availability:hasAlarm:customAppPackage:description:eventLocation:eventColor:organizer:dirty
 adb shell content query --uri content://com.android.calendar/attendees --where "event_id=<busy id>"   # no rows

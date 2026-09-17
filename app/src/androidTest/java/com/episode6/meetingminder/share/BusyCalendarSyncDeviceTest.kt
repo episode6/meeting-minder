@@ -146,6 +146,9 @@ class BusyCalendarSyncDeviceTest {
             assertThat(block.description).isNull()
             assertThat(block.location).isNull()
             assertThat(attendeeCount(block.id)).isEqualTo(0)
+            // the syncer records the row right after the insert returns, so the event can be
+            // visible in the provider a moment before busy_block knows it: wait, don't read once
+            await("the busy_block row of the block") { runBlocking { graph.busyBlockDao.blocksOn(today) }.isNotEmpty() }
             assertThat(runBlocking { graph.busyBlockDao.blocksOn(today) }.map { it.eventId }).containsExactly(block.id)
             dismissChooser()
 

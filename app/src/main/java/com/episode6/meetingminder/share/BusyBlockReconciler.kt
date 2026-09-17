@@ -20,27 +20,34 @@ data class BusyBlockPlan(
 
 /**
  * Reconciles a day's [existing] `busy_block` rows against the [desired] busy ranges of a
- * fresh share, for the calendar the sync writes to now ([calendarId]):
- * - an existing row on [calendarId] whose begin/end equal a desired range is kept, and that
+ * fresh share, for the calendar the sync writes to now ([calendarId]) under the title it
+ * writes now ([title], `busyBlockTitle` of the first name in Settings):
+ * - an existing row on [calendarId] titled [title] whose begin/end equal a desired range is kept, and that
  *   range is satisfied (a second identical row is deleted rather than kept twice — nothing
  *   in the syncer produces one, since a crash between the provider insert and the table
  *   write leaves the calendar with an extra event and the table with nothing, not the
  *   other way round; the branch is defensive so the table can never hold two rows for one
  *   range whatever put them there);
- * - every other existing row — different times, or a different calendar (the user switched
- *   calendars since) — is deleted;
+ * - every other existing row — different times, a different calendar (the user switched
+ *   calendars since) or a different title (the user changed their first name since) — is
+ *   deleted;
  * - every unsatisfied desired range is inserted, once, even if [desired] repeats it.
  *
  * Ranges compare by **exact instants**: a one-minute move is a delete plus an insert, never
  * an update (decision 6 of the spec: simpler than an update, and Google's UI shows it the
  * same way). Order is preserved from the inputs so the syncer's writes are predictable.
  */
-fun reconcileBusyBlocks(existing: List<BusyBlockEntity>, desired: List<BusyRange>, calendarId: Long): BusyBlockPlan {
+fun reconcileBusyBlocks(
+    existing: List<BusyBlockEntity>,
+    desired: List<BusyRange>,
+    calendarId: Long,
+    title: String,
+): BusyBlockPlan {
     val unsatisfied = desired.distinct().toMutableList()
     val keep = mutableListOf<BusyBlockEntity>()
     val delete = mutableListOf<BusyBlockEntity>()
     for (row in existing) {
-        val covered = if (row.calendarId == calendarId) unsatisfied.firstOrNull { it == row.range } else null
+        val covered = if (row.calendarId == calendarId && row.title == title) unsatisfied.firstOrNull { it == row.range } else null
         if (covered != null) {
             unsatisfied.remove(covered)
             keep += row

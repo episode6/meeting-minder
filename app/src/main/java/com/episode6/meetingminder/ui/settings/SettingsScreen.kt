@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -34,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -42,18 +45,30 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.data.calendar.busyBlockTitle
 import com.episode6.meetingminder.data.settings.AlarmSoundPool
+import com.episode6.meetingminder.data.settings.BUSY_FIRST_NAME_MAX_LENGTH
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import java.time.Duration
@@ -86,6 +101,7 @@ fun SettingsScreen(
     onShowDeclinedToggle: (Boolean) -> Unit,
     onBusySyncToggle: (Boolean) -> Unit,
     onBusyCalendarSelected: (CalendarInfo) -> Unit,
+    onBusyFirstNameChanged: (String) -> Unit,
     onPermissionsClick: () -> Unit,
     onLicensesClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -197,6 +213,7 @@ fun SettingsScreen(
                         )
                     }
                 }
+                item { BusyFirstNameRow(firstName = state.busySyncFirstName, onFirstNameChanged = onBusyFirstNameChanged) }
             }
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
 
@@ -345,6 +362,41 @@ private fun BusyCalendarRow(calendar: CalendarInfo, selected: Boolean, onSelecte
     }
 }
 
+/**
+ * The "Your first name" field under the radio list (TODO.md §4.7), with the title the next
+ * sync will write underneath it. The field edits its own buffer and reports every edit: the
+ * stored name comes back through DataStore a moment later (and trimmed), and feeding that
+ * straight into the field would fight the keyboard, so the stored value only replaces the
+ * buffer while the field isn't being typed in — which is also how the first real
+ * preferences replace the one frame of defaults [SettingsViewModel] seeds with.
+ */
+@Composable
+private fun BusyFirstNameRow(firstName: String, onFirstNameChanged: (String) -> Unit) {
+    var text by rememberSaveable { mutableStateOf(firstName) }
+    var focused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    // keyed on the focus too: by the time Done gives the field up the stored name is usually
+    // already current, so it's the focus change, not a new value, that has to run this
+    LaunchedEffect(firstName, focused) { if (!focused) text = firstName }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { edited ->
+            text = edited.take(BUSY_FIRST_NAME_MAX_LENGTH)
+            onFirstNameChanged(text)
+        },
+        label = { Text(stringResource(R.string.settings_busy_sync_first_name)) },
+        supportingText = { Text(stringResource(R.string.settings_busy_sync_first_name_description, busyBlockTitle(text))) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
+        // Done gives the field up, so the stored (trimmed) name takes the buffer over at once
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .onFocusChanged { focused = it.isFocused },
+    )
+}
+
 @Composable
 private fun CalendarRowItem(row: CalendarRow, onToggle: (Boolean) -> Unit) {
     Row(
@@ -409,6 +461,7 @@ internal fun SettingsScreenPreview() {
             onShowDeclinedToggle = {},
             onBusySyncToggle = {},
             onBusyCalendarSelected = {},
+            onBusyFirstNameChanged = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )
@@ -433,6 +486,7 @@ internal fun SettingsScreenDarkPreview() {
             onShowDeclinedToggle = {},
             onBusySyncToggle = {},
             onBusyCalendarSelected = {},
+            onBusyFirstNameChanged = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )
@@ -456,6 +510,7 @@ internal fun SettingsScreenLargeFontPreview() {
             onShowDeclinedToggle = {},
             onBusySyncToggle = {},
             onBusyCalendarSelected = {},
+            onBusyFirstNameChanged = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )
@@ -493,6 +548,7 @@ internal fun SettingsScreenBusySyncOnPreview() {
                     }
                 }
             }
+            item { BusyFirstNameRow(firstName = "Geoff", onFirstNameChanged = {}) }
         }
     }
 }

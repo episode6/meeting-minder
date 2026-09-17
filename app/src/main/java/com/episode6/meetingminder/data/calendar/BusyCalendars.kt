@@ -7,6 +7,20 @@ import com.episode6.meetingminder.model.CalendarInfo
 /** The display name a "Family" calendar match compares against, case-insensitive and trimmed. */
 private const val FAMILY_CALENDAR_NAME = "family"
 
+/** The literal, lowercase title of a busy block written with no first name set (TODO.md §4.7). */
+const val BUSY_BLOCK_TITLE = "busy"
+
+/**
+ * The title of every busy block a sync writes (TODO.md §4.7): `"<first name> busy"` —
+ * "Geoff busy" — so a calendar two people sync to says whose block it is, or the bare
+ * [BUSY_BLOCK_TITLE] when [firstName] is blank. The name is the user's own, typed in
+ * Settings; nothing about a meeting ever reaches the title. This is the single definition:
+ * the repository builds the title it inserts from it, and the syncer the title it
+ * reconciles `busy_block.title` against.
+ */
+fun busyBlockTitle(firstName: String): String =
+    firstName.trim().let { name -> if (name.isEmpty()) BUSY_BLOCK_TITLE else "$name $BUSY_BLOCK_TITLE" }
+
 /**
  * Calendars the app may write a busy block to (TODO.md §4.7): `SYNC_EVENTS` on (a
  * sync-disabled calendar holds no events, and an insert into one is pointless) and

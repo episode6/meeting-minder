@@ -104,12 +104,12 @@ class ContentResolverCalendarRepository(
      * `EVENT_TIMEZONE` is this repository's own [zone] — the one every read uses too — so
      * there is a single zone authority here, and a test that pins the zone pins the insert's.
      */
-    override suspend fun insertBusyBlock(calendarId: Long, range: BusyRange): Long = withContext(ioDispatcher) {
+    override suspend fun insertBusyBlock(calendarId: Long, range: BusyRange, firstName: String): Long = withContext(ioDispatcher) {
         val values = ContentValues().apply {
             put(Events.CALENDAR_ID, calendarId)
             put(Events.DTSTART, range.begin.toEpochMilli())
             put(Events.DTEND, range.end.toEpochMilli())
-            put(Events.TITLE, BUSY_BLOCK_TITLE)
+            put(Events.TITLE, busyBlockTitle(firstName))
             put(Events.EVENT_TIMEZONE, zone().id)
             put(Events.AVAILABILITY, Events.AVAILABILITY_BUSY)
             put(Events.HAS_ALARM, 0)
@@ -369,9 +369,6 @@ class ContentResolverCalendarRepository(
     private companion object {
         /** SQLite caps bound variables; a day never has this many events, but chunk the `IN (…)` queries anyway. */
         const val ATTENDEE_QUERY_CHUNK = 500
-
-        /** The literal, lowercase title of every busy block the app writes (TODO.md §4.7). */
-        const val BUSY_BLOCK_TITLE = "busy"
 
         val CALENDAR_PROJECTION = arrayOf(
             Calendars._ID,

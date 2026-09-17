@@ -72,6 +72,8 @@ data class SettingsUiState(
     /** Settings → Busy calendar (TODO.md §4.7): the toggle's state and the calendar it's set to. */
     val busySyncEnabled: Boolean = false,
     val busySyncCalendarId: Long? = null,
+    /** The first name busy blocks are titled with ("Geoff busy"); blank keeps the bare `busy`. */
+    val busySyncFirstName: String = "",
     /** The calendars the toggle's radio list offers; see [com.episode6.meetingminder.data.calendar.writable]. */
     val writableCalendars: List<CalendarInfo> = emptyList(),
 )
@@ -165,6 +167,13 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
         store.dispatch(BusySyncSettingChanged(current.calendarId, calendar.id, enabledNow = current.enabled))
     }
 
+    /**
+     * Settings → Busy calendar's "Your first name" field, on every edit. Only the setting
+     * changes: blocks already on the calendar are re-titled by the next share of their day,
+     * so there is no cleanup to dispatch.
+     */
+    fun onBusyFirstNameChanged(firstName: String) = viewModelScope.launch { settings.setBusySyncFirstName(firstName) }
+
     fun onTestAlarmClick() {
         store.dispatch(TestAlarm)
     }
@@ -184,5 +193,6 @@ private fun Settings.toUiState(calendars: List<CalendarInfo>, permissionsStatus:
     permissionsStatus = permissionsStatus,
     busySyncEnabled = busySync.enabled,
     busySyncCalendarId = busySync.calendarId,
+    busySyncFirstName = busySync.firstName,
     writableCalendars = calendars.writable(),
 )
