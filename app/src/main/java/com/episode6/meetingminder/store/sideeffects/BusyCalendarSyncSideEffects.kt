@@ -47,8 +47,12 @@ private const val TAG = "MeetingMinderBusySync"
  *   kept current while the UI is visible, and this can run from anywhere.
  *
  * "Mark as not shared" clears its day from inside `ShareDaySideEffects.markNotShared`
- * rather than a third effect here, so the day's bookkeeping and its blocks can't be cleared
- * by two effects interleaving.
+ * rather than a third effect here, so the day's bookkeeping and its blocks are cleared by
+ * one effect in one order. Every pass — a sync and both cleanups — runs under
+ * [BusyCalendarSyncer]'s own lock, so two of them never read rows the other is half-way
+ * through changing; what the lock does *not* do is order them, so "Mark as not shared"
+ * tapped in the instant between a share's [SyncBusyCalendar] being dispatched and running
+ * can still be followed by that sync's inserts. The next share (or toggle) reconciles it.
  */
 @ContributesTo(AppScope::class)
 interface BusyCalendarSyncSideEffects {
@@ -67,6 +71,13 @@ interface BusyCalendarSyncSideEffects {
                 } catch (e: SecurityException) {
                     Log.w(TAG, "busy sync of ${action.date} lost calendar access", e)
                     emit(PermissionsMaybeChanged)
+                } catch (e: Exception) {
+                    // BusyCalendarSyncer turns a failed provider *write* into Failed itself;
+                    // what lands here threw before it (the settings read, the fresh calendar
+                    // list, the busy_block read), so nothing was written and there is nothing
+                    // to tell the user — but it must not escape the flow, or this effect's
+                    // chain ends and no later share syncs for the rest of the process
+                    Log.w(TAG, "busy sync of ${action.date} failed before anything was written", e)
                 }
             }
         }

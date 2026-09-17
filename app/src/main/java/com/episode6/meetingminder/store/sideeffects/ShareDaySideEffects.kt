@@ -98,8 +98,8 @@ interface ShareDaySideEffects {
             flow {
                 val date = action.date
                 try {
+                    val prefs = settings.current()
                     val events = currentState().eventsByDay[date]?.events ?: run {
-                        val prefs = settings.current()
                         // computed only when an override exists, same as ChangeMonitor.runCheck
                         val filter = if (prefs.calendarOverrides.isEmpty()) {
                             CalendarFilter.Visible
@@ -120,9 +120,6 @@ interface ShareDaySideEffects {
                         )
                     val text = ScheduleTextFormatter.format(date, busyRanges, clock.zone, isUpdate = isUpdate)
                     val now = clock.instant().toEpochMilli()
-                    // read before anything is emitted: a failure here must still land in the
-                    // catch below, not after the chooser has already been handed its text
-                    val syncsBusyCalendar = settings.current().busySync.enabled
 
                     dayPlanDao.markShared(date, now, encodeBusyRanges(busyRanges))
                     if (events != null) {
@@ -140,7 +137,7 @@ interface ShareDaySideEffects {
                     emit(SetPendingShare(PendingShare.next(date, text)))
                     // the chooser is on its way; the provider writes happen alongside it
                     // (TODO.md §4.7), never before it, and never when the feature is off
-                    if (syncsBusyCalendar) emit(SyncBusyCalendar(date, busyRanges))
+                    if (prefs.busySync.enabled) emit(SyncBusyCalendar(date, busyRanges))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -167,8 +164,10 @@ interface ShareDaySideEffects {
                 changeSnapshotDao.delete(action.date)
                 changeMonitor.onShareChanged(action.date)
                 // the day's busy blocks go with its bookkeeping, from inside this effect
-                // rather than a second one listening for the same action, so a share's sync
-                // and this clear can't interleave (they share the syncer's lock)
+                // rather than a second one listening for the same action, so they are
+                // cleared in one order (and never half-way through a sync: every pass takes
+                // the syncer's lock — see BusyCalendarSyncSideEffects for what that doesn't
+                // promise)
                 try {
                     busyCalendarSyncer.clear(action.date)
                 } catch (e: CancellationException) {

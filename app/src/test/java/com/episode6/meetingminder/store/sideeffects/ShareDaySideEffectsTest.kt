@@ -91,7 +91,7 @@ class ShareDaySideEffectsTest {
         snapshots: FakeChangeSnapshotDao = FakeChangeSnapshotDao(),
         settings: FakeSettingsRepository = FakeSettingsRepository(),
         state: com.episode6.meetingminder.store.AppState,
-    ) = (shareDay(this, snapshots, settings).output(ShareDay(today), state = state).toList().first() as SetPendingShare).share.text
+    ) = (shareDay(this, snapshots, settings).output(ShareDay(today), state = state).toList().single() as SetPendingShare).share.text
 
     @Test
     fun shareDay_formatsOnlySelectedEvents_andEmitsThePendingShare() = runTest {

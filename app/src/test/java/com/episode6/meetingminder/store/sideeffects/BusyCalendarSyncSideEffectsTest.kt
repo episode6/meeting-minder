@@ -115,6 +115,19 @@ class BusyCalendarSyncSideEffectsTest {
     }
 
     @Test
+    fun syncBusyCalendar_whenTheReadBeforeTheWriteThrows_endsQuietly_ratherThanEndingTheEffect() = runTest {
+        // the syncer turns a failed provider *write* into Failed itself; this is what throws
+        // before it (here the fresh calendar list), and must not escape the flow — an
+        // exception out of flatMapMerge would end this effect for the rest of the process
+        repository.error = IllegalStateException("provider hiccup")
+
+        val output = syncEffect().output(SyncBusyCalendar(today, listOf(BusyRange(nine, ten))), state = TestAppState).toList()
+
+        assertThat(output).isEmpty()
+        assertThat(repository.busyBlockInserts).isEmpty()
+    }
+
+    @Test
     fun busySyncTurnedOff_deletesTodayAndLater_onEveryCalendar_andKeepsThePast() = runTest {
         seed(row(1, yesterday), row(2, today), row(3, tomorrow, calendarId = work.id))
         val settings = settings(enabled = false)
