@@ -12,7 +12,9 @@ import assertk.assertions.isInstanceOf
 import assertk.assertions.prop
 import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
 import com.episode6.meetingminder.data.db.BusyBlockEntity
+import com.episode6.meetingminder.data.db.DayPlanEntity
 import com.episode6.meetingminder.data.db.FakeBusyBlockDao
+import com.episode6.meetingminder.data.db.FakeDayPlanDao
 import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
@@ -20,8 +22,10 @@ import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarInfo
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * [BusyCalendarSyncer] over the fakes (TODO.md §4.7): when it writes nothing, the order it
@@ -29,9 +33,11 @@ import java.time.LocalDate
  */
 class BusyCalendarSyncerTest {
 
+    private val zone: ZoneId = ZoneId.of("America/New_York")
     private val today = LocalDate.of(2026, 9, 14)
     private val tomorrow = today.plusDays(1)
     private val yesterday = today.minusDays(1)
+    private val clock: Clock = Clock.fixed(Instant.parse("2026-09-14T12:00:00Z"), zone)
 
     private val ten = Instant.parse("2026-09-14T14:00:00Z")
     private val eleven = Instant.parse("2026-09-14T15:00:00Z")
@@ -44,7 +50,8 @@ class BusyCalendarSyncerTest {
     private val repository = FakeCalendarRepository(calendars = listOf(family, work))
     private val dao = FakeBusyBlockDao()
     private val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = family.id)))
-    private val syncer = BusyCalendarSyncer(repository, dao, settings)
+    private val dayPlanDao = FakeDayPlanDao(plans = listOf(DayPlanEntity(today, sharedAt = 1), DayPlanEntity(tomorrow, sharedAt = 1)))
+    private val syncer = BusyCalendarSyncer(repository, dao, dayPlanDao, settings, clock)
 
     private fun calendar(id: Long, name: String, accessLevel: Int = Calendars.CAL_ACCESS_OWNER) = CalendarInfo(
         id = id, accountName = "me@example.com", accountType = "com.google", displayName = name, color = 0, visible = true,
@@ -88,6 +95,45 @@ class BusyCalendarSyncerTest {
 
         assertThat(repository.busyBlockInserts).isEmpty()
         assertThat(repository.deletedEventIds).isEmpty()
+    }
+
+    @Test
+    fun skipped_whenTheDayIsNoLongerShared_soAClearThatWonTheLockIsNotUndone() = runTest {
+        // "Mark as not shared" cleared shared_at and the day's blocks before this sync ran
+        dayPlanDao.setShared(today, sharedAt = null, sharedSnapshot = null)
+
+        assertThat(syncer.sync(today, listOf(BusyRange(ten, eleven)))).isEqualTo(BusySyncResult.Skipped)
+        assertThat(repository.busyBlockInserts).isEmpty()
+        assertThat(dao.entries).isEmpty()
+    }
+
+    @Test
+    fun aRangeAcrossMidnight_isClippedToTheDay_soEachOfItsDaysWritesItsOwnPart() = runTest {
+        // 11 PM – 1 AM New York, selected on both of its pages and shared from each
+        val elevenPm = today.atTime(23, 0).atZone(zone).toInstant()
+        val oneAm = tomorrow.atTime(1, 0).atZone(zone).toInstant()
+        val midnight = tomorrow.atStartOfDay(zone).toInstant()
+        repository.nextBusyBlockId = 100
+
+        syncer.sync(today, listOf(BusyRange(elevenPm, oneAm)))
+        syncer.sync(tomorrow, listOf(BusyRange(elevenPm, oneAm)))
+
+        assertThat(repository.busyBlockInserts.map { it.range }).containsExactly(BusyRange(elevenPm, midnight), BusyRange(midnight, oneAm))
+        assertThat(dao.entries).containsExactly(row(100, elevenPm, midnight), row(101, midnight, oneAm, date = tomorrow))
+    }
+
+    @Test
+    fun everySync_forgetsRowsOlderThanTheHistoryWindow_withoutTouchingTheCalendar() = runTest {
+        val old = today.minusDays(BUSY_BLOCK_HISTORY_DAYS + 1)
+        val edge = today.minusDays(BUSY_BLOCK_HISTORY_DAYS)
+        seed(row(1, ten, eleven, date = old), row(2, ten, eleven, date = edge))
+
+        syncer.sync(today, emptyList())
+
+        assertThat(dao.entries).containsExactly(row(2, ten, eleven, date = edge))
+        // forgotten, not deleted: the calendar keeps the old block as history
+        assertThat(repository.deletedEventIds).isEmpty()
+        assertThat(repository.ownEvents).isEqualTo(setOf(1L, 2L))
     }
 
     @Test

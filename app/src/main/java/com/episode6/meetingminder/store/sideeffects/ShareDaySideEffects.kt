@@ -5,6 +5,8 @@ import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.calendar.effectiveCalendarFilter
 import com.episode6.meetingminder.data.calendar.excludeDeclined
+import com.episode6.meetingminder.data.calendar.excludeOwnBlocks
+import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.DayPlanDao
@@ -16,14 +18,17 @@ import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.monitor.ChangeMonitor
+import com.episode6.meetingminder.share.BusyCalendarSyncer
 import com.episode6.meetingminder.share.ScheduleTextFormatter
 import com.episode6.meetingminder.share.selectedBusyRanges
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.PendingShare
+import com.episode6.meetingminder.store.PermissionsMaybeChanged
 import com.episode6.meetingminder.store.SetPendingShare
 import com.episode6.meetingminder.store.ShareFinished
 import com.episode6.meetingminder.store.ShareDay
+import com.episode6.meetingminder.store.SyncBusyCalendar
 import com.episode6.redux.Action
 import com.episode6.redux.sideeffects.SideEffect
 import dev.zacsweers.metro.AppScope
@@ -52,7 +57,15 @@ private const val TAG = "MeetingMinderShare"
  * ([ChangeMonitor.onShareChanged], which also cancels the day's notification), then hands
  * the text to `Navigation.kt` via [SetPendingShare]: `ShareCompat` needs a real Activity
  * context and must never launch from a receiver (§4.2), so the chooser call happens in the
- * UI layer, not here. [MarkNotShared] clears that bookkeeping back out and stops monitoring.
+ * UI layer, not here. [MarkNotShared] clears that bookkeeping back out, stops monitoring
+ * and deletes the day's busy blocks.
+ *
+ * With busy-calendar sync on (§4.7), the share also fans out [SyncBusyCalendar] with the
+ * ranges it just formatted — **after** [SetPendingShare], so the chooser never waits on
+ * provider IO, and after the baseline was written, so the blocks the sync then inserts
+ * can't be read back as changes (`BusyCalendarSyncSideEffects` does the writing; the
+ * baseline comes from an already `excludeOwnBlocks`-filtered read either way). That order
+ * is load-bearing; keep it.
  *
  * The selection and plan are read from Room and the day's events from the store only when
  * they are loaded (otherwise straight from the provider, with the same calendar filter and
@@ -77,6 +90,7 @@ interface ShareDaySideEffects {
         changeSnapshotDao: ChangeSnapshotDao,
         repository: CalendarRepository,
         changeMonitor: ChangeMonitor,
+        busyBlockDao: BusyBlockDao,
         settings: SettingsRepository,
         clock: Clock,
     ): SideEffect<AppState> = sideEffect {
@@ -84,15 +98,15 @@ interface ShareDaySideEffects {
             flow {
                 val date = action.date
                 try {
+                    val prefs = settings.current()
                     val events = currentState().eventsByDay[date]?.events ?: run {
-                        val prefs = settings.current()
                         // computed only when an override exists, same as ChangeMonitor.runCheck
                         val filter = if (prefs.calendarOverrides.isEmpty()) {
                             CalendarFilter.Visible
                         } else {
                             effectiveCalendarFilter(repository.calendars(), prefs.calendarOverrides)
                         }
-                        repository.readDay(date, filter, prefs.showDeclined)
+                        repository.readDay(date, filter, prefs.showDeclined, busyBlockDao.eventIds())
                     }
                     val selections = dayPlanDao.selectedEventsOn(date)
                     val busyRanges = selectedBusyRanges(
@@ -121,6 +135,9 @@ interface ShareDaySideEffects {
                     }
                     changeMonitor.onShareChanged(date)
                     emit(SetPendingShare(PendingShare.next(date, text)))
+                    // the chooser is on its way; the provider writes happen alongside it
+                    // (TODO.md §4.7), never before it, and never when the feature is off
+                    if (prefs.busySync.enabled) emit(SyncBusyCalendar(date, busyRanges))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -135,12 +152,32 @@ interface ShareDaySideEffects {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Provides @IntoSet
-    fun markNotShared(dayPlanDao: DayPlanDao, changeSnapshotDao: ChangeSnapshotDao, changeMonitor: ChangeMonitor): SideEffect<AppState> = sideEffect {
+    fun markNotShared(
+        dayPlanDao: DayPlanDao,
+        changeSnapshotDao: ChangeSnapshotDao,
+        changeMonitor: ChangeMonitor,
+        busyCalendarSyncer: BusyCalendarSyncer,
+    ): SideEffect<AppState> = sideEffect {
         actions.filterIsInstance<MarkNotShared>().flatMapMerge { action ->
             flow<Action> {
                 dayPlanDao.clearShared(action.date)
                 changeSnapshotDao.delete(action.date)
                 changeMonitor.onShareChanged(action.date)
+                // the day's busy blocks go with its bookkeeping, from inside this effect
+                // rather than a second one listening for the same action, so they are
+                // cleared in one order (and never half-way through a sync: every pass takes
+                // the syncer's lock, and a sync that arrives after this sees shared_at
+                // already null and skips — see BusyCalendarSyncer.sync)
+                try {
+                    busyCalendarSyncer.clear(action.date)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "could not clear ${action.date}'s busy blocks", e)
+                    emit(PermissionsMaybeChanged)
+                } catch (e: Exception) {
+                    Log.w(TAG, "could not clear ${action.date}'s busy blocks", e)
+                }
             }
         }
     }
@@ -151,8 +188,13 @@ interface ShareDaySideEffects {
  * toggle applied (the same read `LoadDayEventsSideEffects`/`monitor.ChangeMonitor` do), or
  * null when it can't be read (calendar access revoked).
  */
-private suspend fun CalendarRepository.readDay(date: LocalDate, filter: CalendarFilter, showDeclined: Boolean): List<CalendarEvent>? = try {
-    eventsOn(date, filter).excludeDeclined(showDeclined)
+private suspend fun CalendarRepository.readDay(
+    date: LocalDate,
+    filter: CalendarFilter,
+    showDeclined: Boolean,
+    ownBlocks: Set<Long>,
+): List<CalendarEvent>? = try {
+    eventsOn(date, filter).excludeDeclined(showDeclined).excludeOwnBlocks(ownBlocks)
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {

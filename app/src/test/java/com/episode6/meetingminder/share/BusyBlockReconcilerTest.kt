@@ -9,6 +9,7 @@ import com.episode6.meetingminder.model.BusyRange
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 
 /** One case per rule of [reconcileBusyBlocks] (TODO.md §4.7): exact-instant matching, keep / delete / insert. */
 class BusyBlockReconcilerTest {
@@ -103,5 +104,34 @@ class BusyBlockReconcilerTest {
         val plan = reconcileBusyBlocks(existing = listOf(unchanged, gone), desired = listOf(BusyRange(ten, eleven), added), calendarId = family)
 
         assertThat(plan).isEqualTo(BusyBlockPlan(keep = listOf(unchanged), delete = listOf(gone), insert = listOf(added)))
+    }
+
+    private val zone: ZoneId = ZoneId.of("America/New_York")
+    private val day: LocalDate = LocalDate.of(2026, 9, 14)
+    private fun at(date: LocalDate, hour: Int, minute: Int = 0): Instant = date.atTime(hour, minute).atZone(zone).toInstant()
+
+    @Test
+    fun clipToDay_keepsARangeInsideTheDayAsItIs() {
+        val inside = BusyRange(at(day, 9), at(day, 10))
+
+        assertThat(listOf(inside).clipToDay(day, zone)).containsExactly(inside)
+    }
+
+    @Test
+    fun clipToDay_cutsARangeAtTheDaysEdges() {
+        val midnight = day.plusDays(1).atStartOfDay(zone).toInstant()
+        val overnight = BusyRange(at(day, 23), at(day.plusDays(1), 1))
+
+        assertThat(listOf(overnight).clipToDay(day, zone)).containsExactly(BusyRange(at(day, 23), midnight))
+        assertThat(listOf(overnight).clipToDay(day.plusDays(1), zone)).containsExactly(BusyRange(midnight, at(day.plusDays(1), 1)))
+    }
+
+    @Test
+    fun clipToDay_dropsARangeThatNeverReachesIntoTheDay() {
+        // ends exactly at midnight: it belongs to the day it started, not the next one
+        val endsAtMidnight = BusyRange(at(day, 23), day.plusDays(1).atStartOfDay(zone).toInstant())
+        val anotherDay = BusyRange(at(day.plusDays(2), 9), at(day.plusDays(2), 10))
+
+        assertThat(listOf(endsAtMidnight, anotherDay).clipToDay(day.plusDays(1), zone)).isEmpty()
     }
 }

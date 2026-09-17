@@ -21,6 +21,8 @@ internal class FakeBusyBlockDao(rows: List<BusyBlockEntity> = emptyList()) : Bus
 
     override fun observeEventIdRows(): Flow<List<Long>> = rows.map { it.keys.sorted() }.distinctUntilChanged()
 
+    override suspend fun eventIdRows(): List<Long> = rows.value.keys.sorted()
+
     override suspend fun upsert(entity: BusyBlockEntity) {
         rows.value += entity.eventId to entity
     }
@@ -34,6 +36,12 @@ internal class FakeBusyBlockDao(rows: List<BusyBlockEntity> = emptyList()) : Bus
     override suspend fun deleteOn(date: LocalDate): Int {
         val before = rows.value
         rows.value = before.filterValues { it.date != date }
+        return before.size - rows.value.size
+    }
+
+    override suspend fun deleteBefore(date: LocalDate): Int {
+        val before = rows.value
+        rows.value = before.filterValues { it.date >= date }
         return before.size - rows.value.size
     }
 }

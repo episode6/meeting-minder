@@ -10,6 +10,8 @@ import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.FakeChangeSnapshotDao
+import com.episode6.meetingminder.data.db.BusyBlockEntity
+import com.episode6.meetingminder.data.db.FakeBusyBlockDao
 import com.episode6.meetingminder.data.db.FakeDayPlanDao
 import com.episode6.meetingminder.data.db.SelectedEventEntity
 import com.episode6.meetingminder.data.db.decodeScheduleChanges
@@ -48,6 +50,7 @@ class ChangeMonitorTest {
 
     private val repository = FakeCalendarRepository()
     private val dayPlanDao = FakeDayPlanDao()
+    private val busyBlockDao = FakeBusyBlockDao()
     private val permissions = FakeCalendarPermissionChecker()
     private val notifier = FakeScheduleChangeNotifier()
     private val scheduler = FakeChangeWorkScheduler()
@@ -56,7 +59,7 @@ class ChangeMonitorTest {
         ChangeSnapshotEntity(date, takenAt, encodeChangeSnapshotEvents(events, selected.mapTo(mutableSetOf()) { it.key }))
 
     private fun monitor(snapshotDao: ChangeSnapshotDao, settings: FakeSettingsRepository = FakeSettingsRepository()) =
-        ChangeMonitor(repository, snapshotDao, dayPlanDao, permissions, notifier, scheduler, settings, clock)
+        ChangeMonitor(repository, snapshotDao, dayPlanDao, busyBlockDao, permissions, notifier, scheduler, settings, clock)
 
     private val moved = ScheduleChange.Moved(today, designReview.key, today.at(13), today.at(14), today.at(13, 30), today.at(14, 30))
     private val new = ScheduleChange.New(today, invite.key, invite.begin, invite.end)
@@ -278,5 +281,26 @@ class ChangeMonitorTest {
 
         assertThat(notifier.cancelled).containsExactly(tomorrow)
         assertThat(scheduler.updates).containsExactly(setOf(today, tomorrow) to ChangeCheckReason.IN_APP)
+    }
+
+    @Test
+    fun runCheck_neverReportsTheBusyBlocksTheAppItselfWrote() = runTest {
+        // the share that wrote them took its baseline from an already filtered read, so an
+        // unfiltered fresh read would report every block as New (TODO.md §4.7)
+        val markedBlock = testCalendarEvent(9, today.at(13), today.at(14), title = "busy", meeting = false, ownedByApp = true)
+        val tabledBlock = testCalendarEvent(10, today.at(15), today.at(16), title = "busy", meeting = false)
+        busyBlockDao.upsert(
+            BusyBlockEntity(
+                eventId = tabledBlock.eventId, date = today, calendarId = tabledBlock.calendarId,
+                beginMillis = tabledBlock.begin.toEpochMilli(), endMillis = tabledBlock.end.toEpochMilli(),
+            ),
+        )
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+        repository.events[today] = listOf(designReview, markedBlock, tabledBlock)
+
+        monitor(snapshots).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(decodeScheduleChanges(today, snapshots.entries.getValue(today).changesJson)).isEmpty()
+        assertThat(notifier.shown).isEmpty()
     }
 }

@@ -3,6 +3,8 @@ package com.episode6.meetingminder.share
 import com.episode6.meetingminder.data.db.BusyBlockEntity
 import com.episode6.meetingminder.model.BusyRange
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * What one sync of a day has to do to the chosen calendar (TODO.md §4.7): [keep] the rows
@@ -47,6 +49,26 @@ fun reconcileBusyBlocks(existing: List<BusyBlockEntity>, desired: List<BusyRange
         }
     }
     return BusyBlockPlan(keep = keep, delete = delete, insert = unsatisfied)
+}
+
+/**
+ * [this] cut down to the part that falls on [date] in [zone]: what one day's sync writes
+ * (TODO.md §4.7). A share's ranges are deliberately *not* clipped — an event across midnight
+ * is shared whole from whichever page it was picked on (`ScheduleTextFormatter`) — but a
+ * block is bookkept per day, and a midnight-spanning event selected on both of its pages
+ * would otherwise be written twice, once under each date, with either day's reconcile blind
+ * to the other's row. Clipped, each day owns exactly its own part of the block, and the
+ * partner sees two adjacent blocks rather than one twice. A range that doesn't reach into
+ * the day is dropped.
+ */
+fun List<BusyRange>.clipToDay(date: LocalDate, zone: ZoneId): List<BusyRange> {
+    val dayBegin = date.atStartOfDay(zone).toInstant()
+    val dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant()
+    return mapNotNull { range ->
+        val begin = maxOf(range.begin, dayBegin)
+        val end = minOf(range.end, dayEnd)
+        if (end > begin) BusyRange(begin, end) else null
+    }
 }
 
 /** The row's times as the [BusyRange] a share computes, for exact-instant comparison. */

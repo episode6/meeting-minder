@@ -4,6 +4,8 @@ import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.calendar.effectiveCalendarFilter
 import com.episode6.meetingminder.data.calendar.excludeDeclined
+import com.episode6.meetingminder.data.calendar.excludeOwnBlocks
+import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.store.AppState
@@ -41,12 +43,21 @@ import java.time.LocalDate
  * `state.calendars`, the same fallback `monitor.ChangeMonitor.runCheck` uses — otherwise
  * `effectiveCalendarFilter` would compute `CalendarFilter.Only(emptySet())` against an
  * empty calendar list and load the window with zero events.
+ *
+ * The busy blocks the app wrote itself are dropped here ([excludeOwnBlocks], TODO.md
+ * §4.7) — the chosen calendar is usually visible, and a block that reached the timeline
+ * could be selected and fold straight back into the next share.
  */
 @ContributesTo(AppScope::class)
 interface LoadDayEventsSideEffects {
     @OptIn(ExperimentalCoroutinesApi::class)
     @Provides @IntoSet
-    fun loadDayEvents(repository: CalendarRepository, clock: Clock, settings: SettingsRepository): SideEffect<AppState> = sideEffect {
+    fun loadDayEvents(
+        repository: CalendarRepository,
+        clock: Clock,
+        settings: SettingsRepository,
+        busyBlockDao: BusyBlockDao,
+    ): SideEffect<AppState> = sideEffect {
         actions
             .filter { it is LoadDay || it is CalendarContentChanged }
             .transformLatest { action ->
@@ -61,9 +72,12 @@ interface LoadDayEventsSideEffects {
                 } else {
                     effectiveCalendarFilter(repository.calendars(), prefs.calendarOverrides)
                 }
+                // the busy blocks the app wrote (TODO.md §4.7) never reach the itinerary,
+                // the counts or a selection: read once per window load, like the filter
+                val ownBlocks = busyBlockDao.eventIds()
                 try {
                     for (date in windowLoadOrder(center)) {
-                        val events = repository.eventsOn(date, filter).excludeDeclined(prefs.showDeclined)
+                        val events = repository.eventsOn(date, filter).excludeDeclined(prefs.showDeclined).excludeOwnBlocks(ownBlocks)
                         emit(SetDayEvents(DayEvents(date, events, clock.instant())))
                     }
                 } catch (_: SecurityException) {

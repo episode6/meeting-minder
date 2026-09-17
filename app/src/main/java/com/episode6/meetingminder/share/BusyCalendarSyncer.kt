@@ -5,6 +5,7 @@ import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.calendar.effectiveBusyCalendar
 import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.BusyBlockEntity
+import com.episode6.meetingminder.data.db.DayPlanDao
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.BusyRange
 import dev.zacsweers.metro.AppScope
@@ -13,13 +14,28 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.time.Clock
 import java.time.LocalDate
 
 private const val TAG = "MeetingMinderBusySync"
 
+/**
+ * How far back `busy_block` remembers what it wrote: rows of days older than this are
+ * forgotten at each [BusyCalendarSyncer.sync] (table only; the calendar keeps the events as
+ * history and the `CUSTOM_APP_PACKAGE` marker keeps hiding them on this device), so the
+ * table — and the id set every provider read filters by — stays a few rows per shared day
+ * of the last month rather than of the app's lifetime. A day older than this that is shared
+ * again gets fresh blocks beside the old ones; widen the window rather than reading the
+ * provider for `busy` titles, which would delete blocks the user typed by hand.
+ */
+internal const val BUSY_BLOCK_HISTORY_DAYS = 30L
+
 /** The outcome of one [BusyCalendarSyncer.sync]. */
 sealed interface BusySyncResult {
-    /** The feature is off, no calendar is chosen, or the chosen one is gone or read-only: nothing was touched. */
+    /**
+     * Nothing was touched: the feature is off, no calendar is chosen, the chosen one is gone
+     * or read-only, or the day is no longer shared (a "Mark as not shared" got in first).
+     */
     data object Skipped : BusySyncResult
 
     /** Every planned delete and insert went through; [inserted] and [deleted] count the provider writes. */
@@ -61,24 +77,38 @@ sealed interface BusySyncResult {
 class BusyCalendarSyncer(
     private val repository: CalendarRepository,
     private val dao: BusyBlockDao,
+    private val dayPlanDao: DayPlanDao,
     private val settings: SettingsRepository,
+    private val clock: Clock,
 ) {
-    // a share's sync and a cleanup can overlap (share, then "Mark as not shared" at once);
-    // one pass at a time so neither reads rows the other is half-way through changing
+    // A share's sync and a cleanup can overlap (share, then "Mark as not shared" at once):
+    // one pass at a time, so neither reads rows the other is half-way through changing. The
+    // lock doesn't order them — see the shared_at check in sync() for what does.
     private val mutex = Mutex()
 
     /**
      * Reconciles [date]'s blocks to [ranges] (already merged by `selectedBusyRanges`; an
-     * empty list means "no meetings today" and removes every block of the day). Returns
-     * [BusySyncResult.Skipped] when the sync isn't effective, [BusySyncResult.Synced] when
-     * every write went through, [BusySyncResult.Failed] when a provider write threw — except
-     * a `SecurityException` (`WRITE_CALENDAR` revoked), which propagates so the caller can
-     * re-check permissions the way the RSVP write does.
+     * empty list means "no meetings today" and removes every block of the day), clipped to
+     * the day ([clipToDay]) so a midnight-spanning selection is bookkept under each of its
+     * days once. Returns [BusySyncResult.Skipped] when the sync isn't effective or the day
+     * is no longer shared — `day_plan.shared_at` is read under the lock, so a "Mark as not
+     * shared" that beat a share's fanned-out sync to the lock (it clears `shared_at` before
+     * it takes the lock) can't be followed by that sync's inserts — [BusySyncResult.Synced]
+     * when every write went through, [BusySyncResult.Failed] when a provider write threw —
+     * except a `SecurityException` (`WRITE_CALENDAR` revoked), which propagates so the
+     * caller can re-check permissions the way the RSVP write does. Each sync also forgets
+     * the table's rows older than [BUSY_BLOCK_HISTORY_DAYS].
      */
     suspend fun sync(date: LocalDate, ranges: List<BusyRange>): BusySyncResult = mutex.withLock {
+        val forgotten = dao.deleteBefore(LocalDate.now(clock).minusDays(BUSY_BLOCK_HISTORY_DAYS))
+        if (forgotten > 0) Log.d(TAG, "forgot $forgotten busy block rows older than $BUSY_BLOCK_HISTORY_DAYS days")
+        if (dayPlanDao.dayPlanOn(date)?.sharedAt == null) {
+            Log.d(TAG, "busy sync of $date skipped: the day is no longer shared")
+            return@withLock BusySyncResult.Skipped
+        }
         val busySync = settings.current().busySync
         val calendar = effectiveBusyCalendar(busySync, repository.calendars()) ?: return@withLock BusySyncResult.Skipped
-        val plan = reconcileBusyBlocks(dao.blocksOn(date), ranges, calendar.id)
+        val plan = reconcileBusyBlocks(dao.blocksOn(date), ranges.clipToDay(date, clock.zone), calendar.id)
         var deleted = 0
         var inserted = 0
         try {

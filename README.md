@@ -21,8 +21,9 @@ Tap meetings to select them, set alarms, then share your busy time ranges — no
 - **Share the schedule** — the system share sheet with generated text listing only your busy time ranges, no titles
 - **Change monitoring** — after you've shared, new/moved/cancelled meetings raise a "your schedule changed since you shared it" notification with one-tap re-share
 - **RSVP** — setting alarms marks each chosen meeting "Yes, going" in the calendar
+- **Busy-calendar sync** — opt in (Settings → Busy calendar) and sharing a day also puts a bare `busy` block on one calendar of your choosing — times only, never titles — so your partner's calendar shows when you're busy. Re-sharing reconciles them, turning it off takes today's and future ones away, and the app only ever touches the blocks it wrote itself
 
-Every calendar on every account is read through the Android Calendar Provider. **The app has no network access — ever**, and must never request the `INTERNET` permission; the only thing it writes back is your RSVP.
+Every calendar on every account is read through the Android Calendar Provider. **The app has no network access — ever**, and must never request the `INTERNET` permission; the only things it writes back are your RSVP and, if you opt in, the `busy` blocks of the busy-calendar sync (which the account's own sync adapter carries upstream).
 
 ## Tech stack
 
@@ -32,7 +33,7 @@ Every calendar on every account is read through the Android Calendar Provider. *
 | UI | Jetpack Compose, Material 3 (episode6 orange, dynamic colour off) |
 | State | [redux-store-flow](https://github.com/episode6/redux-store-flow) — one app-wide `StoreFlow` plus thin per-screen ViewModels |
 | Navigation | Navigation Compose with type-safe `@Serializable` routes |
-| Persistence | Room (day plans, scheduled alarms, change snapshots) + DataStore (settings) |
+| Persistence | Room (day plans, scheduled alarms, change snapshots, busy blocks) + DataStore (settings) |
 | DI | [Metro](https://github.com/ZacSweers/metro) |
 | Async | Kotlin Coroutines & Flow |
 | Background | AlarmManager (exact alarms) + WorkManager (change detection) |

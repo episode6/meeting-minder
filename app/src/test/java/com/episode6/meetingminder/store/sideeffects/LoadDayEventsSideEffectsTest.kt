@@ -6,6 +6,8 @@ import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
+import com.episode6.meetingminder.data.db.BusyBlockEntity
+import com.episode6.meetingminder.data.db.FakeBusyBlockDao
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.model.CalendarInfo
@@ -46,7 +48,8 @@ class LoadDayEventsSideEffectsTest {
     )
     private val repository = FakeCalendarRepository(events = mutableMapOf(today to listOf(standup), today.plusDays(1) to listOf(dentist)))
     private val settings = FakeSettingsRepository()
-    private val sideEffect = object : LoadDayEventsSideEffects {}.loadDayEvents(repository, Clock.fixed(loadedAt, ZoneOffset.UTC), settings)
+    private val busyBlocks = FakeBusyBlockDao()
+    private val sideEffect = object : LoadDayEventsSideEffects {}.loadDayEvents(repository, Clock.fixed(loadedAt, ZoneOffset.UTC), settings, busyBlocks)
 
     @Test
     fun loadDay_loadsThatDayFirst_thenTheDayEitherSide() = runTest {
