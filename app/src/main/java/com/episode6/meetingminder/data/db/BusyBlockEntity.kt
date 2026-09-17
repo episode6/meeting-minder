@@ -3,6 +3,7 @@ package com.episode6.meetingminder.data.db
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.episode6.meetingminder.data.calendar.BUSY_BLOCK_TITLE
 import java.time.LocalDate
 
 /**
@@ -24,4 +25,11 @@ data class BusyBlockEntity(
     @ColumnInfo(name = "calendar_id") val calendarId: Long,
     @ColumnInfo(name = "begin_millis") val beginMillis: Long,
     @ColumnInfo(name = "end_millis") val endMillis: Long,
+    /**
+     * The title the block was inserted with (`busyBlockTitle`): a re-share after the user
+     * changed their first name in Settings replaces a block whose title is out of date.
+     * Defaults to the bare `busy`, which is what every row written before the column existed
+     * (database version 6) carries.
+     */
+    @ColumnInfo(defaultValue = BUSY_BLOCK_TITLE) val title: String = BUSY_BLOCK_TITLE,
 )

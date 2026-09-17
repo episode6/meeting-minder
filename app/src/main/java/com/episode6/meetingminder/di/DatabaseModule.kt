@@ -15,7 +15,9 @@ import dev.zacsweers.metro.SingleIn
 /**
  * Binds [MeetingMinderDatabase] (TODO.md §3.4). `fallbackToDestructiveMigration(true)` is
  * the pre-1.0 policy (AGENTS.md): every schema change until the first `v1.0.0` tag just
- * drops and recreates the tables instead of a hand-written `Migration`.
+ * drops and recreates the tables instead of a hand-written `Migration`. It stays as the
+ * fallback for a version with no migration path; 6 → 7 has one (the database's
+ * `autoMigrations`), which Room prefers over the destructive fallback.
  */
 @ContributesTo(AppScope::class)
 interface DatabaseModule {

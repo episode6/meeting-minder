@@ -135,11 +135,14 @@
     <string name="settings_calendar_not_syncing">%1$s · not syncing</string>
     <string name="settings_section_busy_calendar">Busy calendar</string>
     <string name="settings_busy_sync_title">Sync busy times to a calendar</string>
-    <string name="settings_busy_sync_description">When you share a day, add a \"busy\" block for each busy time to the calendar below. Only times are written, never titles.</string>
+    <string name="settings_busy_sync_description">When you share a day, add a \"busy\" block for each busy time to the calendar below. Only times are written, never your meetings\' titles.</string>
     <!-- toggle subtitle when there's no calendar the app can write to (TODO.md §4.7) -->
     <string name="settings_busy_sync_no_writable">No calendar you can write to</string>
     <!-- shown under the radio list when the stored calendar id no longer resolves to a writable calendar -->
     <string name="settings_busy_sync_pick">Pick a calendar to sync to</string>
+    <string name="settings_busy_sync_first_name">Your first name (optional)</string>
+    <!-- under the first-name field; %1$s is the title the next sync writes: "busy", or "Geoff busy" -->
+    <string name="settings_busy_sync_first_name_description">Blocks are titled \"%1$s\". A day already synced picks up a new name the next time you share it.</string>
     <!-- snackbar after a share whose busy-block write failed; %1$s is the calendar's name. The share itself still went out -->
     <string name="busy_sync_failed">Couldn\'t sync busy times to %1$s</string>
     <string name="busy_sync_failed_unknown_calendar">Couldn\'t sync busy times</string>

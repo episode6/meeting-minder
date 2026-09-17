@@ -63,8 +63,10 @@ interface CalendarRepository {
     suspend fun syncedEventIds(eventIds: Collection<Long>): Set<Long>
 
     /**
-     * Inserts a bare busy block (TODO.md §4.7) on [calendarId] — title `busy`, [range]'s
-     * begin/end, availability busy, the device zone (the same one [eventsOn] reads in) as
+     * Inserts a bare busy block (TODO.md §4.7) on [calendarId] — title [busyBlockTitle] of
+     * [firstName] (`busy`, or "Geoff busy"; the user's own name from Settings is the only
+     * free text a block ever carries, which is why this takes the name and not a title),
+     * [range]'s begin/end, availability busy, the device zone (the same one [eventsOn] reads in) as
      * the event time zone, and the app's package as the `CUSTOM_APP_PACKAGE` ownership
      * marker; never a description, location, colour, organizer, attendees, reminders or
      * recurrence — and returns the new `Events._ID`. A plain (non-sync-adapter) insert, so
@@ -72,7 +74,7 @@ interface CalendarRepository {
      * talks to the network. Throws when the provider refuses the write (missing
      * `WRITE_CALENDAR`, insert returned nothing).
      */
-    suspend fun insertBusyBlock(calendarId: Long, range: BusyRange): Long
+    suspend fun insertBusyBlock(calendarId: Long, range: BusyRange, firstName: String = ""): Long
 
     /**
      * Deletes an event the app itself inserted: an [insertBusyBlock] id recorded in

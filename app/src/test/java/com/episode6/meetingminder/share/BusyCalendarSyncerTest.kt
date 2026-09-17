@@ -287,4 +287,31 @@ class BusyCalendarSyncerTest {
         assertThat(syncer.clearFrom(today)).isEqualTo(1)
         assertThat(dao.entries).isEmpty()
     }
+
+    @Test
+    fun aFirstName_goesToTheInsert_andTheTitleItMadeIsRecorded() = runTest {
+        settings.setBusySyncFirstName("Geoff")
+        repository.nextBusyBlockId = 100
+
+        syncer.sync(today, listOf(BusyRange(ten, eleven)))
+
+        assertThat(repository.busyBlockInserts)
+            .containsExactly(FakeCalendarRepository.BusyBlockInsert(family.id, BusyRange(ten, eleven), firstName = "Geoff"))
+        assertThat(dao.entries).containsExactly(row(100, ten, eleven).copy(title = "Geoff busy"))
+    }
+
+    @Test
+    fun aReShareAfterTheNameChanged_replacesTheDaysBlocks_andASecondOneKeepsThem() = runTest {
+        seed(row(1, ten, eleven))
+        settings.setBusySyncFirstName("Geoff")
+        repository.nextBusyBlockId = 100
+
+        val renamed = syncer.sync(today, listOf(BusyRange(ten, eleven)))
+        val again = syncer.sync(today, listOf(BusyRange(ten, eleven)))
+
+        assertThat(renamed).isEqualTo(BusySyncResult.Synced("Family", inserted = 1, deleted = 1))
+        assertThat(again).isEqualTo(BusySyncResult.Synced("Family", inserted = 0, deleted = 0))
+        assertThat(repository.deletedEventIds).containsExactly(1L)
+        assertThat(dao.entries).containsExactly(row(100, ten, eleven).copy(title = "Geoff busy"))
+    }
 }

@@ -1066,11 +1066,15 @@ change detection never writes, it only nags to re-share. While the sync is *effe
 **and** a chosen calendar that still exists and is writable) the FAB reads "Sync & Share", the
 overflow item "Sync & share again" and the banner's button "Sync & re-share"; otherwise every
 label stays as it is today. Each merged busy range of the day becomes one event on the chosen
-calendar: title exactly `busy`, the range's begin/end, availability busy, no description,
+calendar: title `busy` — or `<first name> busy` ("Geoff busy", "Jane busy") once the user has
+typed their first name into the section's optional "Your first name" field, so a calendar two
+people sync to says whose block is whose; blank, the default, keeps the bare `busy` — the range's begin/end, availability busy, no description,
 location, attendees, reminders or colour, device zone as the event time zone — nothing else about
 the meeting ever reaches that calendar. Re-sharing a day reconciles that day's blocks against the
 new ranges (unchanged ranges keep their event, moved/removed ranges are deleted, new ranges are
-inserted); only events the app itself wrote are ever touched. "Mark as not shared" deletes that
+inserted); only events the app itself wrote are ever touched. A changed first name is picked up
+the same way: nothing is rewritten when the field is edited, and the next share of a day replaces
+its blocks that carry the old title. "Mark as not shared" deletes that
 day's blocks; turning the toggle off deletes today's and future blocks (past days are left as
 history); switching calendars deletes today's and future blocks from the old calendar and lets
 the next share of each day recreate them on the new one. The app's own blocks are hidden from the
@@ -1081,20 +1085,24 @@ the way the RSVP write does. No new permission: `WRITE_CALENDAR` (already pinned
 covers inserts and deletes, and the account's own sync adapter uploads the event — the app never
 talks to the network itself.
 
-**Design.** `Settings.busySync` is a `BusySync(enabled, calendarId)`, stored explicitly (the
+**Design.** `Settings.busySync` is a `BusySync(enabled, calendarId, firstName)`, stored explicitly (the
 Family default is applied once, by the ViewModel, at the moment the toggle turns on — a later
 rename of the calendar can't silently move the sync). `data/calendar/BusyCalendars.kt` has three
 pure, unit-tested functions: `List<CalendarInfo>.writable()` (`SYNC_EVENTS` on and
 `CAL_ACCESS_CONTRIBUTOR` (500) or better — `CAL_ACCESS_RESPOND`, what the RSVP needs, cannot
 insert), `defaultBusyCalendar(calendars)` (first writable "Family", case/whitespace
 insensitive), and `effectiveBusyCalendar(settings, calendars)` (the calendar the sync would write
-to right now, or null when off, unset, or the stored id no longer resolves). `CalendarRepository`
-gains `insertBusyBlock(calendarId, range)` and `deleteOwnEvent(eventId)` — the second and
+to right now, or null when off, unset, or the stored id no longer resolves), plus
+`busyBlockTitle(firstName)`, the single definition of a block's title. `CalendarRepository`
+gains `insertBusyBlock(calendarId, range, firstName)` (it takes the name, never a title, so the
+user's own first name stays the only free text a block can carry) and `deleteOwnEvent(eventId)` — the second and
 third kinds of write this app makes, after the RSVP. Room's `busy_block` table (database version
 6) is the source of truth for "what the app wrote": one row per inserted `Events._ID`, with the
-day, calendar and range it belongs to. `share/BusyBlockReconciler.kt`'s pure
-`reconcileBusyBlocks(existing, desired, calendarId)` decides keep/delete/insert by exact-instant
-matching (a moved range is delete + insert, never an update); `share/BusyCalendarSyncer` runs the
+day, calendar and range it belongs to, and (version 7, an `AutoMigration` — dropping the table
+would orphan the blocks already on the calendar) the title it was written with. `share/BusyBlockReconciler.kt`'s pure
+`reconcileBusyBlocks(existing, desired, calendarId, title)` decides keep/delete/insert by exact-instant
+matching (a moved range is delete + insert, never an update; a row written under another title is
+replaced the same way); `share/BusyCalendarSyncer` runs the
 plan against the repository and the dao, deleting first (a delete that finds the row already gone
 still drops it — the user deleted it by hand and the app doesn't fight that) then inserting,
 upserting each row as its insert returns so a crash mid-way leaves the table truthful.

@@ -245,4 +245,17 @@ class SettingsViewModelTest {
     private val recordBusySyncSettingChanged = SideEffect<AppState> {
         actions.onEach { if (it is BusySyncSettingChanged) busySyncChanges.emit(it) }.filter { false }
     }
+
+    @Test
+    fun onBusyFirstNameChanged_writesTheName_andDispatchesNoCleanup() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), setOf(recordBusySyncSettingChanged)) },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = 1L)))
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onBusyFirstNameChanged("Geoff")
+
+        assertThat(settings.settings.value.busySync).isEqualTo(BusySync(enabled = true, calendarId = 1L, firstName = "Geoff"))
+        assertThat(busySyncChanges.replayCache).isEmpty()
+    }
 }

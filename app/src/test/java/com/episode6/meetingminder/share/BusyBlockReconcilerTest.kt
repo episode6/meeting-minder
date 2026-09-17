@@ -134,4 +134,22 @@ class BusyBlockReconcilerTest {
 
         assertThat(listOf(endsAtMidnight, anotherDay).clipToDay(day.plusDays(1), zone)).isEmpty()
     }
+
+    @Test
+    fun aRowWrittenUnderAnotherTitle_isDeleted_evenWhenItsTimesMatch_andTheRangeInsertedAgain() {
+        val oldName = row(1, ten, eleven)
+
+        val plan = reconcileBusyBlocks(existing = listOf(oldName), desired = listOf(BusyRange(ten, eleven)), calendarId = family, title = "Geoff busy")
+
+        assertThat(plan).isEqualTo(BusyBlockPlan(keep = emptyList(), delete = listOf(oldName), insert = listOf(BusyRange(ten, eleven))))
+    }
+
+    @Test
+    fun aRowWrittenUnderTheCurrentTitle_isKept() {
+        val named = row(1, ten, eleven).copy(title = "Geoff busy")
+
+        val plan = reconcileBusyBlocks(existing = listOf(named), desired = listOf(BusyRange(ten, eleven)), calendarId = family, title = "Geoff busy")
+
+        assertThat(plan).isEqualTo(BusyBlockPlan(keep = listOf(named), delete = emptyList(), insert = emptyList()))
+    }
 }

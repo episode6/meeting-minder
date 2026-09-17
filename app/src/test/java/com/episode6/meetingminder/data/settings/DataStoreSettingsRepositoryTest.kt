@@ -144,4 +144,15 @@ class DataStoreSettingsRepositoryTest {
 
         assertThat(repository.current()).isEqualTo(Settings())
     }
+
+    @Test
+    fun setBusySyncFirstName_persistsTrimmed_andBlankClearsIt() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-busy-first-name-test"))
+
+        repository.setBusySyncFirstName("  Geoff ")
+        assertThat(repository.current().busySync).isEqualTo(BusySync(firstName = "Geoff"))
+
+        repository.setBusySyncFirstName("   ")
+        assertThat(repository.current().busySync).isEqualTo(BusySync())
+    }
 }

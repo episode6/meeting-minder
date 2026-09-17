@@ -78,7 +78,7 @@ class FakeCalendarRepository(
     }
 
     /** One recorded `insertBusyBlock` call. */
-    data class BusyBlockInsert(val calendarId: Long, val range: BusyRange)
+    data class BusyBlockInsert(val calendarId: Long, val range: BusyRange, val firstName: String = "")
 
     /** Every `insertBusyBlock` call, in order, whether or not it threw. */
     val busyBlockInserts = mutableListOf<BusyBlockInsert>()
@@ -98,8 +98,8 @@ class FakeCalendarRepository(
     /** Thrown from `deleteOwnEvent` while non-null. */
     var deleteOwnEventError: Exception? = null
 
-    override suspend fun insertBusyBlock(calendarId: Long, range: BusyRange): Long {
-        busyBlockInserts += BusyBlockInsert(calendarId, range)
+    override suspend fun insertBusyBlock(calendarId: Long, range: BusyRange, firstName: String): Long {
+        busyBlockInserts += BusyBlockInsert(calendarId, range, firstName)
         error?.let { throw it }
         busyBlockInsertError(range)?.let { throw it }
         return nextBusyBlockId++.also { ownEvents += it }

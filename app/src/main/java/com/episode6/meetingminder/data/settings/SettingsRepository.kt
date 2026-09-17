@@ -24,9 +24,11 @@ enum class AlarmSoundPool { ALL, BUNDLED_ONLY, SYSTEM_ONLY }
  * Settings → Busy calendar (TODO.md §4.7). [calendarId] is null until the user (or the Family
  * default) picks one. The repository stores only what the user chose; the "Family" default is
  * applied by the ViewModel at the moment the toggle is turned on, as an explicit id, so a later
- * rename of the Family calendar can't silently move the sync.
+ * rename of the Family calendar can't silently move the sync. [firstName] goes into each
+ * block's title ("Geoff busy", see [com.episode6.meetingminder.data.calendar.busyBlockTitle]);
+ * blank, the default, keeps the bare `busy`.
  */
-data class BusySync(val enabled: Boolean = false, val calendarId: Long? = null)
+data class BusySync(val enabled: Boolean = false, val calendarId: Long? = null, val firstName: String = "")
 
 /**
  * The user's preferences (TODO.md §6 item 8 for the defaults, §5 PR-12 for the screen that
@@ -92,6 +94,12 @@ interface SettingsRepository {
         setBusySyncEnabled(enabled)
         setBusySyncCalendar(calendarId)
     }
+
+    /**
+     * Sets [BusySync.firstName], trimmed; blank clears it. Nothing on the calendar changes
+     * at once: a day's blocks are re-titled by its next share (`reconcileBusyBlocks`).
+     */
+    suspend fun setBusySyncFirstName(firstName: String)
 
     /**
      * The runtime permissions (`Manifest.permission` names) this app has asked the system
@@ -165,6 +173,13 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         }
     }
 
+    override suspend fun setBusySyncFirstName(firstName: String) {
+        val name = firstName.trim()
+        dataStore.edit { prefs ->
+            if (name.isEmpty()) prefs.remove(Keys.BusySyncFirstName) else prefs[Keys.BusySyncFirstName] = name
+        }
+    }
+
     override val requestedPermissions: Flow<Set<String>> = dataStore.data.map { it[Keys.RequestedPermissions].orEmpty() }
 
     override suspend fun markPermissionRequested(permission: String) {
@@ -178,7 +193,11 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         soundPool = this[Keys.AlarmSoundPool]?.let { name -> AlarmSoundPool.entries.firstOrNull { it.name == name } } ?: AlarmSoundPool.ALL,
         showDeclined = this[Keys.ShowDeclined] ?: true,
         calendarOverrides = calendarOverrides(),
-        busySync = BusySync(enabled = this[Keys.BusySyncEnabled] ?: false, calendarId = this[Keys.BusySyncCalendarId]),
+        busySync = BusySync(
+            enabled = this[Keys.BusySyncEnabled] ?: false,
+            calendarId = this[Keys.BusySyncCalendarId],
+            firstName = this[Keys.BusySyncFirstName].orEmpty(),
+        ),
     )
 
     private fun Preferences.calendarOverrides(): Map<Long, Boolean> {
@@ -201,5 +220,6 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         val RequestedPermissions = stringSetPreferencesKey("requested_permissions")
         val BusySyncEnabled = booleanPreferencesKey("busy_sync_enabled")
         val BusySyncCalendarId = longPreferencesKey("busy_sync_calendar_id")
+        val BusySyncFirstName = stringPreferencesKey("busy_sync_first_name")
     }
 }

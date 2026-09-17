@@ -90,4 +90,16 @@ class BusyCalendarsTest {
 
         assertThat(effectiveBusyCalendar(BusySync(enabled = true, calendarId = 1L), listOf(readOnlyNow))).isNull()
     }
+
+    @Test
+    fun busyBlockTitle_withNoName_isTheBareBusy() {
+        assertThat(busyBlockTitle("")).isEqualTo("busy")
+        assertThat(busyBlockTitle("   ")).isEqualTo("busy")
+    }
+
+    @Test
+    fun busyBlockTitle_withAName_putsItFirst_trimmed() {
+        assertThat(busyBlockTitle("Geoff")).isEqualTo("Geoff busy")
+        assertThat(busyBlockTitle("  Jane ")).isEqualTo("Jane busy")
+    }
 }

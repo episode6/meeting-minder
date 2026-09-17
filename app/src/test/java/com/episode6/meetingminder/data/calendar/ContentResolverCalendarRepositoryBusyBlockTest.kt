@@ -141,4 +141,14 @@ class ContentResolverCalendarRepositoryBusyBlockTest {
         assertThat(repository.deleteOwnEvent(id)).isFalse()
         assertThat(repository.deleteOwnEvent(999_999)).isFalse()
     }
+
+    @Test
+    fun insertBusyBlock_withAFirstName_changesOnlyTheTitle_neverTheColumnSet() = runTest {
+        repository.insertBusyBlock(familyCalendar, range)
+        repository.insertBusyBlock(familyCalendar, range, firstName = " Geoff ")
+
+        val (bare, named) = provider.inserts.map { it.second }
+        assertThat(named.getAsString(Events.TITLE)).isEqualTo("Geoff busy")
+        assertThat(named.keySet()).isEqualTo(bare.keySet())
+    }
 }
