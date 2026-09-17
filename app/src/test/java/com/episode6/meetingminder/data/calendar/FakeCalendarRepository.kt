@@ -17,6 +17,8 @@ import java.time.LocalDate
  * [nextBusyBlockId] and remembers them in [ownEvents] (or throws what [busyBlockInsertError]
  * returns for the range); [deleteOwnEvent] records the id in [deletedEventIds] and answers
  * whether it was in [ownEvents], removing it (or throws [deleteOwnEventError]).
+ * [enableCalendarSync] records the id in [syncEnabledCalendarIds] and flips the matching
+ * [calendars] entry's `syncEvents`, answering whether there was one.
  */
 class FakeCalendarRepository(
     var calendars: List<CalendarInfo> = emptyList(),
@@ -110,5 +112,16 @@ class FakeCalendarRepository(
         error?.let { throw it }
         deleteOwnEventError?.let { throw it }
         return ownEvents.remove(eventId)
+    }
+
+    /** Every `enableCalendarSync` call's id, in order, whether or not it threw. */
+    val syncEnabledCalendarIds = mutableListOf<Long>()
+
+    override suspend fun enableCalendarSync(calendarId: Long): Boolean {
+        syncEnabledCalendarIds += calendarId
+        error?.let { throw it }
+        if (calendars.none { it.id == calendarId }) return false
+        calendars = calendars.map { if (it.id == calendarId) it.copy(syncEvents = true) else it }
+        return true
     }
 }

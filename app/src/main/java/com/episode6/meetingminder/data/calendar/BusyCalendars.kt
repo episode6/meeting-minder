@@ -8,13 +8,22 @@ import com.episode6.meetingminder.model.CalendarInfo
 private const val FAMILY_CALENDAR_NAME = "family"
 
 /**
- * Calendars the app may write a busy block to (TODO.md §4.7): `SYNC_EVENTS` on (a
- * sync-disabled calendar holds no events, and an insert into one is pointless) and
- * [CalendarInfo.accessLevel] at [CALENDAR_ACCESS_CONTRIBUTOR] or better (`CAL_ACCESS_RESPOND`,
- * what the RSVP write needs, cannot insert).
+ * Calendars Settings → Busy calendar offers (TODO.md §4.7): [CalendarInfo.accessLevel] at
+ * [CALENDAR_ACCESS_CONTRIBUTOR] or better (`CAL_ACCESS_RESPOND`, what the RSVP write needs,
+ * cannot insert), whether or not `SYNC_EVENTS` is on. A calendar just created in Google
+ * Calendar often reaches the provider with sync off, so the picker lists it anyway and
+ * picking it turns sync on ([CalendarRepository.enableCalendarSync]).
+ */
+fun List<CalendarInfo>.insertable(): List<CalendarInfo> =
+    filter { it.accessLevel >= CALENDAR_ACCESS_CONTRIBUTOR }
+
+/**
+ * Calendars the app may write a busy block to right now (TODO.md §4.7): [insertable] and
+ * `SYNC_EVENTS` on (a block inserted into a sync-disabled calendar is never uploaded, so
+ * the partner would never see it).
  */
 fun List<CalendarInfo>.writable(): List<CalendarInfo> =
-    filter { it.syncEvents && it.accessLevel >= CALENDAR_ACCESS_CONTRIBUTOR }
+    insertable().filter { it.syncEvents }
 
 /**
  * The default sync target: the first writable calendar (in provider order) whose

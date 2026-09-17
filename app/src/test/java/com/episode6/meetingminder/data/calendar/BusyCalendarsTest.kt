@@ -40,6 +40,15 @@ class BusyCalendarsTest {
     }
 
     @Test
+    fun insertable_keepsContributorOrBetter_syncingOrNot() {
+        val syncOff = calendar(1, "Work", syncEvents = false)
+        val respondOnly = calendar(2, "Respond", accessLevel = 300)
+        val contributor = calendar(3, "Contributor", accessLevel = 500)
+
+        assertThat(listOf(syncOff, respondOnly, contributor).insertable()).containsExactly(syncOff, contributor)
+    }
+
+    @Test
     fun defaultBusyCalendar_findsFamilyCaseAndWhitespaceInsensitively() {
         val family = calendar(1, "  FAMILY  ")
 

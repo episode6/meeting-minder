@@ -230,6 +230,14 @@ data object TestAlarm : AsyncAction
 data class BusySyncSettingChanged(val previousCalendarId: Long?, val calendarId: Long?, val enabledNow: Boolean) : AsyncAction
 
 /**
+ * The user picked [calendarId] in Settings → Busy calendar while its `SYNC_EVENTS` was off
+ * (TODO.md §4.7; a calendar just created in Google Calendar often arrives that way): turn
+ * the flag on, ask for a sync and reload the calendar list — `EnableCalendarSyncSideEffects`.
+ * Only ever dispatched for the calendar the user chose as the sync's target.
+ */
+data class EnableCalendarSync(val calendarId: Long) : AsyncAction
+
+/**
  * Write [ranges] — the merged busy ranges [ShareDay] just shared for [date] — to the
  * user's chosen busy calendar (TODO.md §4.7), through
  * `BusyCalendarSyncSideEffects` → `share.BusyCalendarSyncer`. Fanned out by the share

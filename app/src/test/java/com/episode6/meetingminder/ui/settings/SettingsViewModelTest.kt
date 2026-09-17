@@ -12,6 +12,7 @@ import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.BusySyncSettingChanged
 import com.episode6.meetingminder.store.CalendarContentChanged
+import com.episode6.meetingminder.store.EnableCalendarSync
 import com.episode6.meetingminder.store.TestAlarm
 import com.episode6.meetingminder.store.createAppStore
 import com.episode6.redux.Action
@@ -216,6 +217,40 @@ class SettingsViewModelTest {
 
         assertThat(settings.settings.value.busySync).isEqualTo(BusySync(enabled = true, calendarId = personal.id))
         assertThat(busySyncChanges.replayCache).isEmpty()
+    }
+
+    @Test
+    fun onBusyCalendarSelected_aNonSyncingCalendar_alsoAsksForItsSyncToBeTurnedOn() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), setOf(recordBusySyncSettingChanged, recordEnableCalendarSync)) },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = 1L)))
+        val viewModel = SettingsViewModel(store, settings)
+        val notSyncing = personal.copy(id = 3, displayName = "New", syncEvents = false)
+
+        viewModel.onBusyCalendarSelected(notSyncing)
+
+        assertThat(enableSyncs.first()).isEqualTo(EnableCalendarSync(notSyncing.id))
+        assertThat(settings.settings.value.busySync.calendarId).isEqualTo(notSyncing.id)
+        assertThat(busySyncChanges.first()).isEqualTo(BusySyncSettingChanged(previousCalendarId = 1L, calendarId = notSyncing.id, enabledNow = true))
+    }
+
+    @Test
+    fun onBusyCalendarSelected_reTappingANonSyncingChosenCalendar_retriesTheSyncButChangesNoSetting() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), setOf(recordBusySyncSettingChanged, recordEnableCalendarSync)) },
+    ) { store ->
+        val notSyncing = personal.copy(id = 3, displayName = "New", syncEvents = false)
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = notSyncing.id)))
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onBusyCalendarSelected(notSyncing)
+
+        assertThat(enableSyncs.first()).isEqualTo(EnableCalendarSync(notSyncing.id))
+        assertThat(busySyncChanges.replayCache).isEmpty()
+    }
+
+    private val enableSyncs = MutableSharedFlow<Action>(replay = 10)
+    private val recordEnableCalendarSync = SideEffect<AppState> {
+        actions.onEach { if (it is EnableCalendarSync) enableSyncs.emit(it) }.filter { false }
     }
 
     @Test
