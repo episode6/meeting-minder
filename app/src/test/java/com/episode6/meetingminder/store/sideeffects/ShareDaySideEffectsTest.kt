@@ -6,6 +6,9 @@ import assertk.assertions.containsExactly
 import assertk.assertions.hasSize
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
+import assertk.assertions.isFalse
+import assertk.assertions.isInstanceOf
+import assertk.assertions.isNotNull
 import assertk.assertions.isNull
 import assertk.assertions.isTrue
 import com.episode6.meetingminder.data.calendar.CalendarFilter
@@ -41,6 +44,7 @@ import com.episode6.meetingminder.share.BusyCalendarSyncer
 import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.SetPendingShare
 import com.episode6.meetingminder.store.ShareDay
+import com.episode6.meetingminder.store.ShareFinished
 import com.episode6.meetingminder.store.SyncBusyCalendar
 import java.time.Clock
 import java.time.Instant
@@ -71,7 +75,14 @@ class ShareDaySideEffectsTest {
 
     private fun syncer(dayPlanDao: FakeDayPlanDao, settings: FakeSettingsRepository) = BusyCalendarSyncer(repository, busyBlocks, dayPlanDao, settings, clock)
 
-    private fun busySyncOn(calendarId: Long = 1) = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = calendarId)))
+    private fun busySyncOn(calendarId: Long = 1, sendText: Boolean = true) =
+        FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = calendarId, sendText = sendText)))
+
+    private val familyCalendar = CalendarInfo(
+        id = 5, accountName = "me@gmail.com", accountType = "com.google", displayName = "Family",
+        color = 0, visible = true, syncEvents = true, ownerAccount = "me@gmail.com",
+        isPrimary = false, accessLevel = 700, canOrganizerRespond = false,
+    )
 
     private fun loaded(vararg events: CalendarEvent) = CalendarGrantedAppState.copy(eventsByDay = mapOf(today to DayEvents(today, events.toList(), Instant.EPOCH)))
 
@@ -281,6 +292,36 @@ class ShareDaySideEffectsTest {
             SetPendingShare((output.first() as SetPendingShare).share),
             SyncBusyCalendar(today, listOf(BusyRange(standup.begin, standup.end))),
         )
+    }
+
+    @Test
+    fun shareDay_syncOnly_recordsTheShare_endsItAtOnce_andAnnouncesTheSync_withoutAChooser() = runTest {
+        repository.calendars = listOf(familyCalendar)
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
+        val changeSnapshotDao = FakeChangeSnapshotDao()
+
+        val output = shareDay(dayPlanDao, changeSnapshotDao, busySyncOn(familyCalendar.id, sendText = false))
+            .output(ShareDay(today), state = loaded(standup)).toList()
+
+        assertThat(output).containsExactly(
+            ShareFinished,
+            SyncBusyCalendar(today, listOf(BusyRange(standup.begin, standup.end)), announce = true),
+        )
+        // still a share as far as change detection and "Mark as not shared" are concerned
+        assertThat(dayPlanDao.plansFlow.value.single().sharedAt).isEqualTo(now.toEpochMilli())
+        assertThat(changeSnapshotDao.forDate(today)).isNotNull()
+    }
+
+    @Test
+    fun shareDay_withTheTextOff_butNoWritableCalendar_stillOpensTheChooser() = runTest {
+        repository.calendars = emptyList()
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
+
+        val output = shareDay(dayPlanDao, FakeChangeSnapshotDao(), busySyncOn(familyCalendar.id, sendText = false))
+            .output(ShareDay(today), state = loaded(standup)).toList()
+
+        assertThat(output.first()).isInstanceOf(SetPendingShare::class)
+        assertThat(output.filterIsInstance<SyncBusyCalendar>().single().announce).isFalse()
     }
 
     @Test

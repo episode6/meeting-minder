@@ -29,9 +29,17 @@ const val BUSY_FIRST_NAME_MAX_LENGTH = 30
  * applied by the ViewModel at the moment the toggle is turned on, as an explicit id, so a later
  * rename of the Family calendar can't silently move the sync. [firstName] goes into each
  * block's title ("Geoff busy", see [com.episode6.meetingminder.data.calendar.busyBlockTitle]);
- * blank, the default, keeps the bare `busy`.
+ * blank, the default, keeps the bare `busy`. [sendText] off makes the sync the whole share:
+ * "Sync busy times" writes the blocks and records the day as synced without opening the
+ * chooser (see [com.episode6.meetingminder.data.calendar.shareMode]); on, the default, a
+ * share sends the text as well.
  */
-data class BusySync(val enabled: Boolean = false, val calendarId: Long? = null, val firstName: String = "")
+data class BusySync(
+    val enabled: Boolean = false,
+    val calendarId: Long? = null,
+    val firstName: String = "",
+    val sendText: Boolean = true,
+)
 
 /**
  * The user's preferences (TODO.md §6 item 8 for the defaults, §5 PR-12 for the screen that
@@ -103,6 +111,9 @@ interface SettingsRepository {
      * at once: a day's blocks are re-titled by its next share (`reconcileBusyBlocks`).
      */
     suspend fun setBusySyncFirstName(firstName: String)
+
+    /** Sets [BusySync.sendText]: whether a share still sends the schedule text while the sync is on. */
+    suspend fun setBusySyncSendText(sendText: Boolean)
 
     /**
      * The runtime permissions (`Manifest.permission` names) this app has asked the system
@@ -183,6 +194,10 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         }
     }
 
+    override suspend fun setBusySyncSendText(sendText: Boolean) {
+        dataStore.edit { it[Keys.BusySyncSendText] = sendText }
+    }
+
     override val requestedPermissions: Flow<Set<String>> = dataStore.data.map { it[Keys.RequestedPermissions].orEmpty() }
 
     override suspend fun markPermissionRequested(permission: String) {
@@ -200,6 +215,7 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
             enabled = this[Keys.BusySyncEnabled] ?: false,
             calendarId = this[Keys.BusySyncCalendarId],
             firstName = this[Keys.BusySyncFirstName].orEmpty(),
+            sendText = this[Keys.BusySyncSendText] ?: true,
         ),
     )
 
@@ -224,5 +240,6 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         val BusySyncEnabled = booleanPreferencesKey("busy_sync_enabled")
         val BusySyncCalendarId = longPreferencesKey("busy_sync_calendar_id")
         val BusySyncFirstName = stringPreferencesKey("busy_sync_first_name")
+        val BusySyncSendText = booleanPreferencesKey("busy_sync_send_text")
     }
 }

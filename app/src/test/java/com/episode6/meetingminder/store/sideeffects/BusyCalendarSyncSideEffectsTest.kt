@@ -89,6 +89,16 @@ class BusyCalendarSyncSideEffectsTest {
     }
 
     @Test
+    fun syncBusyCalendar_announced_bySyncOnlyShare_saysItWorked_withTheCalendarsName() = runTest {
+        val output = syncEffect().output(SyncBusyCalendar(today, listOf(BusyRange(nine, ten)), announce = true), state = TestAppState).toList()
+
+        // a sync-only share opened no chooser, so this snackbar is the only confirmation
+        val message = (output.single() as ShowMessage).message
+        assertThat(message.text).isEqualTo(R.string.busy_sync_done)
+        assertThat(message.formatArgs).containsExactly(family.displayName)
+    }
+
+    @Test
     fun syncBusyCalendar_whileTheFeatureIsOff_writesNothing_andSaysNothing() = runTest {
         val output = syncEffect(settings(enabled = false))
             .output(SyncBusyCalendar(today, listOf(BusyRange(nine, ten))), state = TestAppState).toList()

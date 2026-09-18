@@ -76,6 +76,8 @@ data class SettingsUiState(
     val busySyncCalendarId: Long? = null,
     /** The first name busy blocks are titled with ("Geoff busy"); blank keeps the bare `busy`. */
     val busySyncFirstName: String = "",
+    /** Whether a share still opens the chooser with the schedule text while the sync is on; off is sync-only. */
+    val busySyncSendText: Boolean = true,
     /**
      * The calendars the toggle's radio list offers; see
      * [com.episode6.meetingminder.data.calendar.insertable]. One with `SYNC_EVENTS` off is
@@ -191,6 +193,12 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
      */
     fun onBusyFirstNameChanged(firstName: String) = viewModelScope.launch { settings.setBusySyncFirstName(firstName) }
 
+    /**
+     * Settings → Busy calendar's "Also send a schedule text". Only the wording and the next
+     * share change (TODO.md §4.7): nothing on the calendar is touched, so there is no cleanup.
+     */
+    fun onBusySendTextToggle(sendText: Boolean) = viewModelScope.launch { settings.setBusySyncSendText(sendText) }
+
     fun onTestAlarmClick() {
         store.dispatch(TestAlarm)
     }
@@ -211,5 +219,6 @@ private fun Settings.toUiState(calendars: List<CalendarInfo>, permissionsStatus:
     busySyncEnabled = busySync.enabled,
     busySyncCalendarId = busySync.calendarId,
     busySyncFirstName = busySync.firstName,
+    busySyncSendText = busySync.sendText,
     busyCalendars = calendars.insertable(),
 )

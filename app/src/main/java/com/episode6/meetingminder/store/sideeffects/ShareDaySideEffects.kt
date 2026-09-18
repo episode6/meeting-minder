@@ -3,9 +3,11 @@ package com.episode6.meetingminder.store.sideeffects
 import android.util.Log
 import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.data.calendar.effectiveCalendarFilter
 import com.episode6.meetingminder.data.calendar.excludeDeclined
 import com.episode6.meetingminder.data.calendar.excludeOwnBlocks
+import com.episode6.meetingminder.data.calendar.shareMode
 import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
@@ -14,6 +16,7 @@ import com.episode6.meetingminder.data.db.decodeBusyRanges
 import com.episode6.meetingminder.data.db.decodeScheduleChanges
 import com.episode6.meetingminder.data.db.encodeBusyRanges
 import com.episode6.meetingminder.data.db.encodeChangeSnapshotEvents
+import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
@@ -65,7 +68,10 @@ private const val TAG = "MeetingMinderShare"
  * provider IO, and after the baseline was written, so the blocks the sync then inserts
  * can't be read back as changes (`BusyCalendarSyncSideEffects` does the writing; the
  * baseline comes from an already `excludeOwnBlocks`-filtered read either way). That order
- * is load-bearing; keep it.
+ * is load-bearing; keep it. In [ShareMode.SYNC_ONLY] (the sync is effective and Settings'
+ * "Also send a schedule text" is off) there is no chooser: the day's bookkeeping is recorded
+ * the same way, the share ends at once ([ShareFinished]) and the [SyncBusyCalendar] it fans
+ * out asks for a snackbar on success, since that is the only visible outcome.
  *
  * The selection and plan are read from Room and the day's events from the store only when
  * they are loaded (otherwise straight from the provider, with the same calendar filter and
@@ -134,10 +140,15 @@ interface ShareDaySideEffects {
                         changeSnapshotDao.delete(date)
                     }
                     changeMonitor.onShareChanged(date)
-                    emit(SetPendingShare(PendingShare.next(date, text)))
-                    // the chooser is on its way; the provider writes happen alongside it
-                    // (TODO.md §4.7), never before it, and never when the feature is off
-                    if (prefs.busySync.enabled) emit(SyncBusyCalendar(date, busyRanges))
+                    if (repository.shareModeFor(prefs.busySync) == ShareMode.SYNC_ONLY) {
+                        emit(ShareFinished)
+                        emit(SyncBusyCalendar(date, busyRanges, announce = true))
+                    } else {
+                        emit(SetPendingShare(PendingShare.next(date, text)))
+                        // the chooser is on its way; the provider writes happen alongside it
+                        // (TODO.md §4.7), never before it, and never when the feature is off
+                        if (prefs.busySync.enabled) emit(SyncBusyCalendar(date, busyRanges))
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -180,6 +191,23 @@ interface ShareDaySideEffects {
                 }
             }
         }
+    }
+}
+
+/**
+ * [shareMode] over a fresh calendar list, read only when the sync is on at all. A list that
+ * can't be read is [ShareMode.TEXT]: the chooser still opens, and the fanned-out sync
+ * reports its own failure.
+ */
+private suspend fun CalendarRepository.shareModeFor(busySync: BusySync): ShareMode {
+    if (!busySync.enabled) return ShareMode.TEXT
+    return try {
+        shareMode(busySync, calendars())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "could not read the calendars to pick the share mode", e)
+        ShareMode.TEXT
     }
 }
 

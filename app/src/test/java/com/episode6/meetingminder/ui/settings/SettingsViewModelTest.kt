@@ -293,4 +293,17 @@ class SettingsViewModelTest {
         assertThat(settings.settings.value.busySync).isEqualTo(BusySync(enabled = true, calendarId = 1L, firstName = "Geoff"))
         assertThat(busySyncChanges.replayCache).isEmpty()
     }
+
+    @Test
+    fun onBusySendTextToggle_writesTheSetting_andDispatchesNoCleanup() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), setOf(recordBusySyncSettingChanged)) },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = 1L)))
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onBusySendTextToggle(false)
+
+        assertThat(settings.settings.value.busySync).isEqualTo(BusySync(enabled = true, calendarId = 1L, sendText = false))
+        assertThat(busySyncChanges.replayCache).isEmpty()
+    }
 }

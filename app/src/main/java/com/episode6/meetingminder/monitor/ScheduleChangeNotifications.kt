@@ -31,9 +31,11 @@ interface ScheduleChangeNotifier {
      * first is still unread updates it silently. With [alert] false (nothing in [changes] is
      * new, some just dropped out) it only updates a notification that is still showing, so a
      * dismissed one doesn't come back for old news. [silent] posts it without a sound of
-     * its own, because the loud alert ([ScheduleChangeAlerter]) is ringing for it.
+     * its own, because the loud alert ([ScheduleChangeAlerter]) is ringing for it. [syncOnly]
+     * words it for a day that was synced to the busy calendar rather than shared as text
+     * (TODO.md §4.7).
      */
-    fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean, silent: Boolean = false)
+    fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean, silent: Boolean = false, syncOnly: Boolean = false)
 
     fun cancel(date: LocalDate)
 }
@@ -72,8 +74,9 @@ fun Resources.text(line: ScheduleChangeLine): String = when (line) {
  * The `schedule_updates` channel (`IMPORTANCE_DEFAULT`) and its notification: one per
  * shared day (tag [NOTIFICATION_TAG], id = the day's epoch day, so it never collides with an
  * alarm's), `setOnlyAlertOnce`, `InboxStyle` with one line per change. Tapping it or
- * "Review" opens `meetingminder://day/{date}`; "Share update" opens
- * `meetingminder://share/{date}`, where the activity opens the chooser. Both are
+ * "Review" opens `meetingminder://day/{date}`; "Share update" ("Sync update" in sync-only
+ * mode, TODO.md §4.7) opens `meetingminder://share/{date}`, where the activity starts the
+ * share — the chooser, or just the sync. Both are
  * `PendingIntent.getActivity` straight into `MainActivity`, never a trampoline.
  */
 object ScheduleChangeNotifications {
@@ -94,14 +97,28 @@ object ScheduleChangeNotifications {
 
     fun notificationId(date: LocalDate): Int = date.toEpochDay().toInt()
 
-    /** The notification for [changes] on [date], titled for [today] ("Your Tuesday schedule…" when [date] isn't today). */
-    fun build(context: Context, date: LocalDate, changes: List<ScheduleChange>, today: LocalDate, zone: ZoneId, silent: Boolean = false): Notification {
+    /**
+     * The notification for [changes] on [date], titled for [today] ("Your Tuesday schedule…"
+     * when [date] isn't today), and worded "since you synced it" / "Sync update" when [syncOnly].
+     */
+    fun build(
+        context: Context,
+        date: LocalDate,
+        changes: List<ScheduleChange>,
+        today: LocalDate,
+        zone: ZoneId,
+        silent: Boolean = false,
+        syncOnly: Boolean = false,
+    ): Notification {
         val lines = changes.map { context.resources.text(it.toLine(zone)) }
         val title = if (date == today) {
-            context.getString(R.string.schedule_changed_title)
+            context.getString(if (syncOnly) R.string.schedule_changed_title_synced else R.string.schedule_changed_title)
         } else {
             val dayName = if (date > today && date <= today.plusDays(WEEKDAY_NAME_DAYS)) WeekdayFormatter else DateFormatter
-            context.getString(R.string.schedule_changed_title_on_day, date.format(dayName))
+            context.getString(
+                if (syncOnly) R.string.schedule_changed_title_on_day_synced else R.string.schedule_changed_title_on_day,
+                date.format(dayName),
+            )
         }
         val review = activityIntent(context, date, DeepLinks.day(date))
         val shareUpdate = activityIntent(context, date, DeepLinks.share(date))
@@ -117,7 +134,11 @@ object ScheduleChangeNotifications {
             .setAutoCancel(true)
             .setContentIntent(review)
             .addAction(0, context.getString(R.string.schedule_changed_review), review)
-            .addAction(0, context.getString(R.string.schedule_changed_share_update), shareUpdate)
+            .addAction(
+                0,
+                context.getString(if (syncOnly) R.string.schedule_changed_sync_update else R.string.schedule_changed_share_update),
+                shareUpdate,
+            )
             .build()
     }
 
@@ -137,11 +158,11 @@ class AndroidScheduleChangeNotifier(private val context: Context, private val cl
 
     private val manager get() = NotificationManagerCompat.from(context)
 
-    override fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean, silent: Boolean) {
+    override fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean, silent: Boolean, syncOnly: Boolean) {
         if (!canPost()) return
         val id = ScheduleChangeNotifications.notificationId(date)
         if (!alert && manager.activeNotifications.none { it.tag == ScheduleChangeNotifications.NOTIFICATION_TAG && it.id == id }) return
-        val notification = ScheduleChangeNotifications.build(context, date, changes, LocalDate.now(clock), clock.zone, silent)
+        val notification = ScheduleChangeNotifications.build(context, date, changes, LocalDate.now(clock), clock.zone, silent, syncOnly)
         try {
             manager.notify(ScheduleChangeNotifications.NOTIFICATION_TAG, id, notification)
         } catch (_: SecurityException) {

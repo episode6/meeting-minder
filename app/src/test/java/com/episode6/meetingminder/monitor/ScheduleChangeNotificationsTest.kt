@@ -53,7 +53,8 @@ class ScheduleChangeNotificationsTest {
         ScheduleChangeNotifications.createChannel(context)
     }
 
-    private fun build(date: LocalDate) = ScheduleChangeNotifications.build(context, date, changesOn(date), today, zone)
+    private fun build(date: LocalDate, syncOnly: Boolean = false) =
+        ScheduleChangeNotifications.build(context, date, changesOn(date), today, zone, syncOnly)
 
     private fun posted(date: LocalDate): Notification? = shadowOf(notificationManager)
         .getNotification(ScheduleChangeNotifications.NOTIFICATION_TAG, ScheduleChangeNotifications.notificationId(date))
@@ -139,5 +140,15 @@ class ScheduleChangeNotificationsTest {
         notifier.show(today, changesOn(today), alert = true)
 
         assertThat(shadowOf(notificationManager).allNotifications).isEmpty()
+    }
+
+    @Test
+    fun notification_syncOnly_saysSynced_andOffersSyncUpdate() {
+        val notification = build(today, syncOnly = true)
+
+        assertThat(notification.extras.getString(Notification.EXTRA_TITLE)).isEqualTo("Your schedule changed since you synced it")
+        assertThat(build(today.plusDays(1), syncOnly = true).extras.getString(Notification.EXTRA_TITLE))
+            .isEqualTo("Your Tuesday schedule changed since you synced it")
+        assertThat(notification.actions.map { it.title.toString() }).containsExactly("Review", "Sync update")
     }
 }

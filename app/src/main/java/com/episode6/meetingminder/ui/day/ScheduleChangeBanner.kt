@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.monitor.ScheduleChangeLine
 import com.episode6.meetingminder.monitor.text
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
@@ -44,10 +45,12 @@ data class ScheduleChangeBannerState(val lines: List<ScheduleChangeLine>)
 
 /**
  * Error-container card with the change count, the change lines (two at most, ellipsised) and
- * "Re-share" — "Sync & re-share" while [syncs] (busy-calendar sync, TODO.md §4.7) is effective.
+ * "Re-share" — "Sync & re-share" while the share also syncs busy blocks, and "N changes since
+ * you synced" / "Re-sync" in [ShareMode.SYNC_ONLY] ([shareMode], TODO.md §4.7).
  */
 @Composable
-fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () -> Unit, modifier: Modifier = Modifier, syncs: Boolean = false) {
+fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () -> Unit, modifier: Modifier = Modifier, shareMode: ShareMode = ShareMode.TEXT) {
+    val syncOnly = shareMode == ShareMode.SYNC_ONLY
     val resources = LocalResources.current
     Surface(
         modifier = modifier
@@ -75,9 +78,13 @@ fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () ->
             Column(modifier = Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }) {
                 Text(
                     text = if (state.lines.isEmpty()) {
-                        stringResource(R.string.day_banner_selection_changed)
+                        stringResource(if (syncOnly) R.string.day_banner_selection_changed_synced else R.string.day_banner_selection_changed)
                     } else {
-                        pluralStringResource(R.plurals.day_banner_changes, state.lines.size, state.lines.size)
+                        pluralStringResource(
+                            if (syncOnly) R.plurals.day_banner_changes_synced else R.plurals.day_banner_changes,
+                            state.lines.size,
+                            state.lines.size,
+                        )
                     },
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 )
@@ -95,7 +102,13 @@ fun ScheduleChangeBanner(state: ScheduleChangeBannerState, onReshareClick: () ->
                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
             ) {
                 Text(
-                    stringResource(if (syncs) R.string.day_banner_sync_reshare else R.string.day_banner_reshare),
+                    stringResource(
+                        when (shareMode) {
+                            ShareMode.TEXT -> R.string.day_banner_reshare
+                            ShareMode.SYNC_AND_TEXT -> R.string.day_banner_sync_reshare
+                            ShareMode.SYNC_ONLY -> R.string.day_banner_resync
+                        },
+                    ),
                     fontWeight = FontWeight.Bold,
                 )
             }

@@ -36,8 +36,9 @@ private const val TAG = "MeetingMinderBusySync"
  *   so the chooser opens without waiting on provider IO (the `RsvpAccept` shape). A
  *   [BusySyncResult.Failed] is a snackbar and nothing else — the share itself went out, so
  *   it never blocks or reverses it; [BusySyncResult.Synced] and [BusySyncResult.Skipped]
- *   say nothing at all (the share is the visible outcome; a second snackbar would be
- *   noise). A `SecurityException` (`WRITE_CALENDAR` revoked under us) re-checks permissions
+ *   say nothing (the share is the visible outcome; a second snackbar would be noise) —
+ *   except a [SyncBusyCalendar.announce] sync, from a sync-only share that opened no
+ *   chooser, whose [BusySyncResult.Synced] is the "Busy times synced to Family" snackbar. A `SecurityException` (`WRITE_CALENDAR` revoked under us) re-checks permissions
  *   the way the RSVP write does; anything else thrown before a write (the settings, the
  *   fresh calendar list, a Room read) is the calendar-less "Couldn't sync busy times"
  *   snackbar — the user asked for a sync that didn't happen — and never ends the effect.
@@ -65,8 +66,12 @@ interface BusyCalendarSyncSideEffects {
             flow<Action> {
                 try {
                     val result = syncer.sync(action.date, action.ranges)
-                    if (result is BusySyncResult.Failed) {
-                        emit(ShowMessage(UiMessage.next(R.string.busy_sync_failed, result.calendarName)))
+                    when {
+                        result is BusySyncResult.Failed ->
+                            emit(ShowMessage(UiMessage.next(R.string.busy_sync_failed, result.calendarName)))
+                        result is BusySyncResult.Synced && action.announce ->
+                            emit(ShowMessage(UiMessage.next(R.string.busy_sync_done, result.calendarName)))
+                        else -> Unit
                     }
                 } catch (e: CancellationException) {
                     throw e

@@ -11,6 +11,7 @@ import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
 import assertk.assertions.prop
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
@@ -29,6 +30,7 @@ import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.PendingShare
 import com.episode6.meetingminder.store.SetPendingShare
 import com.episode6.meetingminder.store.SetAlarms
+import com.episode6.meetingminder.store.SetCalendars
 import com.episode6.meetingminder.store.ShareDay
 import com.episode6.meetingminder.store.ShowMessage
 import com.episode6.meetingminder.store.ToggleEvent
@@ -181,12 +183,37 @@ class DayViewModelTest {
 
         viewModel.state.test {
             val synced = awaitItem()
-            assertThat(synced.fabState).isEqualTo(FabState.Share(syncs = true))
-            assertThat(synced.busySyncs).isEqualTo(true)
+            assertThat(synced.fabState).isEqualTo(FabState.Share(ShareMode.SYNC_AND_TEXT))
+            assertThat(synced.shareMode).isEqualTo(ShareMode.SYNC_AND_TEXT)
 
             settings.setBusySyncEnabled(false)
 
-            assertThat(awaitItem().fabState).isEqualTo(FabState.Share(syncs = false))
+            assertThat(awaitItem().fabState).isEqualTo(FabState.Share())
+        }
+    }
+
+    @Test
+    fun state_labelsTheShareFabAsSyncOnly_whenTheTextIsTurnedOff_andFallsBackToText_whenTheCalendarGoes() = runStoreTest(
+        {
+            createAppStore(
+                this,
+                AppState(anchorDate = today, calendars = listOf(family), dayPlans = mapOf(today to DayPlan(today, alarmsSetAt = Instant.EPOCH))),
+                emptySet(),
+            )
+        },
+    ) { store ->
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = family.id, sendText = false)))
+        val viewModel = DayViewModel(store, clock, settings)
+
+        viewModel.state.test {
+            val syncOnly = awaitItem()
+            assertThat(syncOnly.fabState).isEqualTo(FabState.Share(ShareMode.SYNC_ONLY))
+            assertThat(syncOnly.shareMode).isEqualTo(ShareMode.SYNC_ONLY)
+
+            // the calendar is gone: a "Sync busy times" button would write nothing, so it shares
+            store.dispatch(SetCalendars(emptyList()))
+
+            assertThat(awaitItem().fabState).isEqualTo(FabState.Share(ShareMode.TEXT))
         }
     }
 
@@ -457,7 +484,7 @@ class DayViewModelTest {
 
         val ui = state.toDayUiState(now, zone)
 
-        assertThat(ui.fabState).isEqualTo(FabState.Share(syncs = false))
+        assertThat(ui.fabState).isEqualTo(FabState.Share())
         assertThat(ui.armedCount).isEqualTo(1)
     }
 
@@ -497,7 +524,21 @@ class DayViewModelTest {
         assertThat(selected.toFabState()).isEqualTo(FabState.SetAlarms(1))
 
         val armed = selected.copy(alarmsSetAt = Instant.EPOCH)
-        assertThat(armed.toFabState()).isEqualTo(FabState.Share(syncs = false))
+        assertThat(armed.toFabState()).isEqualTo(FabState.Share())
+    }
+
+    @Test
+    fun toFabState_syncOnly_dropsTheButtonOnceTheDayIsSynced_butNotInTheModesThatSendText() {
+        val armed = DayPlan(today, selected = mapOf(standup.key to standup.toSelectedEventForTest()), alarmsSetAt = Instant.EPOCH)
+        assertThat(armed.toFabState(ShareMode.SYNC_ONLY)).isEqualTo(FabState.Share(ShareMode.SYNC_ONLY))
+
+        val synced = armed.copy(sharedAt = Instant.EPOCH)
+        assertThat(synced.toFabState(ShareMode.SYNC_ONLY)).isEqualTo(FabState.Synced)
+        assertThat(synced.toFabState(ShareMode.SYNC_AND_TEXT)).isEqualTo(FabState.Share(ShareMode.SYNC_AND_TEXT))
+        assertThat(synced.toFabState(ShareMode.TEXT)).isEqualTo(FabState.Share(ShareMode.TEXT))
+
+        // changing the picks after the sync clears alarmsSetAt: "Set alarms" comes back
+        assertThat(synced.copy(alarmsSetAt = null).toFabState(ShareMode.SYNC_ONLY)).isEqualTo(FabState.SetAlarms(1))
     }
 
     @Test

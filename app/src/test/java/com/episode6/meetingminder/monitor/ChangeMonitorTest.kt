@@ -17,6 +17,7 @@ import com.episode6.meetingminder.data.db.SelectedEventEntity
 import com.episode6.meetingminder.data.db.decodeScheduleChanges
 import com.episode6.meetingminder.data.db.encodeChangeSnapshotEvents
 import com.episode6.meetingminder.data.db.encodeScheduleChanges
+import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.model.CalendarEvent
@@ -375,5 +376,21 @@ class ChangeMonitorTest {
 
         assertThat(decodeScheduleChanges(today, snapshots.entries.getValue(today).changesJson)).isEmpty()
         assertThat(notifier.shown).isEmpty()
+    }
+
+    @Test
+    fun runCheck_withASyncOnlyBusySync_wordsTheNotificationForASync() = runTest {
+        val family = CalendarInfo(
+            id = 5, accountName = "me", accountType = "com.google", displayName = "Family", color = 0, visible = true,
+            syncEvents = true, ownerAccount = "me", isPrimary = false, accessLevel = 700, canOrganizerRespond = false,
+        )
+        val settings = FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = family.id, sendText = false)))
+        repository.calendars = listOf(family)
+        repository.events[today] = listOf(designReview, invite)
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+
+        monitor(snapshots, settings).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, syncOnly = true))
     }
 }

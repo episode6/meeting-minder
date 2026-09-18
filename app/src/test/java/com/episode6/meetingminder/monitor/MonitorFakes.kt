@@ -16,13 +16,19 @@ internal class FakeChangeWorkScheduler : ChangeWorkScheduler {
 
 /** Records what [ScheduleChangeNotifier] was asked to show and cancel, in order. */
 internal class FakeScheduleChangeNotifier : ScheduleChangeNotifier {
-    data class Shown(val date: LocalDate, val changes: List<ScheduleChange>, val alert: Boolean, val silent: Boolean = false)
+    data class Shown(
+        val date: LocalDate,
+        val changes: List<ScheduleChange>,
+        val alert: Boolean,
+        val silent: Boolean = false,
+        val syncOnly: Boolean = false,
+    )
 
     val shown = mutableListOf<Shown>()
     val cancelled = mutableListOf<LocalDate>()
 
-    override fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean, silent: Boolean) {
-        shown += Shown(date, changes, alert, silent)
+    override fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean, silent: Boolean, syncOnly: Boolean) {
+        shown += Shown(date, changes, alert, silent, syncOnly)
     }
 
     override fun cancel(date: LocalDate) {

@@ -2,6 +2,7 @@ package com.episode6.meetingminder.ui.day
 
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import org.junit.Rule
 import org.junit.Test
@@ -43,7 +44,7 @@ class DayScreenSubtitleTest {
 
     @Test
     fun aDaySharedOnTheDayItself_showsJustTheTime() {
-        show(DayUiState(anchorDate = today, meetingCount = 3, fabState = FabState.Share(syncs = false), armedCount = 3, sharedAt = today.atTime(8, 12)))
+        show(DayUiState(anchorDate = today, meetingCount = 3, fabState = FabState.Share(), armedCount = 3, sharedAt = today.atTime(8, 12)))
 
         composeRule.onNodeWithText("shared 8:12 AM").assertExists()
     }
@@ -54,11 +55,30 @@ class DayScreenSubtitleTest {
         val tomorrow = today.plusDays(1)
         show(
             DayUiState(
-                anchorDate = today, date = tomorrow, meetingCount = 3, fabState = FabState.Share(syncs = false), armedCount = 3,
+                anchorDate = today, date = tomorrow, meetingCount = 3, fabState = FabState.Share(), armedCount = 3,
                 sharedAt = today.atTime(21, 0),
             ),
         )
 
         composeRule.onNodeWithText("shared Sep 14, 9:00 PM").assertExists()
+    }
+
+    @Test
+    fun aSyncOnlyDay_saysSyncedRatherThanShared() {
+        show(
+            DayUiState(
+                anchorDate = today, meetingCount = 3, fabState = FabState.Synced, armedCount = 3,
+                sharedAt = today.atTime(8, 12), shareMode = ShareMode.SYNC_ONLY,
+            ),
+        )
+
+        composeRule.onNodeWithText("synced 8:12 AM").assertExists()
+    }
+
+    @Test
+    fun aSyncOnlyDayNotYetSynced_saysNotSyncedYet() {
+        show(DayUiState(anchorDate = today, meetingCount = 3, fabState = FabState.Share(ShareMode.SYNC_ONLY), armedCount = 3, shareMode = ShareMode.SYNC_ONLY))
+
+        composeRule.onNodeWithText("3 alarms set · not synced yet").assertExists()
     }
 }

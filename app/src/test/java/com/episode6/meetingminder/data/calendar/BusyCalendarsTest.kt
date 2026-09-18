@@ -101,6 +101,24 @@ class BusyCalendarsTest {
     }
 
     @Test
+    fun shareMode_isTextUnlessTheSyncIsEffective_thenFollowsSendText() {
+        val family = calendar(1, "Family")
+
+        assertThat(shareMode(BusySync(enabled = false, calendarId = 1L, sendText = false), listOf(family))).isEqualTo(ShareMode.TEXT)
+        assertThat(shareMode(BusySync(enabled = true, calendarId = 1L), listOf(family))).isEqualTo(ShareMode.SYNC_AND_TEXT)
+        assertThat(shareMode(BusySync(enabled = true, calendarId = 1L, sendText = false), listOf(family))).isEqualTo(ShareMode.SYNC_ONLY)
+    }
+
+    @Test
+    fun shareMode_withTheTextOff_fallsBackToText_whenTheCalendarIsGoneOrReadOnly() {
+        val syncOnly = BusySync(enabled = true, calendarId = 1L, sendText = false)
+
+        assertThat(shareMode(syncOnly, emptyList())).isEqualTo(ShareMode.TEXT)
+        assertThat(shareMode(syncOnly, listOf(calendar(1, "Family", accessLevel = 300)))).isEqualTo(ShareMode.TEXT)
+        assertThat(shareMode(syncOnly, listOf(calendar(1, "Family", syncEvents = false)))).isEqualTo(ShareMode.TEXT)
+    }
+
+    @Test
     fun busyBlockTitle_withNoName_isTheBareBusy() {
         assertThat(busyBlockTitle("")).isEqualTo("busy")
         assertThat(busyBlockTitle("   ")).isEqualTo("busy")

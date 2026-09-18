@@ -3,9 +3,11 @@ package com.episode6.meetingminder.monitor
 import android.util.Log
 import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.data.calendar.effectiveCalendarFilter
 import com.episode6.meetingminder.data.calendar.excludeDeclined
 import com.episode6.meetingminder.data.calendar.excludeOwnBlocks
+import com.episode6.meetingminder.data.calendar.shareMode
 import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
@@ -79,17 +81,30 @@ class ChangeMonitor(
             }
             if (permissionChecker.currentState().calendarGranted) {
                 val prefs = settings.current()
-                // computed once per check pass, and only when an override exists at all, so
-                // the common case (no calendar overrides) never re-reads the calendar list
+                // computed once per check pass, and only when an override (or, for the
+                // notification's wording, a text-less busy sync) needs it, so the common
+                // case never re-reads the calendar list
+                val maybeSyncOnly = prefs.busySync.enabled && !prefs.busySync.sendText
+                val calendars = if (prefs.calendarOverrides.isNotEmpty() || maybeSyncOnly) repository.calendars() else emptyList()
                 val filter = if (prefs.calendarOverrides.isEmpty()) {
                     CalendarFilter.Visible
                 } else {
-                    effectiveCalendarFilter(repository.calendars(), prefs.calendarOverrides)
+                    effectiveCalendarFilter(calendars, prefs.calendarOverrides)
                 }
+                val syncOnly = maybeSyncOnly && shareMode(prefs.busySync, calendars) == ShareMode.SYNC_ONLY
                 // read once per pass, like the filter: our own busy blocks (TODO.md §4.7)
                 // must never read as a change, and a share can insert one between passes
                 val ownBlocks = busyBlockDao.eventIds()
-                for (snapshot in current) check(snapshot, filter, prefs.showDeclined, ownBlocks, loud = reason != ChangeCheckReason.IN_APP && !mainUi.visible && snapshot.date == today)
+                for (snapshot in current) {
+                    check(
+                        snapshot,
+                        filter,
+                        prefs.showDeclined,
+                        ownBlocks,
+                        loud = reason != ChangeCheckReason.IN_APP && !mainUi.visible && snapshot.date == today,
+                        syncOnly = syncOnly,
+                    )
+                }
             }
             current.mapTo(sortedSetOf()) { it.date }
         } catch (e: CancellationException) {
@@ -125,7 +140,17 @@ class ChangeMonitor(
     // check, and not from a background check that beat it to the lock ([MainUiVisibility]) —
     // where the banner is already in front of the user and the change is often their own
     // (an RSVP "No" from the chip menu reads as Declined).
-    private suspend fun check(snapshot: ChangeSnapshotEntity, filter: CalendarFilter, showDeclined: Boolean, ownBlocks: Set<Long>, loud: Boolean) {
+    //
+    // [syncOnly] words the notification for a day synced to the busy calendar rather than
+    // shared as text (TODO.md §4.7).
+    private suspend fun check(
+        snapshot: ChangeSnapshotEntity,
+        filter: CalendarFilter,
+        showDeclined: Boolean,
+        ownBlocks: Set<Long>,
+        loud: Boolean,
+        syncOnly: Boolean,
+    ) {
         val fresh = try {
             repository.eventsOn(snapshot.date, filter).excludeDeclined(showDeclined).excludeOwnBlocks(ownBlocks)
         } catch (e: CancellationException) {
@@ -150,7 +175,7 @@ class ChangeMonitor(
                 val isNew = changes.any { it !in previous }
                 // the alert makes the noise when it rings; the notification stays behind it
                 val ringing = isNew && loud && alerter.alert(snapshot.date)
-                notifier.show(snapshot.date, changes, alert = isNew, silent = ringing)
+                notifier.show(snapshot.date, changes, alert = isNew, silent = ringing, syncOnly = syncOnly)
             }
         }
     }
