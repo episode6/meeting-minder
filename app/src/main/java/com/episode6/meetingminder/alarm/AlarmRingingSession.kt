@@ -56,6 +56,10 @@ interface RingingOutputs {
  *   store): the sound stops first, then the row is written and awaited — a snooze's new
  *   `setAlarmClock` included — and only then does the service move on or let go of the
  *   foreground, so the process can't be reclaimed with a snooze half written.
+ * - **Silence**: the sound stops and the alarm keeps ringing, silently; see [silence].
+ * - **A schedule-change alert** (TODO.md §4.3) rings like an alarm but is never snoozed:
+ *   unanswered for the auto-timeout it just stops, and one that fires again while it is
+ *   still ringing (a newer change) replaces itself, sound and all.
  * - **Auto-timeout**: unanswered for the auto-timeout, the alarm snoozes itself once; the
  *   next time it goes unanswered it gives up with a "missed alarm" notification
  *   ([AlarmRinger.timeOut]). A snooze the OS refuses to arm is reported the same way.
@@ -92,8 +96,12 @@ internal class AlarmRingingSession(
             val alarm = ringer.fire(alarmId)
             when {
                 alarm != null -> {
-                    queue += alarm
-                    if (queue.size == 1) ringCurrent()
+                    // only a schedule-change alert can fire again while it rings: its one row
+                    // is re-armed for every new change, and the newer alert replaces it
+                    val index = queue.indexOfFirst { it.alarmId == alarm.alarmId }
+                    if (index >= 0) queue[index] = alarm else queue += alarm
+                    if (index == 0) outputs.stopSound()
+                    if (queue.first() === alarm) ringCurrent()
                 }
                 queue.isEmpty() -> {
                     if (!inForeground) showPlaceholder()
@@ -114,9 +122,28 @@ internal class AlarmRingingSession(
         settle(alarmId) { ringer.dismiss(alarmId) }
     }
 
+    /**
+     * Silence (the notification's action, the ringing screen's button, or a volume key, as
+     * for an incoming call): the sound and vibration stop, but [alarmId] keeps ringing —
+     * still on screen, still unanswered, the auto-timeout still running. Nothing is
+     * written: a silenced alarm that snoozes itself comes back with its sound.
+     */
+    fun silence(alarmId: Long) = serialized {
+        val current = queue.firstOrNull()?.takeIf { it.alarmId == alarmId && !it.silenced }
+        if (current != null) {
+            outputs.stopSound()
+            queue[0] = current.copy(silenced = true)
+            outputs.publish(queue[0])
+            // re-posted without its Silence action
+            outputs.showRinging(queue[0], alert = false)
+        }
+        // a silence that cold-started the service (nothing rings here) mustn't leave it running
+        if (queue.isEmpty()) finish()
+    }
+
     /** The player started a (re-rolled) sound for [alarmId]; publishes its name if that alarm is still the one ringing. */
     fun onSoundStarted(alarmId: Long, soundName: String) {
-        val current = queue.firstOrNull()?.takeIf { it.alarmId == alarmId } ?: return
+        val current = queue.firstOrNull()?.takeIf { it.alarmId == alarmId && !it.silenced } ?: return
         queue[0] = current.copy(soundName = soundName)
         outputs.publish(queue[0])
     }
@@ -159,7 +186,7 @@ internal class AlarmRingingSession(
         settle(alarm.alarmId) {
             when (ringer.timeOut(alarm.alarmId)) {
                 TimeoutResult.GAVE_UP, TimeoutResult.REFUSED -> outputs.postMissed(alarm)
-                TimeoutResult.SNOOZED, TimeoutResult.NOT_RINGING -> Unit
+                TimeoutResult.SNOOZED, TimeoutResult.EXPIRED, TimeoutResult.NOT_RINGING -> Unit
             }
         }
     }

@@ -11,7 +11,11 @@ import com.episode6.meetingminder.data.db.FakeScheduledAlarmDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
+import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.RingingAlarm
+import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
+import com.episode6.meetingminder.model.ScheduleChange
+import com.episode6.meetingminder.model.ScheduleChangeAlert
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestScope
@@ -35,6 +39,7 @@ class AlarmRingingSessionTest {
     private val autoTimeoutMillis = Duration.ofMinutes(3).toMillis()
     private val scheduler = FakeAlarmScheduler()
     private val outputs = RecordingOutputs()
+    private val changeAlerts = FakeScheduleChangeAlertContent()
 
     private fun row(id: Long, state: AlarmState = AlarmState.SCHEDULED, timedOut: Boolean = false) = ScheduledAlarmEntity(
         alarmId = id, date = today, eventId = id, instanceTime = 0, fireAt = now.toEpochMilli(), title = "Meeting $id",
@@ -43,7 +48,7 @@ class AlarmRingingSessionTest {
     )
 
     private fun TestScope.session(dao: ScheduledAlarmDao, scheduler: AlarmScheduler = this@AlarmRingingSessionTest.scheduler) =
-        AlarmRingingSession(backgroundScope, AlarmRinger(dao, scheduler, FakeSettingsRepository(), clock), outputs)
+        AlarmRingingSession(backgroundScope, AlarmRinger(dao, scheduler, FakeSettingsRepository(), clock, changeAlerts), outputs)
 
     private class RecordingOutputs : RingingOutputs {
         val events = mutableListOf<String>()
@@ -346,5 +351,135 @@ class AlarmRingingSessionTest {
         advanceTimeBy(autoTimeoutMillis * 2)
 
         assertThat(outputs.events).containsExactly("silence", "publish:null")
+    }
+
+    @Test
+    fun silence_stopsTheSound_keepsRinging_andRepostsWithoutAlerting() = runTest {
+        val dao = FakeScheduledAlarmDao(listOf(row(1)))
+        val session = session(dao)
+        session.fire(1)
+        runCurrent()
+        outputs.events.clear()
+
+        session.silence(1)
+        runCurrent()
+
+        assertThat(outputs.events).containsExactly("silence", "publish:1", "ringing:1:false")
+        assertThat(session.ringing?.silenced).isEqualTo(true)
+        assertThat(dao.rows.getValue(1).state).isEqualTo(AlarmState.FIRED)
+    }
+
+    @Test
+    fun silence_twice_orForAnAlarmThatIsNotRinging_doesNothing() = runTest {
+        val session = session(FakeScheduledAlarmDao(listOf(row(1), row(2))))
+        session.fire(1)
+        session.fire(2)
+        runCurrent()
+        session.silence(1)
+        runCurrent()
+        outputs.events.clear()
+
+        session.silence(1)
+        session.silence(2)
+        runCurrent()
+        session.onSoundStarted(1, "Argon")
+
+        assertThat(outputs.events).isEmpty()
+    }
+
+    @Test
+    fun aSilencedAlarm_stillTimesOut_andTheNextOneRingsWithSound() = runTest {
+        val dao = FakeScheduledAlarmDao(listOf(row(1), row(2)))
+        val session = session(dao)
+        session.fire(1)
+        session.fire(2)
+        runCurrent()
+        session.silence(1)
+        runCurrent()
+        outputs.events.clear()
+
+        advanceTimeBy(autoTimeoutMillis + 1)
+
+        assertThat(dao.rows.getValue(1).state).isEqualTo(AlarmState.SNOOZED)
+        assertThat(outputs.events).containsExactly("silence", "publish:2", "ringing:2:true", "sound:2")
+        assertThat(session.ringing?.silenced).isEqualTo(false)
+    }
+
+    @Test
+    fun aSilenceWithNothingRinging_letsTheIdleServiceStop() = runTest {
+        val session = session(FakeScheduledAlarmDao())
+
+        session.silence(1)
+        runCurrent()
+
+        assertThat(outputs.events).containsExactly("publish:null", "stop")
+    }
+
+    private fun changeRow(id: Long, state: AlarmState = AlarmState.SCHEDULED) = row(id, state).copy(eventId = SCHEDULE_CHANGE_ALARM_EVENT_ID)
+
+    private val moved = ScheduleChange.Moved(today, EventKey(7, 0), now, now.plusSeconds(1_800), now.plusSeconds(900), now.plusSeconds(2_700))
+    private val new = ScheduleChange.New(today, EventKey(8, 0), now.plusSeconds(3_600), now.plusSeconds(5_400))
+
+    @Test
+    fun aScheduleChangeAlert_ringsLikeAnAlarm_withItsChanges() = runTest {
+        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), syncsBusyCalendar = true)
+        val session = session(FakeScheduledAlarmDao(listOf(changeRow(1))))
+
+        session.fire(1)
+        runCurrent()
+
+        assertThat(outputs.events).containsExactly("publish:1", "ringing:1:true", "sound:1")
+        assertThat(session.ringing?.scheduleChange).isEqualTo(ScheduleChangeAlert(listOf(moved), syncsBusyCalendar = true))
+    }
+
+    @Test
+    fun aScheduleChangeAlertFiringAgainWhileItRings_replacesItself_soundAndAll() = runTest {
+        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), syncsBusyCalendar = false)
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(1)))
+        val session = session(dao)
+        session.fire(1)
+        runCurrent()
+        session.silence(1)
+        runCurrent()
+        outputs.events.clear()
+
+        // ScheduleChangeAlerts re-arms the day's one row for the newer change
+        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved, new), syncsBusyCalendar = false)
+        dao.setState(1, AlarmState.SCHEDULED)
+        session.fire(1)
+        runCurrent()
+
+        assertThat(outputs.events).containsExactly("ringing:1:false", "silence", "publish:1", "ringing:1:true", "sound:1")
+        assertThat(session.ringing?.scheduleChange?.changes).isEqualTo(listOf(moved, new))
+        assertThat(session.ringing?.silenced).isEqualTo(false)
+    }
+
+    @Test
+    fun anUnansweredScheduleChangeAlert_justStops_neverSnoozedOrMissed() = runTest {
+        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), syncsBusyCalendar = false)
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(1)))
+        val session = session(dao)
+        session.fire(1)
+        runCurrent()
+        outputs.events.clear()
+
+        advanceTimeBy(autoTimeoutMillis + 1)
+
+        assertThat(outputs.events).containsExactly("silence", "publish:null", "stop")
+        assertThat(dao.rows.getValue(1).state).isEqualTo(AlarmState.DISMISSED)
+        assertThat(scheduler.armed).isEmpty()
+        assertThat(changeAlerts.acknowledged).isEmpty()
+    }
+
+    @Test
+    fun aScheduleChangeAlertWithNothingLeftToSay_ringsNothing() = runTest {
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(1)))
+        val session = session(dao)
+
+        session.fire(1)
+        runCurrent()
+
+        assertThat(outputs.events).containsExactly("placeholder", "publish:null", "stop")
+        assertThat(dao.rows.getValue(1).state).isEqualTo(AlarmState.DISMISSED)
     }
 }

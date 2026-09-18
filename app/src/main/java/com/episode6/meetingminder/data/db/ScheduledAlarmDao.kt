@@ -42,6 +42,14 @@ interface ScheduledAlarmDao {
     @Query("SELECT * FROM scheduled_alarm WHERE state IN ('SCHEDULED', 'SNOOZED')")
     fun observeScheduled(): Flow<List<ScheduledAlarmEntity>>
 
+    /**
+     * [date]'s schedule-change alert row (`event_id = -2`, `SCHEDULE_CHANGE_ALARM_EVENT_ID`),
+     * in whatever state: `ScheduleChangeAlerts` keeps one per day and re-arms it for every
+     * new change, so an alert that is still ringing is replaced rather than queued behind.
+     */
+    @Query("SELECT * FROM scheduled_alarm WHERE date = :date AND event_id = -2 ORDER BY alarm_id DESC LIMIT 1")
+    suspend fun changeAlertOn(date: LocalDate): ScheduledAlarmEntity?
+
     @Query("UPDATE scheduled_alarm SET state = :state WHERE alarm_id = :alarmId")
     suspend fun setState(alarmId: Long, state: AlarmState)
 }

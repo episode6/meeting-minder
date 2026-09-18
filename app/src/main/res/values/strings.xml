@@ -195,6 +195,10 @@
     <!-- an alarm that went unanswered twice (or couldn't ring); %1$s is the meeting title -->
     <string name="alarm_missed_title">Missed alarm: %1$s</string>
     <string name="alarm_snooze_action">Snooze</string>
+    <!-- stops the sound and vibration of a ringing alarm or alert, which stays on screen -->
+    <string name="alarm_silence">Silence</string>
+    <!-- the ringing screen's line once it was silenced -->
+    <string name="alarm_silenced">Silenced</string>
 
     <!-- ringing screen (render 5): the countdown above the clock, shown in capitals -->
     <plurals name="alarm_meeting_in">
@@ -229,6 +233,12 @@
     <string name="schedule_change_separator">" · "</string>
     <string name="schedule_changed_review">Review</string>
     <string name="schedule_changed_share_update">Share update</string>
+    <!-- the loud, full-screen schedule-change alert: above the clock, shown in capitals -->
+    <string name="schedule_alert_heading">Schedule changed</string>
+    <string name="schedule_alert_open_itinerary">Open itinerary</string>
+    <string name="schedule_alert_reshare">Re-share</string>
+    <!-- "Re-share" while busy-calendar sync (TODO.md §4.7) is effective -->
+    <string name="schedule_alert_sync_reshare">Sync &amp; Re-share</string>
     <!-- the day view's "changed since you shared" banner -->
     <plurals name="day_banner_changes">
         <item quantity="one">%d change since you shared</item>

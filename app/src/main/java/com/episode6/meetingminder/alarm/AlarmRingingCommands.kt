@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 
 /**
- * Carries the ringing screen's Snooze/Dismiss (`SnoozeAlarm`/`DismissAlarm`, via
+ * Carries the ringing screen's Silence/Snooze/Dismiss (`SilenceAlarm`/`SnoozeAlarm`/`DismissAlarm`, via
  * `AlarmRingingSideEffects`) to [AlarmRingingService], which owns the ringing: only it can
  * stop the sound and move on to the next queued alarm. `ServiceAlarmRingingCommands` is
  * the production binding.
@@ -14,6 +14,9 @@ interface AlarmRingingCommands {
     fun snooze(alarmId: Long): Boolean
 
     fun dismiss(alarmId: Long): Boolean
+
+    /** Stops the sound; the alarm keeps ringing. Undelivered means no service, so no sound either: there is nothing for the caller to do. */
+    fun silence(alarmId: Long): Boolean
 }
 
 /**
@@ -26,6 +29,8 @@ class ServiceAlarmRingingCommands(private val context: Context) : AlarmRingingCo
     override fun snooze(alarmId: Long): Boolean = send(AlarmRingingService.snoozeIntent(context, alarmId))
 
     override fun dismiss(alarmId: Long): Boolean = send(AlarmRingingService.dismissIntent(context, alarmId))
+
+    override fun silence(alarmId: Long): Boolean = send(AlarmRingingService.silenceIntent(context, alarmId))
 
     private fun send(intent: Intent): Boolean = try {
         context.startService(intent) != null

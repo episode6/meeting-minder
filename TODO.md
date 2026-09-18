@@ -705,6 +705,36 @@ calendar sync never wakes the process when nothing is monitored. It enqueues a f
 work, `calendar-change-broadcast` (`KEEP`, 5 s settle, reason `PROVIDER_CHANGED`, which
 re-arms like the periodic check), and a disarm cancels a waiting one.
 
+NB (the loud alert): a **new** change on **today**, found by a **background** check (any
+`ChangeCheckReason` but `IN_APP`), also rings a full-screen alert, because the quiet
+notification proved too easy to miss. Not for a day shared ahead (an invite for tomorrow
+mustn't ring in the night) and not from the app's own foreground check (the banner is already
+in front of the user, and the change is often their own — an RSVP "No" from the chip menu
+reads as Declined).
+- **It rides the alarm path.** A worker can neither start a foreground service nor play audio
+  from the background; an alarm-clock alarm going off can do both. `alarm/ScheduleChangeAlerts`
+  (`ScheduleChangeAlerter` to `ChangeMonitor`, `ScheduleChangeAlertContent` to `AlarmRinger`)
+  keeps **one synthetic `scheduled_alarm` row per day** (`event_id = -2`,
+  `SCHEDULE_CHANGE_ALARM_EVENT_ID`, beside the test alarm's `-1`; `isSyntheticAlarmEvent`
+  keeps both out of `armedKeys`, `AlarmMaintainer`, and the alert out of the "Set alarms"
+  reconcile), arms it for *now* through `AlarmScheduler`, and `AlarmRinger.fire` loads the
+  day's recorded `changes_json` when it fires — nothing left to say rings nothing. A newer
+  change re-arms the same row with a fresh sound, and `AlarmRingingSession` replaces the alert
+  that is still ringing rather than queueing a second one behind it.
+- **Answers**: Sync & Re-share / Re-share (`meetingminder://share/{date}`; the share's
+  `onShareChanged` cancels the alert), Open itinerary (`meetingminder://day/{date}`), Silence,
+  Dismiss (which also cancels the quiet notification: it has been seen). The two links go
+  straight into `MainActivity` — never through the service, that would be a trampoline — so
+  `NavigationViewModel.onDeepLink` dismisses a ringing alert for the day it opens. A
+  notification shows three actions: Silence, Dismiss, re-share while it sounds; Dismiss, Open
+  itinerary, re-share once silent; the body opens the alert screen, which has all four.
+- **Never snoozed, never "missed"**: unanswered for the auto-timeout it stops
+  (`TimeoutResult.EXPIRED`) and the quiet notification stays. When the alert rings the quiet
+  notification is posted `setSilent`; when it can't be armed (no exact-alarm grant) the
+  notification alerts as before. The changes going away cancels it.
+- `ScheduleChangeAlertScreen` is hosted by `AlarmActivity`, in the ringing screen's frame
+  (`RingingLayout`). No new permission, no schema change.
+
 **Testing**: `ChangeDetector` is plain JVM. Worker tests via `WorkManagerTestInitHelper` +
 `TestDriver.setAllConstraintsMet`. On device: `adb shell content insert/update/delete` on the test
 calendar; `adb shell dumpsys jobscheduler | grep -A30 com.episode6.meetingminder` to see the
@@ -856,6 +886,16 @@ with the Snooze/Dismiss actions, tap opens the activity. Dismiss/Snooze never re
 what revokes it for non-alarm apps). We still check `NotificationManager.canUseFullScreenIntent()`
 in onboarding and deep-link to `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT` if it's off; when denied
 the system shows a 60-second heads-up instead and the sound still plays.
+
+NB (Silence): the ringing alarm (and §4.3's schedule-change alert) has a **Silence** answer
+— the screen's button, the notification's first action while it sounds — that stops the sound
+and vibration and nothing else: the alarm stays up (`RingingAlarm.silenced`), unanswered, the
+auto-timeout still running, and a silenced alarm that snoozes itself comes back with its
+sound. Either **volume key** silences too, as for an incoming call: `AlarmActivity.onKeyDown`
+while the screen shows (consumed, so the volume doesn't move), and `AlarmVolumeKeys` for the
+heads-up case — an active framework `MediaSession` with a remote `VolumeProvider` (and an
+empty callback, without which the framework drops the adjustment), alive only while the sound
+plays, so the next press is an ordinary volume key again.
 
 NB (PR-10), where the build settled things this section leaves open:
 - **Back is disabled** on the ringing screen, as §5 says, not "Back = snooze": an accidental

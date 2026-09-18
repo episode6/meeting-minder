@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.data.db
 
+import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -37,6 +38,9 @@ internal class FakeScheduledAlarmDao(rows: List<ScheduledAlarmEntity> = emptyLis
         rows.values.filter { it.date == date && it.state.armed }
 
     override suspend fun allScheduled(): List<ScheduledAlarmEntity> = rows.values.filter { it.state.armed }
+
+    override suspend fun changeAlertOn(date: LocalDate): ScheduledAlarmEntity? =
+        rows.values.filter { it.date == date && it.eventId == SCHEDULE_CHANGE_ALARM_EVENT_ID }.maxByOrNull { it.alarmId }
 
     override suspend fun setState(alarmId: Long, state: AlarmState) {
         rows[alarmId]?.let { rows[alarmId] = it.copy(state = state) }

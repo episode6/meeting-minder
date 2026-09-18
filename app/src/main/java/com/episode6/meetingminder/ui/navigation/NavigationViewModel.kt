@@ -3,6 +3,7 @@ package com.episode6.meetingminder.ui.navigation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.store.AppStore
+import com.episode6.meetingminder.store.DismissAlarm
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
 import com.episode6.meetingminder.store.startShare
 import com.episode6.redux.mapStore
@@ -54,8 +55,14 @@ class NavigationViewModel(private val store: AppStore) : ViewModel() {
      * and the link is dropped). "Share update" ([DeepLink.Share]) dispatches the share right
      * away: `ShareDaySideEffects` reads what it needs from Room and the provider, so it
      * doesn't wait for the day to load, and the chooser opens once the day view is showing.
+     *
+     * A link into a day whose schedule-change alert is ringing answers the alert: its
+     * notification's "Open itinerary" and "Sync & Re-share" come straight here (an action
+     * can't go through the ringing service first, that would be a trampoline), so this is
+     * what stops the sound.
      */
     fun onDeepLink(link: DeepLink): Boolean {
+        store.state.ringing?.takeIf { it.scheduleChange != null && it.date == link.date }?.let { store.dispatch(DismissAlarm(it.alarmId)) }
         if (!store.state.permissions.allRequiredGranted) return false
         if (link is DeepLink.Share) store.startShare(link.date)
         return true

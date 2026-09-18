@@ -44,7 +44,8 @@ private const val TAG = "MeetingMinderChanges"
  *    the result differs from what the last check recorded, records it
  *    (`changes_json`) and updates the notification — alerting only when a change is new
  *    (and, `setOnlyAlertOnce`, only if it isn't already showing), cancelling it when nothing
- *    is changed any more;
+ *    is changed any more; a new change on today found by a background check also rings the
+ *    loud full-screen alert ([ScheduleChangeAlerter]);
  * 3. re-arms the background works for the days still shared, or disarms them.
  */
 @Inject
@@ -59,6 +60,7 @@ class ChangeMonitor(
     private val scheduler: ChangeWorkScheduler,
     private val settings: SettingsRepository,
     private val clock: Clock,
+    private val alerter: ScheduleChangeAlerter,
 ) {
     // the worker and the foreground reload can overlap; one check at a time
     private val mutex = Mutex()
@@ -86,7 +88,7 @@ class ChangeMonitor(
                 // read once per pass, like the filter: our own busy blocks (TODO.md §4.7)
                 // must never read as a change, and a share can insert one between passes
                 val ownBlocks = busyBlockDao.eventIds()
-                for (snapshot in current) check(snapshot, filter, prefs.showDeclined, ownBlocks)
+                for (snapshot in current) check(snapshot, filter, prefs.showDeclined, ownBlocks, loud = reason != ChangeCheckReason.IN_APP && snapshot.date == today)
             }
             current.mapTo(sortedSetOf()) { it.date }
         } catch (e: CancellationException) {
@@ -106,6 +108,7 @@ class ChangeMonitor(
      */
     suspend fun onShareChanged(date: LocalDate) = mutex.withLock {
         notifier.cancel(date)
+        alerter.cancel(date)
         val today = LocalDate.now(clock)
         scheduler.update(snapshotDao.all().mapNotNullTo(sortedSetOf()) { it.date.takeIf { day -> day >= today } }, ChangeCheckReason.IN_APP)
     }
@@ -114,7 +117,13 @@ class ChangeMonitor(
     // exclusion as the LoadDay read the share's baseline came from (TODO.md §5 PR-12,
     // §4.7), so a calendar or event only one of them excludes never reads as New or
     // Cancelled — in particular the `busy` blocks the share itself wrote a moment ago.
-    private suspend fun check(snapshot: ChangeSnapshotEntity, filter: CalendarFilter, showDeclined: Boolean, ownBlocks: Set<Long>) {
+    //
+    // [loud]: a new change also rings the full-screen alert ([ScheduleChangeAlerter]) — for
+    // today only (a day shared ahead mustn't ring in the night for an invite that can wait
+    // for the morning), and never from the app's own foreground check, where the banner is
+    // already in front of the user and the change is often their own (an RSVP "No" from the
+    // chip menu reads as Declined).
+    private suspend fun check(snapshot: ChangeSnapshotEntity, filter: CalendarFilter, showDeclined: Boolean, ownBlocks: Set<Long>, loud: Boolean) {
         val fresh = try {
             repository.eventsOn(snapshot.date, filter).excludeDeclined(showDeclined).excludeOwnBlocks(ownBlocks)
         } catch (e: CancellationException) {
@@ -134,8 +143,12 @@ class ChangeMonitor(
             if (snapshotDao.setChanges(snapshot.date, snapshot.takenAt, encodeScheduleChanges(changes)) == 0) return@withContext
             if (changes.isEmpty()) {
                 notifier.cancel(snapshot.date)
+                alerter.cancel(snapshot.date)
             } else {
-                notifier.show(snapshot.date, changes, alert = changes.any { it !in previous })
+                val isNew = changes.any { it !in previous }
+                // the alert makes the noise when it rings; the notification stays behind it
+                val ringing = isNew && loud && alerter.alert(snapshot.date)
+                notifier.show(snapshot.date, changes, alert = isNew, silent = ringing)
             }
         }
     }

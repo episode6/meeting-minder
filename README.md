@@ -17,9 +17,9 @@ Tap meetings to select them, set alarms, then share your busy time ranges — no
 
 - **Single-day itinerary** — a Google-Calendar-style timeline with an hour grid, proportional event heights, side-by-side overlaps, and horizontal swiping between days
 - **Tap to select** — tapping an event means "I'm going to this"; the FAB reads "Set alarms (N)"
-- **Loud alarms** — in-app, exact, alarm-clock class: a full-screen activity that wakes the screen and plays a randomized, obnoxious alert so you never habituate to it
+- **Loud alarms** — in-app, exact, alarm-clock class: a full-screen activity that wakes the screen and plays a randomized, obnoxious alert so you never habituate to it; Silence (or either volume key, as for a call) stops the noise and leaves it on screen
 - **Share the schedule** — the system share sheet with generated text listing only your busy time ranges, no titles
-- **Change monitoring** — after you've shared, new/moved/cancelled meetings raise a "your schedule changed since you shared it" notification with one-tap re-share
+- **Change monitoring** — after you've shared, new/moved/cancelled meetings raise a "your schedule changed since you shared it" notification with one-tap re-share — and, for today, a full-screen ringing alert saying what changed, with Sync & Re-share, Open itinerary, Silence and Dismiss
 - **RSVP** — setting alarms marks each chosen meeting "Yes, going" in the calendar
 - **Busy-calendar sync** — opt in (Settings → Busy calendar) and sharing a day also puts a bare `busy` block on one calendar of your choosing — times only, never titles; add your first name in the same section and it reads "Geoff busy" — so your partner's calendar shows when you're busy. Re-sharing reconciles them, turning it off takes today's and future ones away, and the app only ever touches the blocks it wrote itself
 

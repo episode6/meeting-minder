@@ -30,9 +30,10 @@ interface ScheduleChangeNotifier {
      * sound when the notification isn't already showing: a second new change while the
      * first is still unread updates it silently. With [alert] false (nothing in [changes] is
      * new, some just dropped out) it only updates a notification that is still showing, so a
-     * dismissed one doesn't come back for old news.
+     * dismissed one doesn't come back for old news. [silent] posts it without a sound of
+     * its own, because the loud alert ([ScheduleChangeAlerter]) is ringing for it.
      */
-    fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean)
+    fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean, silent: Boolean = false)
 
     fun cancel(date: LocalDate)
 }
@@ -94,7 +95,7 @@ object ScheduleChangeNotifications {
     fun notificationId(date: LocalDate): Int = date.toEpochDay().toInt()
 
     /** The notification for [changes] on [date], titled for [today] ("Your Tuesday schedule…" when [date] isn't today). */
-    fun build(context: Context, date: LocalDate, changes: List<ScheduleChange>, today: LocalDate, zone: ZoneId): Notification {
+    fun build(context: Context, date: LocalDate, changes: List<ScheduleChange>, today: LocalDate, zone: ZoneId, silent: Boolean = false): Notification {
         val lines = changes.map { context.resources.text(it.toLine(zone)) }
         val title = if (date == today) {
             context.getString(R.string.schedule_changed_title)
@@ -112,6 +113,7 @@ object ScheduleChangeNotifications {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setOnlyAlertOnce(true)
+            .setSilent(silent)
             .setAutoCancel(true)
             .setContentIntent(review)
             .addAction(0, context.getString(R.string.schedule_changed_review), review)
@@ -135,11 +137,11 @@ class AndroidScheduleChangeNotifier(private val context: Context, private val cl
 
     private val manager get() = NotificationManagerCompat.from(context)
 
-    override fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean) {
+    override fun show(date: LocalDate, changes: List<ScheduleChange>, alert: Boolean, silent: Boolean) {
         if (!canPost()) return
         val id = ScheduleChangeNotifications.notificationId(date)
         if (!alert && manager.activeNotifications.none { it.tag == ScheduleChangeNotifications.NOTIFICATION_TAG && it.id == id }) return
-        val notification = ScheduleChangeNotifications.build(context, date, changes, LocalDate.now(clock), clock.zone)
+        val notification = ScheduleChangeNotifications.build(context, date, changes, LocalDate.now(clock), clock.zone, silent)
         try {
             manager.notify(ScheduleChangeNotifications.NOTIFICATION_TAG, id, notification)
         } catch (_: SecurityException) {

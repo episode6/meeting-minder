@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
@@ -14,7 +15,8 @@ import androidx.core.content.ContextCompat
 import com.episode6.meetingminder.ui.navigation.DeepLinks
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.model.RingingAlarm
-import java.time.LocalDate
+import com.episode6.meetingminder.monitor.text
+import com.episode6.meetingminder.monitor.toLine
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -61,16 +63,24 @@ object AlarmNotifications {
      * use — and both actions sent straight back to [AlarmRingingService] (never a
      * trampoline). Swiping it away (allowed for foreground-service notifications since
      * Android 14) snoozes, so a ringing alarm is never left with nothing to stop it. With
-     * [alert] false it's a quiet re-post of an alarm that is already ringing.
+     * [alert] false it's a quiet re-post of an alarm that is already ringing. "Silence"
+     * comes first while it makes a sound and goes once it doesn't.
+     *
+     * A schedule-change alert ([RingingAlarm.scheduleChange], TODO.md §4.3) is the same
+     * notification saying what changed, times only. A notification shows three actions at
+     * most, so while it makes a sound they are Silence, Dismiss and "Sync & Re-share", and
+     * "Open itinerary" takes Silence's place once it is silent; the body opens the alert
+     * screen, which always has all four. The two links go straight into `MainActivity`
+     * (never a trampoline), which dismisses the alert as it takes them. Swiping it away
+     * dismisses.
      */
     fun ringing(context: Context, alarm: RingingAlarm, zone: ZoneId, alert: Boolean): Notification {
         val ringingScreen = ringingScreenIntent(context, alarm.alarmId)
+        val silence = serviceIntent(context, alarm.alarmId, AlarmRingingService.silenceIntent(context, alarm.alarmId))
         val snooze = serviceIntent(context, alarm.alarmId, AlarmRingingService.snoozeIntent(context, alarm.alarmId))
         val dismiss = serviceIntent(context, alarm.alarmId, AlarmRingingService.dismissIntent(context, alarm.alarmId))
-        return NotificationCompat.Builder(context, CHANNEL_ALARMS)
+        val builder = NotificationCompat.Builder(context, CHANNEL_ALARMS)
             .setSmallIcon(R.drawable.ic_notification_alarm)
-            .setContentTitle(alarm.title)
-            .setContentText(startsAt(context, alarm, zone))
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -79,9 +89,31 @@ object AlarmNotifications {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setFullScreenIntent(ringingScreen, true)
             .setContentIntent(ringingScreen)
-            .setDeleteIntent(snooze)
-            .addAction(R.drawable.ic_notification_alarm, context.getString(R.string.alarm_snooze_action), snooze)
+        if (!alarm.silenced) builder.addAction(R.drawable.ic_notification_alarm, context.getString(R.string.alarm_silence), silence)
+        val change = alarm.scheduleChange
+        if (change == null) {
+            return builder
+                .setContentTitle(alarm.title)
+                .setContentText(startsAt(context, alarm, zone))
+                .setDeleteIntent(snooze)
+                .addAction(R.drawable.ic_notification_alarm, context.getString(R.string.alarm_snooze_action), snooze)
+                .addAction(R.drawable.ic_notification_alarm, context.getString(R.string.alarm_dismiss), dismiss)
+                .build()
+        }
+        val title = context.getString(R.string.schedule_changed_title)
+        val lines = change.changes.map { context.resources.text(it.toLine(zone)) }
+        val reshare = if (change.syncsBusyCalendar) R.string.schedule_alert_sync_reshare else R.string.schedule_alert_reshare
+        builder
+            .setContentTitle(title)
+            .setContentText(lines.joinToString(context.getString(R.string.schedule_change_separator)))
+            .setStyle(NotificationCompat.InboxStyle().setBigContentTitle(title).also { style -> lines.forEach(style::addLine) })
+            .setDeleteIntent(dismiss)
             .addAction(R.drawable.ic_notification_alarm, context.getString(R.string.alarm_dismiss), dismiss)
+        if (alarm.silenced) {
+            builder.addAction(R.drawable.ic_notification_alarm, context.getString(R.string.schedule_alert_open_itinerary), linkIntent(context, alarm.alarmId, DeepLinks.day(alarm.date)))
+        }
+        return builder
+            .addAction(R.drawable.ic_notification_alarm, context.getString(reshare), linkIntent(context, alarm.alarmId, DeepLinks.share(alarm.date)))
             .build()
     }
 
@@ -104,7 +136,7 @@ object AlarmNotifications {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
-            .setContentIntent(openDayIntent(context, alarm.alarmId, alarm.date))
+            .setContentIntent(linkIntent(context, alarm.alarmId, DeepLinks.day(alarm.date)))
             .build()
         try {
             NotificationManagerCompat.from(context).notify(alarm.alarmId.toInt(), notification)
@@ -133,11 +165,15 @@ object AlarmNotifications {
     private fun serviceIntent(context: Context, alarmId: Long, intent: Intent): PendingIntent =
         PendingIntent.getService(context, alarmId.toInt(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
-    /** Opens the alarm's day through the same deep link the schedule-changed notification uses, so a running day view jumps to it. */
-    private fun openDayIntent(context: Context, alarmId: Long, date: LocalDate): PendingIntent = PendingIntent.getActivity(
+    /**
+     * Opens [link] (the alarm's day, or its share) through the same deep links the
+     * schedule-changed notification uses, so a running day view jumps to it. The link is the
+     * intent's data, so a day and a share with the same request code stay distinct.
+     */
+    private fun linkIntent(context: Context, alarmId: Long, link: Uri): PendingIntent = PendingIntent.getActivity(
         context,
         alarmId.toInt(),
-        DeepLinks.activityIntent(context, DeepLinks.day(date)),
+        DeepLinks.activityIntent(context, link),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 

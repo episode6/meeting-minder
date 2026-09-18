@@ -267,6 +267,18 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   `adb shell dumpsys jobscheduler | grep -A30 $PKG` shows the content trigger (a job with a
   `content://com.android.calendar` trigger); `adb shell cmd jobscheduler run -f $PKG <jobId>`
   forces a check. Tapping "Share update" should open the chooser with `Update:` text.
+- The loud schedule-change alert: share today, press Home (a check made while the app is on
+  screen never rings), then `content insert` a meeting with attendees later today. Within
+  about 15 s `AlarmRingingService` is in the foreground (`dumpsys activity services $PKG |
+  grep isForeground`) with a heads-up titled "Your schedule changed since you shared it"
+  (actions Silence / Dismiss / Re-share) and the quiet `schedule_updates` notification beside
+  it flagged `SILENT`. `adb shell input keyevent 25` (volume down) must silence it without
+  moving the alarm volume (`cmd media_session volume --stream 4 --get`): the actions become
+  Dismiss / Open itinerary / Re-share and `dumpsys media_session` no longer lists the
+  `MeetingMinderRinging` session. Repeat with the screen off (`input keyevent 26` first) for
+  the full-screen alert; its volume key, "Open itinerary" (lands on the day view, service
+  gone) and "Re-share" (chooser opens, both notifications gone) all need a look. Dismiss also
+  removes the quiet notification.
 - Landscape probe: `settings put system user_rotation 1` (and back to 0).
 
 ## Robustness checks (PR-13)
