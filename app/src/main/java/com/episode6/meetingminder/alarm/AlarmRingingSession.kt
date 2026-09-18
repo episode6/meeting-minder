@@ -123,6 +123,15 @@ internal class AlarmRingingSession(
     }
 
     /**
+     * A schedule-change alert's notification was swiped away: it stops ringing, but a
+     * reflexive swipe isn't "I've seen it", so unlike [dismiss] the day's quiet notification
+     * stays ([AlarmRinger.expire]). A meeting's alarm snoozes on a swipe instead.
+     */
+    fun swipedAway(alarmId: Long) = serialized {
+        settle(alarmId) { ringer.expire(alarmId) }
+    }
+
+    /**
      * Silence (the notification's action, the ringing screen's button, or a volume key, as
      * for an incoming call): the sound and vibration stop, but [alarmId] keeps ringing —
      * still on screen, still unanswered, the auto-timeout still running. Nothing is

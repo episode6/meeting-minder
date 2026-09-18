@@ -706,11 +706,14 @@ work, `calendar-change-broadcast` (`KEEP`, 5 s settle, reason `PROVIDER_CHANGED`
 re-arms like the periodic check), and a disarm cancels a waiting one.
 
 NB (the loud alert): a **new** change on **today**, found by a **background** check (any
-`ChangeCheckReason` but `IN_APP`), also rings a full-screen alert, because the quiet
-notification proved too easy to miss. Not for a day shared ahead (an invite for tomorrow
-mustn't ring in the night) and not from the app's own foreground check (the banner is already
-in front of the user, and the change is often their own — an RSVP "No" from the chip menu
-reads as Declined).
+`ChangeCheckReason` but `IN_APP`) while the app isn't on screen, also rings a full-screen
+alert, because the quiet notification proved too easy to miss. Not for a day shared ahead (an
+invite for tomorrow mustn't ring in the night) and not while `MainActivity` is started (the
+banner is already in front of the user, and the change is often their own — an RSVP "No" from
+the chip menu reads as Declined). The reason alone can't say that: the worker and the
+foreground reload both run for one provider change and either can get to the lock first, so
+`ChangeMonitor` also reads `MainUiVisibility`, which `MainActivity` sets in
+`onStart`/`onStop` (not the store's subscriber count, which `AlarmActivity` holds too).
 - **It rides the alarm path.** A worker can neither start a foreground service nor play audio
   from the background; an alarm-clock alarm going off can do both. `alarm/ScheduleChangeAlerts`
   (`ScheduleChangeAlerter` to `ChangeMonitor`, `ScheduleChangeAlertContent` to `AlarmRinger`)
@@ -729,7 +732,13 @@ reads as Declined).
   notification shows three actions: Silence, Dismiss, re-share while it sounds; Dismiss, Open
   itinerary, re-share once silent; the body opens the alert screen, which has all four.
 - **Never snoozed, never "missed"**: unanswered for the auto-timeout it stops
-  (`TimeoutResult.EXPIRED`) and the quiet notification stays. When the alert rings the quiet
+  (`TimeoutResult.EXPIRED`) and the quiet notification stays. Swiping its notification away
+  does the same (`AlarmRinger.expire`): a reflexive swipe isn't "I've seen it", so only the
+  explicit Dismiss acknowledges. A snooze that reaches the row anyway just stops it.
+- **Transitions out of `FIRED` are one conditional statement** (`ScheduledAlarmDao.transition`):
+  the re-arm writes `SCHEDULED` over a row that is still ringing, and an answer that read
+  `FIRED` a moment earlier must not write `DISMISSED` over that, or the newer change would
+  fire into an unarmed row and ring nothing while its quiet notification was posted silent. When the alert rings the quiet
   notification is posted `setSilent`; when it can't be armed (no exact-alarm grant) the
   notification alerts as before. The changes going away cancels it.
 - `ScheduleChangeAlertScreen` is hosted by `AlarmActivity`, in the ringing screen's frame

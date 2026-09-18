@@ -68,6 +68,7 @@ class AlarmRingingService : Service(), RingingOutputs {
             }
             ACTION_SNOOZE -> session.snooze(alarmId)
             ACTION_SILENCE -> session.silence(alarmId)
+            ACTION_SWIPED_AWAY -> session.swipedAway(alarmId)
             else -> session.dismiss(alarmId)
         }
         return START_NOT_STICKY
@@ -145,6 +146,7 @@ class AlarmRingingService : Service(), RingingOutputs {
         const val ACTION_SNOOZE = "com.episode6.meetingminder.action.SNOOZE"
         const val ACTION_DISMISS = "com.episode6.meetingminder.action.DISMISS"
         const val ACTION_SILENCE = "com.episode6.meetingminder.action.SILENCE"
+        const val ACTION_SWIPED_AWAY = "com.episode6.meetingminder.action.SWIPED_AWAY"
 
         private const val NO_ALARM = -1L
 
@@ -156,6 +158,9 @@ class AlarmRingingService : Service(), RingingOutputs {
         fun dismissIntent(context: Context, alarmId: Long): Intent = intent(context, ACTION_DISMISS, alarmId)
 
         fun silenceIntent(context: Context, alarmId: Long): Intent = intent(context, ACTION_SILENCE, alarmId)
+
+        /** The delete intent of a schedule-change alert's notification. */
+        fun swipedAwayIntent(context: Context, alarmId: Long): Intent = intent(context, ACTION_SWIPED_AWAY, alarmId)
 
         private fun intent(context: Context, action: String, alarmId: Long): Intent =
             Intent(context, AlarmRingingService::class.java).setAction(action).setData(AlarmUris.alarm(alarmId))

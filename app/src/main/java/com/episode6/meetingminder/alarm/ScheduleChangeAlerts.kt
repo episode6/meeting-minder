@@ -7,6 +7,7 @@ import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
+import com.episode6.meetingminder.data.db.changeAlertOn
 import com.episode6.meetingminder.data.db.decodeScheduleChanges
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
@@ -82,7 +83,7 @@ class ScheduleChangeAlerts(
                 alarmDao.setState(row.alarmId, AlarmState.CANCELLED)
             }
             // ringing: the service owns the sound and the foreground, so it does the dismissing
-            row.state == AlarmState.FIRED -> if (!commands.dismiss(row.alarmId)) alarmDao.setState(row.alarmId, AlarmState.DISMISSED)
+            row.state == AlarmState.FIRED -> if (!commands.dismiss(row.alarmId)) alarmDao.transition(row.alarmId, AlarmState.FIRED, AlarmState.DISMISSED)
         }
     }
 
@@ -97,7 +98,9 @@ class ScheduleChangeAlerts(
         notifier.cancel(date)
     }
 
-    // the title and times mean nothing for this row; what it shows is loaded when it fires
+    // The title and times mean nothing for this row; what it shows is loaded when it fires.
+    // `endMillis = now` is deliberate all the same: `AlarmRescheduler` only re-arms rows whose
+    // event hasn't ended, so an alert caught armed by a reboot is never re-fired hours later.
     private fun newRow(date: LocalDate, now: Long) = ScheduledAlarmEntity(
         date = date, eventId = SCHEDULE_CHANGE_ALARM_EVENT_ID, instanceTime = 0, fireAt = now,
         title = "", beginMillis = now, endMillis = now, soundIndex = 0,

@@ -10,6 +10,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -57,7 +58,8 @@ fun ScheduleChangeAlertScreen(
         modifier = modifier,
         details = {
             Text(
-                text = stringResource(R.string.schedule_changed_title),
+                // the banner's words: the heading above already says "schedule changed"
+                text = pluralStringResource(R.plurals.day_banner_changes, state.lines.size, state.lines.size),
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center,

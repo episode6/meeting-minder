@@ -198,6 +198,38 @@ class AlarmRingerTest {
     }
 
     @Test
+    fun anAnswerArrivingAfterTheAlertWasReArmed_leavesItArmed_forTheNewerChange() = runTest {
+        // ScheduleChangeAlerts.alert re-arms the ringing row; the answer read FIRED just before
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(AlarmState.SCHEDULED)))
+        val ringer = ringer(dao)
+
+        assertThat(ringer.dismiss(3)).isFalse()
+        assertThat(ringer.expire(3)).isFalse()
+        assertThat(ringer.timeOut(3)).isEqualTo(TimeoutResult.NOT_RINGING)
+
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.SCHEDULED)
+        assertThat(changeAlerts.acknowledged).isEmpty()
+    }
+
+    @Test
+    fun expire_stopsARingingAlert_withoutAcknowledgingTheDay() = runTest {
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(AlarmState.FIRED)))
+
+        assertThat(ringer(dao).expire(3)).isTrue()
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.DISMISSED)
+        assertThat(changeAlerts.acknowledged).isEmpty()
+    }
+
+    @Test
+    fun snooze_aScheduleChangeAlert_neverReArmsIt() = runTest {
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(AlarmState.FIRED)))
+
+        assertThat(ringer(dao).snooze(3)).isEqualTo(SnoozeResult.NOT_RINGING)
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.DISMISSED)
+        assertThat(scheduler.armed).isEmpty()
+    }
+
+    @Test
     fun timeOut_aScheduleChangeAlert_expiresWithoutSnoozingOrAcknowledging() = runTest {
         val dao = FakeScheduledAlarmDao(listOf(changeRow(AlarmState.FIRED)))
 

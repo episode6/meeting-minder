@@ -472,6 +472,23 @@ class AlarmRingingSessionTest {
     }
 
     @Test
+    fun swipingAScheduleChangeAlertAway_stopsIt_withoutAcknowledgingTheDay() = runTest {
+        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), syncsBusyCalendar = false)
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(1)))
+        val session = session(dao)
+        session.fire(1)
+        runCurrent()
+        outputs.events.clear()
+
+        session.swipedAway(1)
+        runCurrent()
+
+        assertThat(outputs.events).containsExactly("silence", "publish:null", "stop")
+        assertThat(dao.rows.getValue(1).state).isEqualTo(AlarmState.DISMISSED)
+        assertThat(changeAlerts.acknowledged).isEmpty()
+    }
+
+    @Test
     fun aScheduleChangeAlertWithNothingLeftToSay_ringsNothing() = runTest {
         val dao = FakeScheduledAlarmDao(listOf(changeRow(1)))
         val session = session(dao)

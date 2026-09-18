@@ -147,7 +147,9 @@ internal class AlarmReconcileWriter(
             date = date,
             selected = dayPlanDao.selectedEventsOn(date),
             freshEvents = freshEvents,
-            // a schedule-change alert armed for this very second isn't the selection's to cancel
+            // A schedule-change alert armed for this very second isn't the selection's to
+            // cancel. Only that row, not every synthetic one: Settings' test alarm is meant to
+            // be cancelled here like any alarm that isn't in the selection (TestAlarmSideEffects).
             scheduled = alarmDao.scheduledOn(date).filter { it.eventId != SCHEDULE_CHANGE_ALARM_EVENT_ID },
             leadTime = settings.current().leadTime,
             now = now,

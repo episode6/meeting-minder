@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.store.sideeffects
 
+import com.episode6.meetingminder.monitor.MainUiVisibility
 import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.containsExactly
@@ -67,7 +68,7 @@ class ChangeDetectionSideEffectsTest {
         val repository = FakeCalendarRepository(events = mutableMapOf(today to listOf(testCalendarEvent(1, at(today, 15), at(today, 16)))))
         val snapshots = FakeChangeSnapshotDao(listOf(ChangeSnapshotEntity(today, 1, "[]")))
         val scheduler = FakeChangeWorkScheduler()
-        val monitor = ChangeMonitor(repository, snapshots, FakeDayPlanDao(), FakeBusyBlockDao(), FakeCalendarPermissionChecker(), FakeScheduleChangeNotifier(), scheduler, FakeSettingsRepository(), clock, FakeScheduleChangeAlerter())
+        val monitor = ChangeMonitor(repository, snapshots, FakeDayPlanDao(), FakeBusyBlockDao(), FakeCalendarPermissionChecker(), FakeScheduleChangeNotifier(), scheduler, FakeSettingsRepository(), clock, FakeScheduleChangeAlerter(), MainUiVisibility())
 
         val output = object : ChangeDetectionSideEffects {}.runChangeCheck(monitor).output(LoadDay(today), CalendarContentChanged).toList()
 

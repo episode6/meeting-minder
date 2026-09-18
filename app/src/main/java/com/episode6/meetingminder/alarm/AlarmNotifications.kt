@@ -72,7 +72,8 @@ object AlarmNotifications {
      * "Open itinerary" takes Silence's place once it is silent; the body opens the alert
      * screen, which always has all four. The two links go straight into `MainActivity`
      * (never a trampoline), which dismisses the alert as it takes them. Swiping it away
-     * dismisses.
+     * stops the ringing but, unlike the Dismiss action, leaves the quiet schedule-changed
+     * notification: a reflexive swipe isn't "I've seen it".
      */
     fun ringing(context: Context, alarm: RingingAlarm, zone: ZoneId, alert: Boolean): Notification {
         val ringingScreen = ringingScreenIntent(context, alarm.alarmId)
@@ -107,7 +108,7 @@ object AlarmNotifications {
             .setContentTitle(title)
             .setContentText(lines.joinToString(context.getString(R.string.schedule_change_separator)))
             .setStyle(NotificationCompat.InboxStyle().setBigContentTitle(title).also { style -> lines.forEach(style::addLine) })
-            .setDeleteIntent(dismiss)
+            .setDeleteIntent(serviceIntent(context, alarm.alarmId, AlarmRingingService.swipedAwayIntent(context, alarm.alarmId)))
             .addAction(R.drawable.ic_notification_alarm, context.getString(R.string.alarm_dismiss), dismiss)
         if (alarm.silenced) {
             builder.addAction(R.drawable.ic_notification_alarm, context.getString(R.string.schedule_alert_open_itinerary), linkIntent(context, alarm.alarmId, DeepLinks.day(alarm.date)))

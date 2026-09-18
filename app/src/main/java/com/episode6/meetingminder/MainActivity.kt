@@ -29,6 +29,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // the loud schedule-change alert never rings over the app itself (MainUiVisibility)
+    override fun onStart() {
+        super.onStart()
+        appGraph.mainUiVisibility.visible = true
+    }
+
+    override fun onStop() {
+        appGraph.mainUiVisibility.visible = false
+        super.onStop()
+    }
+
     // Also reached before the first composition when the activity is being recreated in a
     // task that survived it, which is why links queue in DeepLinkInbox rather than going to
     // a listener the composition registers.

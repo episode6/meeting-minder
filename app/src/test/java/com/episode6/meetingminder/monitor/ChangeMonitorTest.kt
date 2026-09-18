@@ -55,12 +55,13 @@ class ChangeMonitorTest {
     private val notifier = FakeScheduleChangeNotifier()
     private val scheduler = FakeChangeWorkScheduler()
     private val alerter = FakeScheduleChangeAlerter()
+    private val mainUi = MainUiVisibility()
 
     private fun sharedSnapshot(date: LocalDate, events: List<CalendarEvent>, selected: List<CalendarEvent> = events, takenAt: Long = 1_000) =
         ChangeSnapshotEntity(date, takenAt, encodeChangeSnapshotEvents(events, selected.mapTo(mutableSetOf()) { it.key }))
 
     private fun monitor(snapshotDao: ChangeSnapshotDao, settings: FakeSettingsRepository = FakeSettingsRepository()) =
-        ChangeMonitor(repository, snapshotDao, dayPlanDao, busyBlockDao, permissions, notifier, scheduler, settings, clock, alerter)
+        ChangeMonitor(repository, snapshotDao, dayPlanDao, busyBlockDao, permissions, notifier, scheduler, settings, clock, alerter, mainUi)
 
     private val moved = ScheduleChange.Moved(today, designReview.key, today.at(13), today.at(14), today.at(13, 30), today.at(14, 30))
     private val new = ScheduleChange.New(today, invite.key, invite.begin, invite.end)
@@ -295,6 +296,20 @@ class ChangeMonitorTest {
 
         assertThat(alerter.alerted).containsExactly(today)
         assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, silent = true))
+    }
+
+    @Test
+    fun runCheck_inTheBackground_whileTheAppIsOnScreen_neverRingsTheLoudAlert() = runTest {
+        // the worker and the foreground reload both run for one provider change; the worker can win
+        alerter.rings = true
+        mainUi.visible = true
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+        repository.events[today] = listOf(designReview, invite)
+
+        monitor(snapshots).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(alerter.alerted).isEmpty()
+        assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, silent = false))
     }
 
     @Test

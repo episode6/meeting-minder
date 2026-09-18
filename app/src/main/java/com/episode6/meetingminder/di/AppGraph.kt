@@ -14,6 +14,7 @@ import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmDao
 import com.episode6.meetingminder.monitor.ChangeMonitor
+import com.episode6.meetingminder.monitor.MainUiVisibility
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.permissions.PermissionChecker
 import com.episode6.meetingminder.store.AppState
@@ -47,6 +48,7 @@ interface AppGraph : ViewModelGraph {
 
     /** `CalendarChangeWorker`'s change check (TODO.md §4.3). */
     val changeMonitor: ChangeMonitor
+    val mainUiVisibility: MainUiVisibility
 
     /** For `CalendarChangeWorkerTest`, which seeds a shared day's baseline the way a share does. */
     val changeSnapshotDao: ChangeSnapshotDao

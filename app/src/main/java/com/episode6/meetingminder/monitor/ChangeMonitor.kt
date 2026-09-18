@@ -61,6 +61,7 @@ class ChangeMonitor(
     private val settings: SettingsRepository,
     private val clock: Clock,
     private val alerter: ScheduleChangeAlerter,
+    private val mainUi: MainUiVisibility,
 ) {
     // the worker and the foreground reload can overlap; one check at a time
     private val mutex = Mutex()
@@ -88,7 +89,7 @@ class ChangeMonitor(
                 // read once per pass, like the filter: our own busy blocks (TODO.md §4.7)
                 // must never read as a change, and a share can insert one between passes
                 val ownBlocks = busyBlockDao.eventIds()
-                for (snapshot in current) check(snapshot, filter, prefs.showDeclined, ownBlocks, loud = reason != ChangeCheckReason.IN_APP && snapshot.date == today)
+                for (snapshot in current) check(snapshot, filter, prefs.showDeclined, ownBlocks, loud = reason != ChangeCheckReason.IN_APP && !mainUi.visible && snapshot.date == today)
             }
             current.mapTo(sortedSetOf()) { it.date }
         } catch (e: CancellationException) {
@@ -120,9 +121,10 @@ class ChangeMonitor(
     //
     // [loud]: a new change also rings the full-screen alert ([ScheduleChangeAlerter]) — for
     // today only (a day shared ahead mustn't ring in the night for an invite that can wait
-    // for the morning), and never from the app's own foreground check, where the banner is
-    // already in front of the user and the change is often their own (an RSVP "No" from the
-    // chip menu reads as Declined).
+    // for the morning), and never while the app is on screen — not from its own foreground
+    // check, and not from a background check that beat it to the lock ([MainUiVisibility]) —
+    // where the banner is already in front of the user and the change is often their own
+    // (an RSVP "No" from the chip menu reads as Declined).
     private suspend fun check(snapshot: ChangeSnapshotEntity, filter: CalendarFilter, showDeclined: Boolean, ownBlocks: Set<Long>, loud: Boolean) {
         val fresh = try {
             repository.eventsOn(snapshot.date, filter).excludeDeclined(showDeclined).excludeOwnBlocks(ownBlocks)

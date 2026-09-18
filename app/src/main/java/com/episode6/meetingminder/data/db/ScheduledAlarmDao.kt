@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
+import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
@@ -42,14 +43,26 @@ interface ScheduledAlarmDao {
     @Query("SELECT * FROM scheduled_alarm WHERE state IN ('SCHEDULED', 'SNOOZED')")
     fun observeScheduled(): Flow<List<ScheduledAlarmEntity>>
 
+    /** The newest row for [eventId] on [date], in whatever state; see [changeAlertOn], its one caller. */
+    @Query("SELECT * FROM scheduled_alarm WHERE date = :date AND event_id = :eventId ORDER BY alarm_id DESC LIMIT 1")
+    suspend fun latestOn(date: LocalDate, eventId: Long): ScheduledAlarmEntity?
+
     /**
-     * [date]'s schedule-change alert row (`event_id = -2`, `SCHEDULE_CHANGE_ALARM_EVENT_ID`),
-     * in whatever state: `ScheduleChangeAlerts` keeps one per day and re-arms it for every
-     * new change, so an alert that is still ringing is replaced rather than queued behind.
+     * Moves [alarmId] from [from] to [to] in one statement and returns 1, or returns 0 and
+     * changes nothing when the row isn't in [from] any more. Every transition out of `FIRED`
+     * uses it: a schedule-change alert's row is re-armed (`SCHEDULED`) while it rings, and a
+     * Dismiss that read `FIRED` a moment earlier must not write over that.
      */
-    @Query("SELECT * FROM scheduled_alarm WHERE date = :date AND event_id = -2 ORDER BY alarm_id DESC LIMIT 1")
-    suspend fun changeAlertOn(date: LocalDate): ScheduledAlarmEntity?
+    @Query("UPDATE scheduled_alarm SET state = :to WHERE alarm_id = :alarmId AND state = :from")
+    suspend fun transition(alarmId: Long, from: AlarmState, to: AlarmState): Int
 
     @Query("UPDATE scheduled_alarm SET state = :state WHERE alarm_id = :alarmId")
     suspend fun setState(alarmId: Long, state: AlarmState)
 }
+
+/**
+ * [date]'s schedule-change alert row (`SCHEDULE_CHANGE_ALARM_EVENT_ID`), in whatever state:
+ * `ScheduleChangeAlerts` keeps one per day and re-arms it for every new change, so an alert
+ * that is still ringing is replaced rather than queued behind.
+ */
+suspend fun ScheduledAlarmDao.changeAlertOn(date: LocalDate): ScheduledAlarmEntity? = latestOn(date, SCHEDULE_CHANGE_ALARM_EVENT_ID)

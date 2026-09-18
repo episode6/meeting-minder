@@ -132,7 +132,7 @@ class AlarmNotificationsTest {
     }
 
     @Test
-    fun aScheduleChangeAlert_offersSilenceDismissAndReShare_andSwipingItAwayDismisses() {
+    fun aScheduleChangeAlert_offersSilenceDismissAndReShare_andSwipingItAwayOnlyStopsIt() {
         val notification = AlarmNotifications.ringing(context, changeAlert, ZoneOffset.UTC, alert = true)
 
         assertThat(notification.actions.map { it.title.toString() }).containsExactly("Silence", "Dismiss", "Sync & Re-share")
@@ -143,7 +143,8 @@ class AlarmNotificationsTest {
         assertThat(reshare.isActivityIntent).isTrue()
         assertThat(reshare.savedIntent.component?.className).isEqualTo(MainActivity::class.java.name)
         assertThat(reshare.savedIntent.data).isEqualTo(DeepLinks.share(today))
-        assertThat(shadowOf(notification.deleteIntent).savedIntent.action).isEqualTo(AlarmRingingService.ACTION_DISMISS)
+        // not Dismiss: a reflexive swipe mustn't take the quiet notification with it
+        assertThat(shadowOf(notification.deleteIntent).savedIntent.action).isEqualTo(AlarmRingingService.ACTION_SWIPED_AWAY)
     }
 
     @Test

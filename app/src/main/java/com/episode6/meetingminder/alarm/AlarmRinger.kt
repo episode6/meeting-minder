@@ -88,11 +88,24 @@ class AlarmRinger(
      * dismissed schedule-change alert takes the day's quiet notification with it.
      */
     suspend fun dismiss(alarmId: Long): Boolean {
-        val row = dao.byId(alarmId)?.takeIf { it.state == AlarmState.FIRED } ?: return false
-        dao.setState(alarmId, AlarmState.DISMISSED)
+        val row = dao.byId(alarmId) ?: return false
+        if (!leaveFired(alarmId, AlarmState.DISMISSED)) return false
         if (row.eventId == SCHEDULE_CHANGE_ALARM_EVENT_ID) changeAlerts.acknowledge(row.date)
         return true
     }
+
+    /**
+     * A schedule-change alert stops ringing without having been answered — its notification
+     * was swiped away, or nobody was there ([timeOut]): `DISMISSED`, but not acknowledged, so
+     * the day's quiet notification stays in the shade. Returns false if it wasn't ringing.
+     */
+    suspend fun expire(alarmId: Long): Boolean = leaveFired(alarmId, AlarmState.DISMISSED)
+
+    // One conditional statement, never a read and then a write: `ScheduleChangeAlerts.alert`
+    // re-arms a ringing alert's row (`FIRED` -> `SCHEDULED`), and an answer that read `FIRED`
+    // just before must not write over that, or the newer change would fire into a row that
+    // is no longer armed and ring nothing.
+    private suspend fun leaveFired(alarmId: Long, to: AlarmState): Boolean = dao.transition(alarmId, AlarmState.FIRED, to) == 1
 
     /**
      * Nobody answered for the auto-timeout (TODO.md §4.4): the first time the alarm snoozes
@@ -101,12 +114,10 @@ class AlarmRinger(
     suspend fun timeOut(alarmId: Long): TimeoutResult {
         val row = dao.byId(alarmId)?.takeIf { it.state == AlarmState.FIRED } ?: return TimeoutResult.NOT_RINGING
         if (row.eventId == SCHEDULE_CHANGE_ALARM_EVENT_ID) {
-            dao.setState(alarmId, AlarmState.DISMISSED)
-            return TimeoutResult.EXPIRED
+            return if (expire(alarmId)) TimeoutResult.EXPIRED else TimeoutResult.NOT_RINGING
         }
         if (row.timedOut) {
-            dao.setState(alarmId, AlarmState.DISMISSED)
-            return TimeoutResult.GAVE_UP
+            return if (leaveFired(alarmId, AlarmState.DISMISSED)) TimeoutResult.GAVE_UP else TimeoutResult.NOT_RINGING
         }
         return when (snooze(alarmId, timedOut = true)) {
             SnoozeResult.SNOOZED -> TimeoutResult.SNOOZED
@@ -120,6 +131,12 @@ class AlarmRinger(
 
     private suspend fun snooze(alarmId: Long, timedOut: Boolean): SnoozeResult {
         val row = dao.byId(alarmId)?.takeIf { it.state == AlarmState.FIRED } ?: return SnoozeResult.NOT_RINGING
+        if (row.eventId == SCHEDULE_CHANGE_ALARM_EVENT_ID) {
+            // never snoozed (nothing offers it): a snooze that reaches the row anyway just
+            // stops it, rather than bringing stale changes back in a few minutes
+            expire(alarmId)
+            return SnoozeResult.NOT_RINGING
+        }
         val snoozed = row.copy(
             state = AlarmState.SNOOZED,
             fireAt = clock.millis() + settings.current().snoozeLength.toMillis(),
