@@ -12,7 +12,7 @@ import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.EventStatus
 import com.episode6.meetingminder.model.SelfStatus
-import com.episode6.meetingminder.model.TEST_ALARM_EVENT_ID
+import com.episode6.meetingminder.model.isSyntheticAlarmEvent
 import com.episode6.meetingminder.permissions.PermissionChecker
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
@@ -59,7 +59,7 @@ data class AlarmMaintenance(
  *    here. A `SNOOZED` row keeps its snooze while its new alarm time has passed (only its
  *    copy is refreshed), as the "Set alarms" reconcile does.
  *
- * Settings' test alarm ([TEST_ALARM_EVENT_ID]) is never touched.
+ * Settings' test alarm and a schedule-change alert ([isSyntheticAlarmEvent]) are never touched.
  */
 fun maintainAlarms(
     armed: List<ScheduledAlarmEntity>,
@@ -72,7 +72,7 @@ fun maintainAlarms(
     val cancel = mutableListOf<ScheduledAlarmEntity>()
     val refresh = mutableListOf<ScheduledAlarmEntity>()
     for (row in armed) {
-        if (row.eventId == TEST_ALARM_EVENT_ID || !row.state.armed) continue
+        if (isSyntheticAlarmEvent(row.eventId) || !row.state.armed) continue
         val event = fresh[row.key] ?: continue
         val begin = event.begin.toEpochMilli()
         val end = event.end.toEpochMilli()
@@ -132,7 +132,7 @@ class AlarmMaintainer(
     suspend fun maintain(): AlarmMaintenance = mutex.withLock {
         if (!permissionChecker.currentState().calendarGranted) return@withLock AlarmMaintenance()
         val now = clock.instant()
-        val armed = alarmDao.allScheduled().filter { it.eventId != TEST_ALARM_EVENT_ID && it.endMillis > now.toEpochMilli() }
+        val armed = alarmDao.allScheduled().filter { !isSyntheticAlarmEvent(it.eventId) && it.endMillis > now.toEpochMilli() }
         if (armed.isEmpty()) return@withLock AlarmMaintenance()
         val fresh = try {
             val everyCalendar = CalendarFilter.Only(repository.calendars().mapTo(mutableSetOf()) { it.id })

@@ -54,12 +54,14 @@ class ChangeMonitorTest {
     private val permissions = FakeCalendarPermissionChecker()
     private val notifier = FakeScheduleChangeNotifier()
     private val scheduler = FakeChangeWorkScheduler()
+    private val alerter = FakeScheduleChangeAlerter()
+    private val mainUi = MainUiVisibility()
 
     private fun sharedSnapshot(date: LocalDate, events: List<CalendarEvent>, selected: List<CalendarEvent> = events, takenAt: Long = 1_000) =
         ChangeSnapshotEntity(date, takenAt, encodeChangeSnapshotEvents(events, selected.mapTo(mutableSetOf()) { it.key }))
 
     private fun monitor(snapshotDao: ChangeSnapshotDao, settings: FakeSettingsRepository = FakeSettingsRepository()) =
-        ChangeMonitor(repository, snapshotDao, dayPlanDao, busyBlockDao, permissions, notifier, scheduler, settings, clock)
+        ChangeMonitor(repository, snapshotDao, dayPlanDao, busyBlockDao, permissions, notifier, scheduler, settings, clock, alerter, mainUi)
 
     private val moved = ScheduleChange.Moved(today, designReview.key, today.at(13), today.at(14), today.at(13, 30), today.at(14, 30))
     private val new = ScheduleChange.New(today, invite.key, invite.begin, invite.end)
@@ -280,7 +282,78 @@ class ChangeMonitorTest {
         monitor(snapshots).onShareChanged(tomorrow)
 
         assertThat(notifier.cancelled).containsExactly(tomorrow)
+        assertThat(alerter.cancelled).containsExactly(tomorrow)
         assertThat(scheduler.updates).containsExactly(setOf(today, tomorrow) to ChangeCheckReason.IN_APP)
+    }
+
+    @Test
+    fun runCheck_inTheBackground_aNewChangeToday_ringsTheLoudAlert_andTheNotificationStaysSilent() = runTest {
+        alerter.rings = true
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+        repository.events[today] = listOf(designReview, invite)
+
+        monitor(snapshots).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(alerter.alerted).containsExactly(today)
+        assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, silent = true))
+    }
+
+    @Test
+    fun runCheck_inTheBackground_whileTheAppIsOnScreen_neverRingsTheLoudAlert() = runTest {
+        // the worker and the foreground reload both run for one provider change; the worker can win
+        alerter.rings = true
+        mainUi.visible = true
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+        repository.events[today] = listOf(designReview, invite)
+
+        monitor(snapshots).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(alerter.alerted).isEmpty()
+        assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, silent = false))
+    }
+
+    @Test
+    fun runCheck_whenTheLoudAlertCantRing_theNotificationMakesTheNoise() = runTest {
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+        repository.events[today] = listOf(designReview, invite)
+
+        monitor(snapshots).runCheck(ChangeCheckReason.PERIODIC)
+
+        assertThat(alerter.alerted).containsExactly(today)
+        assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, silent = false))
+    }
+
+    @Test
+    fun runCheck_neverRingsTheLoudAlert_fromTheAppsOwnCheck_forAnotherDay_orForOldNews() = runTest {
+        alerter.rings = true
+        val tomorrowsInvite = testCalendarEvent(3, tomorrow.at(9), tomorrow.at(10), title = "Tomorrow's invite")
+        val snapshots = FakeChangeSnapshotDao(
+            listOf(sharedSnapshot(today, listOf(designReview)), sharedSnapshot(tomorrow, emptyList())),
+        )
+        repository.events[today] = listOf(designReview)
+        repository.events[tomorrow] = listOf(tomorrowsInvite)
+        val monitor = monitor(snapshots)
+
+        // a background check, but the change is on a day shared ahead
+        monitor.runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+        // the app's own foreground check: the banner is in front of the user
+        repository.events[today] = listOf(designReview, invite)
+        monitor.runCheck(ChangeCheckReason.IN_APP)
+        // a background check finding only what is already recorded
+        monitor.runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(alerter.alerted).isEmpty()
+        assertThat(notifier.shown.map { it.silent }).containsExactly(false, false)
+    }
+
+    @Test
+    fun runCheck_whenTheDayIsBackToWhatWasShared_cancelsTheLoudAlertToo() = runTest {
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview)).copy(changesJson = encodeScheduleChanges(listOf(new)))))
+        repository.events[today] = listOf(designReview)
+
+        monitor(snapshots).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(alerter.cancelled).containsExactly(today)
     }
 
     @Test

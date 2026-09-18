@@ -3,9 +3,12 @@ package com.episode6.meetingminder.ui.alarm
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.model.RingingAlarm
-import com.episode6.meetingminder.model.TEST_ALARM_EVENT_ID
+import com.episode6.meetingminder.model.ScheduleChangeAlert
+import com.episode6.meetingminder.model.isSyntheticAlarmEvent
 import com.episode6.meetingminder.store.AppStore
+import com.episode6.meetingminder.monitor.toLine
 import com.episode6.meetingminder.store.DismissAlarm
+import com.episode6.meetingminder.store.SilenceAlarm
 import com.episode6.meetingminder.store.SnoozeAlarm
 import com.episode6.redux.mapStore
 import dev.zacsweers.metro.AppScope
@@ -47,13 +50,16 @@ sealed interface AlarmRingingUiState {
     /** [alarm] is ringing; callbacks are addressed to its id, so a tap never reaches an alarm the screen isn't showing. */
     data class Ringing(val alarm: RingingAlarm, val screen: AlarmRingingScreenState) : AlarmRingingUiState
 
+    /** [alarm] is a day's schedule-change alert (TODO.md §4.3), ringing the same way. */
+    data class ScheduleChanged(val alarm: RingingAlarm, val screen: ScheduleChangeAlertScreenState) : AlarmRingingUiState
+
     /** Nothing rings any more (snoozed, dismissed, timed out) or never did: the activity closes. */
     data object Finished : AlarmRingingUiState
 }
 
 /**
  * [AlarmRingingScreen]'s store adapter: the store's [com.episode6.meetingminder.store.AppState.ringing]
- * alarm with a ticking clock, and Snooze/Dismiss dispatched as [SnoozeAlarm]/[DismissAlarm]
+ * alarm (or schedule-change alert) with a ticking clock, and Snooze/Dismiss/Silence dispatched as [SnoozeAlarm]/[DismissAlarm]/[SilenceAlarm]
  * (which `AlarmRingingService` carries out). The activity closes on [AlarmRingingUiState.Finished].
  */
 @Inject
@@ -64,7 +70,10 @@ class AlarmRingingViewModel(private val store: AppStore, private val clock: Cloc
     @OptIn(ExperimentalCoroutinesApi::class)
     val state: StateFlow<AlarmRingingUiState> = combine(phases(), ticks()) { phase, now ->
         when (phase) {
-            is Phase.Ringing -> AlarmRingingUiState.Ringing(phase.alarm, phase.alarm.toScreenState(now, clock.zone))
+            is Phase.Ringing -> when (val change = phase.alarm.scheduleChange) {
+                null -> AlarmRingingUiState.Ringing(phase.alarm, phase.alarm.toScreenState(now, clock.zone))
+                else -> AlarmRingingUiState.ScheduleChanged(phase.alarm, phase.alarm.toAlertScreenState(change, now, clock.zone))
+            }
             Phase.Waiting -> AlarmRingingUiState.Waiting
             Phase.Finished -> AlarmRingingUiState.Finished
         }
@@ -76,6 +85,32 @@ class AlarmRingingViewModel(private val store: AppStore, private val clock: Cloc
 
     fun onSnooze(alarmId: Long) {
         store.dispatch(SnoozeAlarm(alarmId))
+    }
+
+    /** The Silence button, or a volume key while the screen shows. */
+    fun onSilence(alarmId: Long) {
+        store.dispatch(SilenceAlarm(alarmId))
+    }
+
+    /**
+     * A volume key went down while the screen shows. True when it was taken to silence what
+     * is making a sound (and so mustn't move the volume); false once that is silent, or
+     * nothing rings, and the key is an ordinary volume key again. A held key repeats, and
+     * each repeat is swallowed here until the silenced alarm is published back.
+     */
+    fun onVolumeKey(): Boolean {
+        val sounding = store.state.ringing?.takeIf { !it.silenced } ?: return false
+        store.dispatch(SilenceAlarm(sounding.alarmId))
+        return true
+    }
+
+    /**
+     * The alert's "Open itinerary": answered, so dismissed; the activity opens the day view.
+     * (Its "Sync & Re-share" needs nothing here: the activity opens the share link, and the
+     * share itself dismisses the alert it answers.)
+     */
+    fun onOpenItinerary(alarmId: Long) {
+        store.dispatch(DismissAlarm(alarmId))
     }
 
     /** "Open meeting": the user is on their way, so the alarm is dismissed; the activity opens the calendar. */
@@ -123,7 +158,16 @@ internal fun RingingAlarm.toScreenState(now: Instant, zone: ZoneId) = AlarmRingi
     minutesUntilStart = minutesUntil(now, begin),
     snoozeMinutes = snoozeLength.toMinutes(),
     soundName = soundName,
-    canOpenMeeting = key.eventId != TEST_ALARM_EVENT_ID,
+    canOpenMeeting = !isSyntheticAlarmEvent(key.eventId),
+    silenced = silenced,
+)
+
+internal fun RingingAlarm.toAlertScreenState(change: ScheduleChangeAlert, now: Instant, zone: ZoneId) = ScheduleChangeAlertScreenState(
+    now = now.atZone(zone).toLocalTime(),
+    lines = change.changes.map { it.toLine(zone) },
+    syncsBusyCalendar = change.syncsBusyCalendar,
+    soundName = soundName,
+    silenced = silenced,
 )
 
 /**

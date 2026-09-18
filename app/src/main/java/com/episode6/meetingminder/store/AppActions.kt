@@ -207,6 +207,14 @@ data class SnoozeAlarm(val alarmId: Long) : AsyncAction
 data class DismissAlarm(val alarmId: Long) : AsyncAction
 
 /**
+ * "Silence" for alarm [alarmId] — the ringing screen's button, or a volume key while it
+ * shows (as for an incoming call): the sound and vibration stop, the alarm stays on screen
+ * and keeps ringing silently. Forwarded like [SnoozeAlarm]; the service publishes the
+ * silenced alarm back through [SetRinging].
+ */
+data class SilenceAlarm(val alarmId: Long) : AsyncAction
+
+/**
  * Settings' "Test alarm" button (TODO.md §4.4/§5 PR-12): arms one exact alarm ten
  * seconds out, independent of any selection, so the whole ringing path (sound, vibration,
  * full-screen wake-up) can be checked end to end (`TestAlarmSideEffects`).

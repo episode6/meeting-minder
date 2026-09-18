@@ -1,5 +1,7 @@
 package com.episode6.meetingminder.store.sideeffects
 
+import com.episode6.meetingminder.model.TEST_ALARM_EVENT_ID
+import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
 import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
@@ -143,6 +145,22 @@ class ScheduleAlarmsSideEffectsTest {
         )
         // every one of them still got its alarm: the RSVP never gates scheduling
         assertThat(scheduler.armed.values.map { it.eventId }.sorted()).isEqualTo(listOf(1L, 4L, 5L, 6L))
+    }
+
+    @Test
+    fun setAlarms_leavesAnArmedScheduleChangeAlertAlone_butCancelsTheTestAlarm() = runTest {
+        fun synthetic(eventId: Long) = ScheduledAlarmEntity(
+            date = today, eventId = eventId, instanceTime = 0, fireAt = now.toEpochMilli(), title = "",
+            beginMillis = now.toEpochMilli(), endMillis = now.toEpochMilli(), soundIndex = 1,
+        )
+        val alertId = alarmDao.insert(synthetic(SCHEDULE_CHANGE_ALARM_EVENT_ID))
+        val testAlarmId = alarmDao.insert(synthetic(TEST_ALARM_EVENT_ID))
+
+        run(FakeDayPlanDao(selections = listOf(selection(standup))))
+
+        assertThat(alarmDao.rows.getValue(alertId).state).isEqualTo(AlarmState.SCHEDULED)
+        assertThat(alarmDao.rows.getValue(testAlarmId).state).isEqualTo(AlarmState.CANCELLED)
+        assertThat(scheduler.cancelled).containsExactly(testAlarmId)
     }
 
     @Test

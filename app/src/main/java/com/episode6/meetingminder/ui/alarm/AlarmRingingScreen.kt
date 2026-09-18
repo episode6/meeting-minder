@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +75,8 @@ data class AlarmRingingScreenState(
     val soundName: String?,
     /** False for Settings' "Test alarm" (`TEST_ALARM_EVENT_ID`): there is no real event to open. */
     val canOpenMeeting: Boolean = true,
+    /** The sound is off (Silence, or a volume key) though the alarm still rings: no Silence button, and "Silenced" where the sound was named. */
+    val silenced: Boolean = false,
 )
 
 /** Sizes of the ringing screen, kept out of the layout code. */
@@ -97,8 +101,8 @@ object AlarmRingingDefaults {
 /**
  * The full-screen ringing alarm (TODO.md §4.4, render 5), hosted by `AlarmActivity` over
  * the lock screen: the countdown to the meeting, a big clock, the pulsing alarm, the
- * meeting's title/time/place, Dismiss and Snooze, "Open meeting", and which random sound is
- * playing. Always dark. Scrolls when a large font scale doesn't fit. [animated] is off in
+ * meeting's title/time/place, Dismiss, Snooze and Silence, "Open meeting", and which random
+ * sound is playing. Always dark. Scrolls when a large font scale doesn't fit. [animated] is off in
  * previews so screenshot tests capture a still frame.
  */
 @Composable
@@ -107,8 +111,55 @@ fun AlarmRingingScreen(
     onDismiss: () -> Unit,
     onSnooze: () -> Unit,
     onOpenMeeting: () -> Unit,
+    onSilence: () -> Unit,
     modifier: Modifier = Modifier,
     animated: Boolean = true,
+) {
+    val timeFormat = rememberTimelineTimeFormat()
+    RingingLayout(
+        heading = countdown(state.minutesUntilStart),
+        now = state.now,
+        icon = Icons.Rounded.Alarm,
+        animated = animated,
+        modifier = modifier,
+        details = {
+            Text(
+                text = state.title,
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = detailLine(state, timeFormat.time(state.begin), timeFormat.time(state.end)),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        },
+        buttons = {
+            DismissButton(onDismiss)
+            SecondaryButton(stringResource(R.string.alarm_snooze_minutes, state.snoozeMinutes), onSnooze)
+            if (!state.silenced) SecondaryButton(stringResource(R.string.alarm_silence), onSilence)
+            if (state.canOpenMeeting) {
+                TextButton(onClick = onOpenMeeting) {
+                    Text(stringResource(R.string.alarm_open_meeting))
+                }
+            }
+            SoundLine(state.soundName, state.silenced)
+        },
+    )
+}
+
+/** The ringing screens' shared frame: a heading over the big clock, the pulse, [details], then [buttons]. */
+@Composable
+internal fun RingingLayout(
+    heading: String,
+    now: LocalTime,
+    icon: ImageVector,
+    animated: Boolean,
+    modifier: Modifier = Modifier,
+    details: @Composable ColumnScope.() -> Unit,
+    buttons: @Composable ColumnScope.() -> Unit,
 ) {
     val timeFormat = rememberTimelineTimeFormat()
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -126,75 +177,70 @@ fun AlarmRingingScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = countdown(state.minutesUntilStart).toUpperCase(LocaleList.current),
+                        text = heading.toUpperCase(LocaleList.current),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                         letterSpacing = AlarmRingingDefaults.CountdownLetterSpacing,
                         textAlign = TextAlign.Center,
                     )
                     Text(
-                        text = timeFormat.clockTime(state.now),
+                        text = timeFormat.clockTime(now),
                         style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onBackground,
                     )
                 }
                 Spacer(Modifier.height(AlarmRingingDefaults.SectionSpacing))
-                AlarmPulse(animated)
+                AlarmPulse(icon, animated)
                 Spacer(Modifier.height(AlarmRingingDefaults.SectionSpacing))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = state.title,
-                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onBackground,
-                        textAlign = TextAlign.Center,
-                    )
-                    Text(
-                        text = detailLine(state, timeFormat.time(state.begin), timeFormat.time(state.end)),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally, content = details)
                 Spacer(Modifier.height(AlarmRingingDefaults.SectionSpacing))
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(AlarmRingingDefaults.ButtonSpacing),
-                ) {
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = AlarmRingingDefaults.ButtonHeight),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = AlarmDismissContainer,
-                            contentColor = AlarmOnDismissContainer,
-                        ),
-                    ) {
-                        Text(stringResource(R.string.alarm_dismiss), style = MaterialTheme.typography.titleMedium)
-                    }
-                    OutlinedButton(
-                        onClick = onSnooze,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = AlarmRingingDefaults.ButtonHeight),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurfaceVariant),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground),
-                    ) {
-                        Text(stringResource(R.string.alarm_snooze_minutes, state.snoozeMinutes), style = MaterialTheme.typography.titleMedium)
-                    }
-                    if (state.canOpenMeeting) {
-                        TextButton(onClick = onOpenMeeting) {
-                            Text(stringResource(R.string.alarm_open_meeting))
-                        }
-                    }
-                    if (state.soundName != null) {
-                        Text(
-                            text = stringResource(R.string.alarm_sound_playing, state.soundName),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AlarmRingingDefaults.SOUND_LINE_ALPHA),
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                }
+                    content = buttons,
+                )
             }
         }
     }
+}
+
+@Composable
+internal fun DismissButton(onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().heightIn(min = AlarmRingingDefaults.ButtonHeight),
+        colors = ButtonDefaults.buttonColors(containerColor = AlarmDismissContainer, contentColor = AlarmOnDismissContainer),
+    ) {
+        Text(stringResource(R.string.alarm_dismiss), style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+internal fun SecondaryButton(text: String, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().heightIn(min = AlarmRingingDefaults.ButtonHeight),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurfaceVariant),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground),
+    ) {
+        Text(text, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+/** The subtle last line: "Silenced" once it is, otherwise which random sound is playing (nothing until one has started). */
+@Composable
+internal fun SoundLine(soundName: String?, silenced: Boolean) {
+    val text = when {
+        silenced -> stringResource(R.string.alarm_silenced)
+        soundName != null -> stringResource(R.string.alarm_sound_playing, soundName)
+        else -> return
+    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AlarmRingingDefaults.SOUND_LINE_ALPHA),
+        textAlign = TextAlign.Center,
+    )
 }
 
 @Composable
@@ -212,7 +258,7 @@ private fun detailLine(state: AlarmRingingScreenState, begin: String, end: Strin
 
 /** Render 5's concentric rings around the alarm icon, breathing while it rings. */
 @Composable
-private fun AlarmPulse(animated: Boolean) {
+private fun AlarmPulse(icon: ImageVector, animated: Boolean) {
     val scale = if (animated) {
         val transition = rememberInfiniteTransition(label = "alarm pulse")
         val value by transition.animateFloat(
@@ -240,7 +286,7 @@ private fun AlarmPulse(animated: Boolean) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                Icons.Rounded.Alarm,
+                icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(AlarmRingingDefaults.IconSize),
@@ -265,7 +311,7 @@ private val PreviewRinging = AlarmRingingScreenState(
 @Composable
 internal fun AlarmRingingScreenPreview() {
     MeetingMinderTheme(darkTheme = true) {
-        AlarmRingingScreen(PreviewRinging, onDismiss = {}, onSnooze = {}, onOpenMeeting = {}, animated = false)
+        AlarmRingingScreen(PreviewRinging, onDismiss = {}, onSnooze = {}, onOpenMeeting = {}, onSilence = {}, animated = false)
     }
 }
 
@@ -285,6 +331,7 @@ internal fun AlarmRingingScreenStartedPreview() {
             onDismiss = {},
             onSnooze = {},
             onOpenMeeting = {},
+            onSilence = {},
             animated = false,
         )
     }
@@ -295,6 +342,15 @@ internal fun AlarmRingingScreenStartedPreview() {
 @Composable
 internal fun AlarmRingingScreenLargeFontPreview() {
     MeetingMinderTheme(darkTheme = true) {
-        AlarmRingingScreen(PreviewRinging, onDismiss = {}, onSnooze = {}, onOpenMeeting = {}, animated = false)
+        AlarmRingingScreen(PreviewRinging, onDismiss = {}, onSnooze = {}, onOpenMeeting = {}, onSilence = {}, animated = false)
+    }
+}
+
+/** Silenced: the Silence button is gone and the sound line says so. */
+@Preview(showBackground = true)
+@Composable
+internal fun AlarmRingingScreenSilencedPreview() {
+    MeetingMinderTheme(darkTheme = true) {
+        AlarmRingingScreen(PreviewRinging.copy(silenced = true), onDismiss = {}, onSnooze = {}, onOpenMeeting = {}, onSilence = {}, animated = false)
     }
 }

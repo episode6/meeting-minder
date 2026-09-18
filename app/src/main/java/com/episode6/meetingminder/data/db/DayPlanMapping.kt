@@ -5,6 +5,7 @@ import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.SelectedEvent
 import com.episode6.meetingminder.model.TEST_ALARM_EVENT_ID
+import com.episode6.meetingminder.model.isSyntheticAlarmEvent
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -29,7 +30,7 @@ internal fun buildDayPlans(
     val plansByDate = plans.associateBy { it.date }
     val selectionsByDate = selections.groupBy { it.date }
     val armedByDate = scheduled
-        .filter { it.state.armed && it.eventId != TEST_ALARM_EVENT_ID }
+        .filter { it.state.armed && !isSyntheticAlarmEvent(it.eventId) }
         .groupBy({ it.date }, { it.key })
     val dates = plansByDate.keys + selectionsByDate.keys + armedByDate.keys
     return dates.associateWith { date ->

@@ -38,6 +38,16 @@ internal class FakeScheduledAlarmDao(rows: List<ScheduledAlarmEntity> = emptyLis
 
     override suspend fun allScheduled(): List<ScheduledAlarmEntity> = rows.values.filter { it.state.armed }
 
+    override suspend fun latestOn(date: LocalDate, eventId: Long): ScheduledAlarmEntity? =
+        rows.values.filter { it.date == date && it.eventId == eventId }.maxByOrNull { it.alarmId }
+
+    override suspend fun transition(alarmId: Long, from: AlarmState, to: AlarmState): Int {
+        val row = rows[alarmId]?.takeIf { it.state == from } ?: return 0
+        rows[alarmId] = row.copy(state = to)
+        changed()
+        return 1
+    }
+
     override suspend fun setState(alarmId: Long, state: AlarmState) {
         rows[alarmId]?.let { rows[alarmId] = it.copy(state = state) }
         changed()

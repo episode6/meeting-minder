@@ -1,5 +1,9 @@
 package com.episode6.meetingminder.ui.alarm
 
+import com.episode6.meetingminder.store.SilenceAlarm
+import com.episode6.meetingminder.monitor.toLine
+import com.episode6.meetingminder.model.ScheduleChangeAlert
+import com.episode6.meetingminder.model.ScheduleChange
 import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import assertk.assertThat
@@ -174,6 +178,45 @@ class AlarmRingingViewModelTest {
     }
 
     @Test
+    fun aScheduleChangeAlert_isShownAsOne_withItsChangesAsLines() = runTest {
+        val change = ScheduleChange.New(alarm.date, EventKey(8, 0), Instant.parse("2026-09-14T15:00:00Z"), Instant.parse("2026-09-14T15:30:00Z"))
+        val alert = alarm.copy(silenced = true, soundName = "Argon", scheduleChange = ScheduleChangeAlert(listOf(change), syncsBusyCalendar = true))
+        val viewModel = AlarmRingingViewModel(store(alert), clock)
+
+        viewModel.state.test {
+            val shown = awaitMatching { it is AlarmRingingUiState.ScheduleChanged } as AlarmRingingUiState.ScheduleChanged
+            assertThat(shown.alarm).isEqualTo(alert)
+            assertThat(shown.screen.lines).isEqualTo(listOf(change.toLine(clock.zone)))
+            assertThat(shown.screen.syncsBusyCalendar).isEqualTo(true)
+            assertThat(shown.screen.silenced).isEqualTo(true)
+            assertThat(shown.screen.soundName).isEqualTo("Argon")
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun aVolumeKey_silencesWhatIsMakingASound_andIsAnOrdinaryKeyOtherwise() = runTest {
+        val recorded = mutableListOf<Action>()
+        val recorder = sideEffect { actions.onEach { recorded += it }.filter { false } }
+        val store = store(alarm, setOf(recorder))
+        val viewModel = AlarmRingingViewModel(store, clock)
+        runCurrent()
+
+        assertThat(viewModel.onVolumeKey()).isEqualTo(true)
+        runCurrent()
+        assertThat(recorded.filterIsInstance<SilenceAlarm>()).containsExactly(SilenceAlarm(alarm.alarmId))
+
+        store.dispatch(SetRinging(alarm.copy(silenced = true)))
+        runCurrent()
+        assertThat(viewModel.onVolumeKey()).isEqualTo(false)
+
+        store.dispatch(SetRinging(null))
+        runCurrent()
+        assertThat(viewModel.onVolumeKey()).isEqualTo(false)
+        assertThat(recorded.filterIsInstance<SilenceAlarm>()).containsExactly(SilenceAlarm(alarm.alarmId))
+    }
+
+    @Test
     fun callbacks_dispatchToTheAlarmTheyWereGiven() = runTest {
         val recorded = mutableListOf<Action>()
         val recorder = sideEffect { actions.onEach { recorded += it }.filter { false } }
@@ -183,10 +226,12 @@ class AlarmRingingViewModelTest {
         viewModel.onSnooze(3)
         viewModel.onDismiss(4)
         viewModel.onOpenMeeting(5)
+        viewModel.onSilence(6)
+        viewModel.onOpenItinerary(7)
         runCurrent()
 
-        assertThat(recorded.filter { it is SnoozeAlarm || it is DismissAlarm })
-            .containsExactly(SnoozeAlarm(3), DismissAlarm(4), DismissAlarm(5))
+        assertThat(recorded.filter { it is SnoozeAlarm || it is DismissAlarm || it is SilenceAlarm })
+            .containsExactly(SnoozeAlarm(3), DismissAlarm(4), DismissAlarm(5), SilenceAlarm(6), DismissAlarm(7))
     }
 
     @Test

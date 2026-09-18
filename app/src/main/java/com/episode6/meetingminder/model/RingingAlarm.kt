@@ -14,6 +14,30 @@ import java.time.LocalDate
 const val TEST_ALARM_EVENT_ID = -1L
 
 /**
+ * The `scheduled_alarm.event_id` of a day's schedule-change alert (TODO.md §4.3's loud
+ * alert, `alarm/ScheduleChangeAlerts`): one row per shared day, armed for "now" when a
+ * background check finds a new change, so the alert rings through the same
+ * `AlarmReceiver`/`AlarmRingingService`/`AlarmActivity` path as a meeting's alarm. Like
+ * [TEST_ALARM_EVENT_ID] it is never a real `Events._ID`; see [isSyntheticAlarmEvent].
+ */
+const val SCHEDULE_CHANGE_ALARM_EVENT_ID = -2L
+
+/**
+ * True for the `event_id`s of rows that aren't a meeting's alarm ([TEST_ALARM_EVENT_ID],
+ * [SCHEDULE_CHANGE_ALARM_EVENT_ID]): everything that folds `scheduled_alarm` rows into a
+ * day's selection or reads their event back from the provider skips them.
+ */
+fun isSyntheticAlarmEvent(eventId: Long): Boolean = eventId < 0
+
+/**
+ * What a ringing schedule-change alert is about ([RingingAlarm.scheduleChange]): the day's
+ * recorded [changes] (times only, like everything else the app says about a shared day),
+ * and whether a re-share would also sync the busy calendar, which decides between
+ * "Sync & Re-share" and "Re-share" on its button.
+ */
+data class ScheduleChangeAlert(val changes: List<ScheduleChange>, val syncsBusyCalendar: Boolean)
+
+/**
  * The alarm that is ringing right now ([com.episode6.meetingminder.store.AppState.ringing]):
  * what `AlarmRingingService` is playing and the full-screen `AlarmActivity` shows (render
  * 5). Built from the denormalised `scheduled_alarm` row alone, never the provider, so it
@@ -38,4 +62,12 @@ data class RingingAlarm(
      * re-roll.
      */
     val soundName: String? = null,
+    /**
+     * The user silenced it (the Silence button, or a volume key, as for an incoming call):
+     * the sound and vibration are off but it is still ringing — on screen, unanswered, and
+     * subject to the auto-timeout.
+     */
+    val silenced: Boolean = false,
+    /** Set when this is a day's schedule-change alert rather than a meeting's alarm; [title], [begin] and [end] then mean nothing. */
+    val scheduleChange: ScheduleChangeAlert? = null,
 )

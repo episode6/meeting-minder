@@ -13,6 +13,9 @@ import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.RingingAlarm
+import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
+import com.episode6.meetingminder.model.ScheduleChange
+import com.episode6.meetingminder.model.ScheduleChangeAlert
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.time.Clock
@@ -28,6 +31,7 @@ class AlarmRingerTest {
     private val now = Instant.parse("2026-09-14T08:55:00Z")
     private val clock = Clock.fixed(now, ZoneOffset.UTC)
     private val scheduler = FakeAlarmScheduler()
+    private val changeAlerts = FakeScheduleChangeAlertContent()
     private val settings = FakeSettingsRepository(Settings(snoozeLength = Duration.ofMinutes(4), autoTimeout = Duration.ofMinutes(1)))
 
     private fun row(state: AlarmState = AlarmState.SCHEDULED, timedOut: Boolean = false) = ScheduledAlarmEntity(
@@ -37,7 +41,7 @@ class AlarmRingerTest {
         soundIndex = 77, state = state, location = "Room 4", timedOut = timedOut,
     )
 
-    private fun ringer(dao: FakeScheduledAlarmDao, scheduler: AlarmScheduler = this.scheduler) = AlarmRinger(dao, scheduler, settings, clock)
+    private fun ringer(dao: FakeScheduledAlarmDao, scheduler: AlarmScheduler = this.scheduler) = AlarmRinger(dao, scheduler, settings, clock, changeAlerts)
 
     @Test
     fun fire_marksTheRowFired_andReturnsWhatToRing() = runTest {
@@ -158,5 +162,80 @@ class AlarmRingerTest {
     @Test
     fun autoTimeout_comesFromSettings() = runTest {
         assertThat(ringer(FakeScheduledAlarmDao()).autoTimeout()).isEqualTo(Duration.ofMinutes(1))
+    }
+
+    private fun changeRow(state: AlarmState = AlarmState.SCHEDULED) = row(state).copy(eventId = SCHEDULE_CHANGE_ALARM_EVENT_ID)
+
+    private val alert = ScheduleChangeAlert(
+        listOf(ScheduleChange.New(today, EventKey(8, 0), Instant.parse("2026-09-14T15:00:00Z"), Instant.parse("2026-09-14T15:30:00Z"))),
+        syncsBusyCalendar = true,
+    )
+
+    @Test
+    fun fire_aScheduleChangeAlert_loadsWhatChanged() = runTest {
+        changeAlerts.alerts[today] = alert
+        val dao = FakeScheduledAlarmDao(listOf(changeRow()))
+
+        assertThat(ringer(dao).fire(3)?.scheduleChange).isEqualTo(alert)
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.FIRED)
+    }
+
+    @Test
+    fun fire_aScheduleChangeAlertWithNothingLeftToSay_ringsNothing_andIsDone() = runTest {
+        val dao = FakeScheduledAlarmDao(listOf(changeRow()))
+
+        assertThat(ringer(dao).fire(3)).isNull()
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.DISMISSED)
+    }
+
+    @Test
+    fun dismiss_aScheduleChangeAlert_acknowledgesTheDay_anAlarmDoesNot() = runTest {
+        ringer(FakeScheduledAlarmDao(listOf(row(AlarmState.FIRED)))).dismiss(3)
+        assertThat(changeAlerts.acknowledged).isEmpty()
+
+        ringer(FakeScheduledAlarmDao(listOf(changeRow(AlarmState.FIRED)))).dismiss(3)
+        assertThat(changeAlerts.acknowledged).isEqualTo(listOf(today))
+    }
+
+    @Test
+    fun anAnswerArrivingAfterTheAlertWasReArmed_leavesItArmed_forTheNewerChange() = runTest {
+        // ScheduleChangeAlerts.alert re-arms the ringing row; the answer read FIRED just before
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(AlarmState.SCHEDULED)))
+        val ringer = ringer(dao)
+
+        assertThat(ringer.dismiss(3)).isFalse()
+        assertThat(ringer.expire(3)).isFalse()
+        assertThat(ringer.timeOut(3)).isEqualTo(TimeoutResult.NOT_RINGING)
+
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.SCHEDULED)
+        assertThat(changeAlerts.acknowledged).isEmpty()
+    }
+
+    @Test
+    fun expire_stopsARingingAlert_withoutAcknowledgingTheDay() = runTest {
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(AlarmState.FIRED)))
+
+        assertThat(ringer(dao).expire(3)).isTrue()
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.DISMISSED)
+        assertThat(changeAlerts.acknowledged).isEmpty()
+    }
+
+    @Test
+    fun snooze_aScheduleChangeAlert_neverReArmsIt() = runTest {
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(AlarmState.FIRED)))
+
+        assertThat(ringer(dao).snooze(3)).isEqualTo(SnoozeResult.NOT_RINGING)
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.DISMISSED)
+        assertThat(scheduler.armed).isEmpty()
+    }
+
+    @Test
+    fun timeOut_aScheduleChangeAlert_expiresWithoutSnoozingOrAcknowledging() = runTest {
+        val dao = FakeScheduledAlarmDao(listOf(changeRow(AlarmState.FIRED)))
+
+        assertThat(ringer(dao).timeOut(3)).isEqualTo(TimeoutResult.EXPIRED)
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.DISMISSED)
+        assertThat(scheduler.armed).isEmpty()
+        assertThat(changeAlerts.acknowledged).isEmpty()
     }
 }

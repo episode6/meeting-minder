@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.store.sideeffects
 
+import com.episode6.meetingminder.store.SilenceAlarm
 import android.Manifest
 import android.app.Application
 import android.app.NotificationManager
@@ -14,6 +15,7 @@ import com.episode6.meetingminder.alarm.AlarmRinger
 import com.episode6.meetingminder.alarm.AlarmRingingCommands
 import com.episode6.meetingminder.alarm.AlarmScheduler
 import com.episode6.meetingminder.alarm.FakeAlarmScheduler
+import com.episode6.meetingminder.alarm.FakeScheduleChangeAlertContent
 import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.FakeScheduledAlarmDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
@@ -72,10 +74,25 @@ class AlarmRingingSideEffectsTest {
         override fun snooze(alarmId: Long): Boolean = deliver.also { sent += "snooze:$alarmId" }
 
         override fun dismiss(alarmId: Long): Boolean = deliver.also { sent += "dismiss:$alarmId" }
+
+        override fun silence(alarmId: Long): Boolean = deliver.also { sent += "silence:$alarmId" }
     }
 
     private fun effect(commands: AlarmRingingCommands, scheduler: AlarmScheduler = FakeAlarmScheduler()) =
-        object : AlarmRingingSideEffects {}.alarmRinging(commands, AlarmRinger(dao, scheduler, FakeSettingsRepository(), clock), context, clock)
+        object : AlarmRingingSideEffects {}.alarmRinging(commands, AlarmRinger(dao, scheduler, FakeSettingsRepository(), clock, FakeScheduleChangeAlertContent()), context, clock)
+
+    @Test
+    fun silence_isHandedToTheRingingService_andNeverWritesTheRow() = runTest {
+        val delivered = FakeCommands(deliver = true)
+        val undelivered = FakeCommands(deliver = false)
+
+        val output = effect(delivered).output(SilenceAlarm(3), state = ringingState).toList() +
+            effect(undelivered).output(SilenceAlarm(3), state = ringingState).toList()
+
+        assertThat(output).isEmpty()
+        assertThat(delivered.sent).containsExactly("silence:3")
+        assertThat(dao.rows.getValue(3).state).isEqualTo(AlarmState.FIRED)
+    }
 
     @Test
     fun snooze_isHandedToTheRingingService() = runTest {

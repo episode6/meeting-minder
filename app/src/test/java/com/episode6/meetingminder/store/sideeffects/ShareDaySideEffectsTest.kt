@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.store.sideeffects
 
+import com.episode6.meetingminder.monitor.MainUiVisibility
 import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.hasSize
@@ -34,6 +35,7 @@ import com.episode6.meetingminder.monitor.ChangeCheckReason
 import com.episode6.meetingminder.monitor.ChangeMonitor
 import com.episode6.meetingminder.monitor.FakeCalendarPermissionChecker
 import com.episode6.meetingminder.monitor.FakeChangeWorkScheduler
+import com.episode6.meetingminder.monitor.FakeScheduleChangeAlerter
 import com.episode6.meetingminder.monitor.FakeScheduleChangeNotifier
 import com.episode6.meetingminder.share.BusyCalendarSyncer
 import com.episode6.meetingminder.store.MarkNotShared
@@ -81,7 +83,7 @@ class ShareDaySideEffectsTest {
         dayPlanDao,
         changeSnapshotDao,
         repository,
-        ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock),
+        ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock, FakeScheduleChangeAlerter(), MainUiVisibility()),
         busyBlocks,
         settings,
         clock,
@@ -256,7 +258,7 @@ class ShareDaySideEffectsTest {
         val dayPlanDao = FakeDayPlanDao(plans = listOf(DayPlanEntity(today, sharedAt = now.toEpochMilli())))
         val changeSnapshotDao = FakeChangeSnapshotDao(entities = listOf(ChangeSnapshotEntity(today, now.toEpochMilli(), "[]")))
         val settings = FakeSettingsRepository()
-        val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock)
+        val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock, FakeScheduleChangeAlerter(), MainUiVisibility())
         val effect = object : ShareDaySideEffects {}.markNotShared(dayPlanDao, changeSnapshotDao, monitor, syncer(dayPlanDao, settings))
 
         effect.output(MarkNotShared(today), state = CalendarGrantedAppState).toList()
@@ -332,7 +334,7 @@ class ShareDaySideEffectsTest {
         busyBlocks.upsert(BusyBlockEntity(eventId = 900, date = today, calendarId = 1, beginMillis = 0, endMillis = 1))
         busyBlocks.upsert(BusyBlockEntity(eventId = 901, date = today.plusDays(1), calendarId = 1, beginMillis = 0, endMillis = 1))
         repository.ownEvents += setOf(900L, 901L)
-        val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock)
+        val monitor = ChangeMonitor(repository, changeSnapshotDao, dayPlanDao, busyBlocks, FakeCalendarPermissionChecker(), notifier, scheduler, settings, clock, FakeScheduleChangeAlerter(), MainUiVisibility())
         val effect = object : ShareDaySideEffects {}.markNotShared(dayPlanDao, changeSnapshotDao, monitor, syncer(dayPlanDao, settings))
 
         effect.output(MarkNotShared(today), state = CalendarGrantedAppState).toList()

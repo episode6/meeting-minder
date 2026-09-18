@@ -8,6 +8,7 @@ import com.episode6.meetingminder.alarm.SnoozeResult
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.DismissAlarm
 import com.episode6.meetingminder.store.SetRinging
+import com.episode6.meetingminder.store.SilenceAlarm
 import com.episode6.meetingminder.store.SnoozeAlarm
 import com.episode6.redux.sideeffects.SideEffect
 import dev.zacsweers.metro.AppScope
@@ -21,7 +22,7 @@ import kotlinx.coroutines.flow.flow
 import java.time.Clock
 
 /**
- * The ringing screen's [SnoozeAlarm]/[DismissAlarm] (TODO.md §4.4). `AlarmRingingService`
+ * The ringing screen's [SnoozeAlarm]/[DismissAlarm]/[SilenceAlarm] (TODO.md §4.4). `AlarmRingingService`
  * owns the ringing — the sound, the queue, the row writes it awaits before letting go of
  * the foreground — so the command is handed to it ([AlarmRingingCommands]) and the service
  * publishes the outcome back as `SetRinging`. Should the OS refuse to deliver it, the
@@ -34,8 +35,13 @@ interface AlarmRingingSideEffects {
     @OptIn(ExperimentalCoroutinesApi::class)
     @Provides @IntoSet
     fun alarmRinging(commands: AlarmRingingCommands, ringer: AlarmRinger, context: Context, clock: Clock): SideEffect<AppState> = sideEffect {
-        actions.filter { it is SnoozeAlarm || it is DismissAlarm }.flatMapMerge { action ->
+        actions.filter { it is SnoozeAlarm || it is DismissAlarm || it is SilenceAlarm }.flatMapMerge { action ->
             flow {
+                if (action is SilenceAlarm) {
+                    // undelivered means no service, which means no sound: nothing to fall back to
+                    commands.silence(action.alarmId)
+                    return@flow
+                }
                 val alarmId = if (action is SnoozeAlarm) action.alarmId else (action as DismissAlarm).alarmId
                 val delivered = if (action is SnoozeAlarm) commands.snooze(alarmId) else commands.dismiss(alarmId)
                 if (!delivered) {

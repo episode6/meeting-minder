@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.store.sideeffects
 
+import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
 import android.util.Log
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.alarm.AlarmReconciliation
@@ -146,7 +147,10 @@ internal class AlarmReconcileWriter(
             date = date,
             selected = dayPlanDao.selectedEventsOn(date),
             freshEvents = freshEvents,
-            scheduled = alarmDao.scheduledOn(date),
+            // A schedule-change alert armed for this very second isn't the selection's to
+            // cancel. Only that row, not every synthetic one: Settings' test alarm is meant to
+            // be cancelled here like any alarm that isn't in the selection (TestAlarmSideEffects).
+            scheduled = alarmDao.scheduledOn(date).filter { it.eventId != SCHEDULE_CHANGE_ALARM_EVENT_ID },
             leadTime = settings.current().leadTime,
             now = now,
             soundIndex = { random.nextInt(Int.MAX_VALUE) },

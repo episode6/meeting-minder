@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.store.sideeffects
 
+import com.episode6.meetingminder.monitor.MainUiVisibility
 import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.containsExactly
@@ -19,6 +20,7 @@ import com.episode6.meetingminder.monitor.ChangeCheckReason
 import com.episode6.meetingminder.monitor.ChangeMonitor
 import com.episode6.meetingminder.monitor.FakeCalendarPermissionChecker
 import com.episode6.meetingminder.monitor.FakeChangeWorkScheduler
+import com.episode6.meetingminder.monitor.FakeScheduleChangeAlerter
 import com.episode6.meetingminder.monitor.FakeScheduleChangeNotifier
 import com.episode6.meetingminder.store.CalendarContentChanged
 import com.episode6.meetingminder.store.LoadDay
@@ -66,7 +68,7 @@ class ChangeDetectionSideEffectsTest {
         val repository = FakeCalendarRepository(events = mutableMapOf(today to listOf(testCalendarEvent(1, at(today, 15), at(today, 16)))))
         val snapshots = FakeChangeSnapshotDao(listOf(ChangeSnapshotEntity(today, 1, "[]")))
         val scheduler = FakeChangeWorkScheduler()
-        val monitor = ChangeMonitor(repository, snapshots, FakeDayPlanDao(), FakeBusyBlockDao(), FakeCalendarPermissionChecker(), FakeScheduleChangeNotifier(), scheduler, FakeSettingsRepository(), clock)
+        val monitor = ChangeMonitor(repository, snapshots, FakeDayPlanDao(), FakeBusyBlockDao(), FakeCalendarPermissionChecker(), FakeScheduleChangeNotifier(), scheduler, FakeSettingsRepository(), clock, FakeScheduleChangeAlerter(), MainUiVisibility())
 
         val output = object : ChangeDetectionSideEffects {}.runChangeCheck(monitor).output(LoadDay(today), CalendarContentChanged).toList()
 

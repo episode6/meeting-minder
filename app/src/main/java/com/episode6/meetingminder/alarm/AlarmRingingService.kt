@@ -25,9 +25,10 @@ private const val LOG_TAG = "AlarmRingingService"
  * The foreground service that rings (TODO.md §4.4). [AlarmReceiver] starts it with
  * `startForegroundService` the moment an alarm fires; it then posts the ringing
  * notification (channel `alarms`, `CATEGORY_ALARM`, a full-screen intent to
- * [AlarmActivity], Snooze/Dismiss actions back into this service), plays the randomised
+ * [AlarmActivity], Silence/Snooze/Dismiss actions back into this service), plays the randomised
  * sound ([AlarmSoundPlayer], `USAGE_ALARM` throughout) and vibrates ([AlarmVibration]),
- * and publishes `SetRinging` so the ringing screen can render it. Type `mediaPlayback`: no
+ * and publishes `SetRinging` so the ringing screen can render it. A day's schedule-change
+ * alert (TODO.md §4.3, `ScheduleChangeAlerts`) rings here too, as one more alarm. Type `mediaPlayback`: no
  * timeout, no runtime prerequisite, and what Android 17's background-audio rules expect.
  *
  * The rules — the foreground deadline, the queue, awaited snooze writes, the auto-timeout
@@ -40,6 +41,7 @@ class AlarmRingingService : Service(), RingingOutputs {
     private lateinit var session: AlarmRingingSession
     private lateinit var player: AlarmSoundPlayer
     private lateinit var vibration: AlarmVibration
+    private lateinit var volumeKeys: AlarmVolumeKeys
     private var lastStartId = 0
 
     override fun onCreate() {
@@ -48,6 +50,7 @@ class AlarmRingingService : Service(), RingingOutputs {
         session = AlarmRingingSession(scope, graph.alarmRinger, this)
         player = AlarmSoundPlayer(this, graph.recentAlarmSounds, graph.settingsRepository)
         vibration = AlarmVibration(this)
+        volumeKeys = AlarmVolumeKeys(this)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -64,6 +67,8 @@ class AlarmRingingService : Service(), RingingOutputs {
                 session.fire(alarmId)
             }
             ACTION_SNOOZE -> session.snooze(alarmId)
+            ACTION_SILENCE -> session.silence(alarmId)
+            ACTION_SWIPED_AWAY -> session.swipedAway(alarmId)
             else -> session.dismiss(alarmId)
         }
         return START_NOT_STICKY
@@ -74,6 +79,7 @@ class AlarmRingingService : Service(), RingingOutputs {
         scope.cancel()
         player.stop()
         vibration.stop()
+        volumeKeys.stop()
         AlarmWakeLock.release()
         super.onDestroy()
     }
@@ -90,11 +96,14 @@ class AlarmRingingService : Service(), RingingOutputs {
     override fun startSound(alarm: RingingAlarm) {
         player.start(scope, alarm) { soundName -> session.onSoundStarted(alarm.alarmId, soundName) }
         vibration.start(alarmVibrationTimings(alarm.soundIndex))
+        // while it makes a sound, either volume key silences it, as for an incoming call
+        volumeKeys.start { session.silence(alarm.alarmId) }
     }
 
     override fun stopSound() {
         player.stop()
         vibration.stop()
+        volumeKeys.stop()
     }
 
     override fun publish(ringing: RingingAlarm?) {
@@ -136,6 +145,8 @@ class AlarmRingingService : Service(), RingingOutputs {
         const val ACTION_FIRE = "com.episode6.meetingminder.action.RING"
         const val ACTION_SNOOZE = "com.episode6.meetingminder.action.SNOOZE"
         const val ACTION_DISMISS = "com.episode6.meetingminder.action.DISMISS"
+        const val ACTION_SILENCE = "com.episode6.meetingminder.action.SILENCE"
+        const val ACTION_SWIPED_AWAY = "com.episode6.meetingminder.action.SWIPED_AWAY"
 
         private const val NO_ALARM = -1L
 
@@ -145,6 +156,11 @@ class AlarmRingingService : Service(), RingingOutputs {
         fun snoozeIntent(context: Context, alarmId: Long): Intent = intent(context, ACTION_SNOOZE, alarmId)
 
         fun dismissIntent(context: Context, alarmId: Long): Intent = intent(context, ACTION_DISMISS, alarmId)
+
+        fun silenceIntent(context: Context, alarmId: Long): Intent = intent(context, ACTION_SILENCE, alarmId)
+
+        /** The delete intent of a schedule-change alert's notification. */
+        fun swipedAwayIntent(context: Context, alarmId: Long): Intent = intent(context, ACTION_SWIPED_AWAY, alarmId)
 
         private fun intent(context: Context, action: String, alarmId: Long): Intent =
             Intent(context, AlarmRingingService::class.java).setAction(action).setData(AlarmUris.alarm(alarmId))

@@ -1,5 +1,12 @@
 package com.episode6.meetingminder.ui.navigation
 
+import java.time.Instant
+import java.time.Duration
+import com.episode6.meetingminder.store.DismissAlarm
+import com.episode6.meetingminder.model.ScheduleChangeAlert
+import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
+import com.episode6.meetingminder.model.RingingAlarm
+import com.episode6.meetingminder.model.EventKey
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filter
@@ -108,6 +115,42 @@ class NavigationViewModelTest {
         { createAppStore(this, AppState(anchorDate = today, permissions = allGranted), emptySet()) },
     ) { store ->
         assertThat(NavigationViewModel(store).onDeepLink(DeepLink.Day(today))).isEqualTo(true)
+    }
+
+    @Test
+    fun onDeepLink_intoADayWhoseScheduleChangeAlertIsRinging_dismissesTheAlert() {
+        val dismissals = MutableSharedFlow<Action>(replay = 10)
+        val recordDismissals = SideEffect<AppState> { actions.onEach { if (it is DismissAlarm) dismissals.emit(it) }.filter { false } }
+        val alert = RingingAlarm(
+            alarmId = 7, date = today, key = EventKey(SCHEDULE_CHANGE_ALARM_EVENT_ID, 0), title = "", location = null,
+            begin = Instant.EPOCH, end = Instant.EPOCH, soundIndex = 1, snoozeLength = Duration.ofMinutes(2),
+            scheduleChange = ScheduleChangeAlert(emptyList(), syncsBusyCalendar = false),
+        )
+        runStoreTest({ createAppStore(this, AppState(anchorDate = today, permissions = allGranted, ringing = alert), setOf(recordDismissals)) }) { store ->
+            val viewModel = NavigationViewModel(store)
+
+            // another day's link, and (below) a meeting's alarm, are none of its business
+            viewModel.onDeepLink(DeepLink.Day(today.plusDays(1)))
+            viewModel.onDeepLink(DeepLink.Day(today))
+
+            assertThat(dismissals.first()).isEqualTo(DismissAlarm(7))
+            assertThat(dismissals.replayCache).isEqualTo(listOf(DismissAlarm(7)))
+        }
+    }
+
+    @Test
+    fun onDeepLink_whileAMeetingsAlarmRings_leavesItRinging() {
+        val dismissals = MutableSharedFlow<Action>(replay = 10)
+        val recordDismissals = SideEffect<AppState> { actions.onEach { if (it is DismissAlarm) dismissals.emit(it) }.filter { false } }
+        val alarm = RingingAlarm(
+            alarmId = 7, date = today, key = EventKey(1, 0), title = "Standup", location = null,
+            begin = Instant.EPOCH, end = Instant.EPOCH, soundIndex = 1, snoozeLength = Duration.ofMinutes(2),
+        )
+        runStoreTest({ createAppStore(this, AppState(anchorDate = today, permissions = allGranted, ringing = alarm), setOf(recordDismissals)) }) { store ->
+            NavigationViewModel(store).onDeepLink(DeepLink.Day(today))
+
+            assertThat(dismissals.replayCache).isEqualTo(emptyList())
+        }
     }
 
     @Test
