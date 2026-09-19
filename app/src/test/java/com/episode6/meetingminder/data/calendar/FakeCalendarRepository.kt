@@ -37,6 +37,9 @@ class FakeCalendarRepository(
     /** Thrown from every call while non-null. */
     var error: Exception? = null
 
+    /** Thrown from [calendars] alone while non-null, so the event reads still work. */
+    var calendarsError: Exception? = null
+
     /** Thrown from [respondToInstance] while non-null (the provider refusing the write). */
     var acceptError: Exception? = null
 
@@ -51,6 +54,7 @@ class FakeCalendarRepository(
 
     override suspend fun calendars(): List<CalendarInfo> {
         error?.let { throw it }
+        calendarsError?.let { throw it }
         return calendars
     }
 

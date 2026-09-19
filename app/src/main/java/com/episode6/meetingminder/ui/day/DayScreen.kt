@@ -177,7 +177,7 @@ fun DayScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Subtitle(state.date, state.meetingCount, state.fabState, state.armedCount, state.sharedAt)
+                        Subtitle(state.date, state.meetingCount, state.fabState, state.armedCount, state.sharedAt, state.shareMode)
                     }
                 },
                 actions = {
@@ -245,7 +245,14 @@ private fun ChangeBanner(state: ScheduleChangeBannerState?, shareMode: ShareMode
  * front, as in render 3.
  */
 @Composable
-private fun Subtitle(date: LocalDate, meetingCount: Int?, fabState: FabState, armedCount: Int, sharedAt: LocalDateTime?) {
+private fun Subtitle(
+    date: LocalDate,
+    meetingCount: Int?,
+    fabState: FabState,
+    armedCount: Int,
+    sharedAt: LocalDateTime?,
+    shareMode: ShareMode,
+) {
     val armed = fabState is FabState.Share || fabState == FabState.Synced
     val color = if (armed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DayViewDefaults.SubtitleIconSpacing)) {
@@ -258,7 +265,7 @@ private fun Subtitle(date: LocalDate, meetingCount: Int?, fabState: FabState, ar
             )
         }
         Text(
-            subtitleText(date, meetingCount, fabState, armedCount, sharedAt),
+            subtitleText(date, meetingCount, fabState, armedCount, sharedAt, shareMode),
             style = MaterialTheme.typography.bodySmall,
             color = color,
             maxLines = 1,
@@ -273,16 +280,23 @@ private fun Subtitle(date: LocalDate, meetingCount: Int?, fabState: FabState, ar
  * not yet shared, or "shared 8:12 AM" once [sharedAt] is set (render 3/render 4) — with
  * the date in front ("shared Sep 13, 9:00 PM") when the share happened on a day other
  * than [date], so a bare time can't read as that day's evening; blank (but still a line
- * tall) while the day loads.
+ * tall) while the day loads. "synced …" / "not synced yet" in [ShareMode.SYNC_ONLY].
  */
 @Composable
-private fun subtitleText(date: LocalDate, meetingCount: Int?, fabState: FabState, armedCount: Int, sharedAt: LocalDateTime?): String {
+private fun subtitleText(
+    date: LocalDate,
+    meetingCount: Int?,
+    fabState: FabState,
+    armedCount: Int,
+    sharedAt: LocalDateTime?,
+    shareMode: ShareMode,
+): String {
     if (meetingCount == null) return ""
     val meetings = when (meetingCount) {
         0 -> stringResource(R.string.day_subtitle_no_meetings)
         else -> pluralStringResource(R.plurals.day_subtitle_meetings, meetingCount, meetingCount)
     }
-    val syncOnly = fabState == FabState.Synced || (fabState is FabState.Share && fabState.mode == ShareMode.SYNC_ONLY)
+    val syncOnly = shareMode == ShareMode.SYNC_ONLY
     return when (fabState) {
         is FabState.SetAlarms -> stringResource(R.string.day_subtitle_with_selected_count, meetings, fabState.count)
         is FabState.Share, FabState.Synced -> if (sharedAt != null) {
@@ -550,6 +564,27 @@ internal fun DayScreenScheduleChangedPreview() {
             sharedAt = PreviewDate.atTime(8, 12),
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
             changeBanner = ScheduleChangeBannerState(PreviewBannerLines),
+        ),
+    )
+}
+
+/**
+ * Sync-only (TODO.md §4.7), synced and since changed: no FAB (`FabState.Synced`), the bell
+ * subtitle "synced 8:12 AM", and the banner's "2 changes since you synced" with "Re-sync".
+ */
+@Preview(showBackground = true)
+@Composable
+internal fun DayScreenSyncOnlyChangedPreview() {
+    DayScreenPreviewFrame(
+        DayUiState(
+            anchorDate = PreviewDate,
+            meetingCount = 3,
+            fabState = FabState.Synced,
+            armedCount = 3,
+            sharedAt = PreviewDate.atTime(8, 12),
+            days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
+            changeBanner = ScheduleChangeBannerState(PreviewBannerLines),
+            shareMode = ShareMode.SYNC_ONLY,
         ),
     )
 }

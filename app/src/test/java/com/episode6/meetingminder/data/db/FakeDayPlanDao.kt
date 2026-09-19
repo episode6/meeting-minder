@@ -36,6 +36,12 @@ internal class FakeDayPlanDao(
         plansFlow.value = plansFlow.value.map { if (it.date == date) it.copy(sharedAt = sharedAt, sharedSnapshot = sharedSnapshot) else it }
     }
 
+    override suspend fun clearSharedIfAt(date: LocalDate, sharedAt: Long): Int {
+        if (plansFlow.value.none { it.date == date && it.sharedAt == sharedAt }) return 0
+        setShared(date, sharedAt = null, sharedSnapshot = null)
+        return 1
+    }
+
     override suspend fun upsertSelectedEvent(entity: SelectedEventEntity) {
         selectionsFlow.value = selectionsFlow.value.filterNot { it.date == entity.date && it.key == entity.key } + entity
     }

@@ -71,7 +71,8 @@ private const val TAG = "MeetingMinderShare"
  * is load-bearing; keep it. In [ShareMode.SYNC_ONLY] (the sync is effective and Settings'
  * "Also send a schedule text" is off) there is no chooser: the day's bookkeeping is recorded
  * the same way, the share ends at once ([ShareFinished]) and the [SyncBusyCalendar] it fans
- * out asks for a snackbar on success, since that is the only visible outcome.
+ * out carries the `shared_at` it recorded: the sync announces its success (the only visible
+ * outcome) and, if it writes nothing, undoes that record, since here the sync *is* the share.
  *
  * The selection and plan are read from Room and the day's events from the store only when
  * they are loaded (otherwise straight from the provider, with the same calendar filter and
@@ -142,7 +143,7 @@ interface ShareDaySideEffects {
                     changeMonitor.onShareChanged(date)
                     if (repository.shareModeFor(prefs.busySync) == ShareMode.SYNC_ONLY) {
                         emit(ShareFinished)
-                        emit(SyncBusyCalendar(date, busyRanges, announce = true))
+                        emit(SyncBusyCalendar(date, busyRanges, syncOnlySharedAt = now))
                     } else {
                         emit(SetPendingShare(PendingShare.next(date, text)))
                         // the chooser is on its way; the provider writes happen alongside it

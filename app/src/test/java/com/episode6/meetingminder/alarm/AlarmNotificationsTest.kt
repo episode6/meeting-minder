@@ -14,6 +14,7 @@ import assertk.assertions.isNotNull
 import assertk.assertions.isNull
 import assertk.assertions.isTrue
 import com.episode6.meetingminder.MainActivity
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.RingingAlarm
 import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
@@ -116,7 +117,7 @@ class AlarmNotificationsTest {
                 ScheduleChange.New(today, EventKey(8, 0), Instant.parse("2026-09-14T15:00:00Z"), Instant.parse("2026-09-14T15:30:00Z")),
                 ScheduleChange.Cancelled(today, EventKey(9, 0), Instant.parse("2026-09-14T13:00:00Z"), Instant.parse("2026-09-14T14:00:00Z")),
             ),
-            syncsBusyCalendar = true,
+            shareMode = ShareMode.SYNC_AND_TEXT,
         ),
     )
 
@@ -148,8 +149,17 @@ class AlarmNotificationsTest {
     }
 
     @Test
+    fun aSyncOnlyScheduleChangeAlert_saysSynced_andOffersReSync() {
+        val syncOnly = changeAlert.copy(scheduleChange = changeAlert.scheduleChange?.copy(shareMode = ShareMode.SYNC_ONLY))
+        val notification = AlarmNotifications.ringing(context, syncOnly, ZoneOffset.UTC, alert = true)
+
+        assertThat(shadowOf(notification).contentTitle.toString()).isEqualTo("Your schedule changed since you synced it")
+        assertThat(notification.actions.map { it.title.toString() }).containsExactly("Silence", "Dismiss", "Re-sync")
+    }
+
+    @Test
     fun aSilencedScheduleChangeAlert_offersTheItineraryInSilencesPlace_andPlainReShareWithoutTheSync() {
-        val silenced = changeAlert.copy(silenced = true, scheduleChange = changeAlert.scheduleChange?.copy(syncsBusyCalendar = false))
+        val silenced = changeAlert.copy(silenced = true, scheduleChange = changeAlert.scheduleChange?.copy(shareMode = ShareMode.TEXT))
         val notification = AlarmNotifications.ringing(context, silenced, ZoneOffset.UTC, alert = false)
 
         assertThat(notification.actions.map { it.title.toString() }).containsExactly("Dismiss", "Open itinerary", "Re-share")

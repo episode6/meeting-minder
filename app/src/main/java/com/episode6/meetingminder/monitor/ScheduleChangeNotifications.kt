@@ -162,7 +162,7 @@ class AndroidScheduleChangeNotifier(private val context: Context, private val cl
         if (!canPost()) return
         val id = ScheduleChangeNotifications.notificationId(date)
         if (!alert && manager.activeNotifications.none { it.tag == ScheduleChangeNotifications.NOTIFICATION_TAG && it.id == id }) return
-        val notification = ScheduleChangeNotifications.build(context, date, changes, LocalDate.now(clock), clock.zone, silent, syncOnly)
+        val notification = ScheduleChangeNotifications.build(context, date, changes, LocalDate.now(clock), clock.zone, silent = silent, syncOnly = syncOnly)
         try {
             manager.notify(ScheduleChangeNotifications.NOTIFICATION_TAG, id, notification)
         } catch (_: SecurityException) {

@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.model
 
+import com.episode6.meetingminder.data.calendar.ShareMode
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -32,10 +33,11 @@ fun isSyntheticAlarmEvent(eventId: Long): Boolean = eventId < 0
 /**
  * What a ringing schedule-change alert is about ([RingingAlarm.scheduleChange]): the day's
  * recorded [changes] (times only, like everything else the app says about a shared day),
- * and whether a re-share would also sync the busy calendar, which decides between
- * "Sync & Re-share" and "Re-share" on its button.
+ * and what a re-share of it would do right now ([ShareMode], TODO.md §4.7), which decides
+ * its button — "Re-share", "Sync & Re-share" or, sync-only, "Re-sync" — and whether it says
+ * "since you shared" or "since you synced".
  */
-data class ScheduleChangeAlert(val changes: List<ScheduleChange>, val syncsBusyCalendar: Boolean)
+data class ScheduleChangeAlert(val changes: List<ScheduleChange>, val shareMode: ShareMode)
 
 /**
  * The alarm that is ringing right now ([com.episode6.meetingminder.store.AppState.ringing]):

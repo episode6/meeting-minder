@@ -135,8 +135,10 @@ class DayViewModel(private val store: AppStore, private val clock: Clock, privat
      * TODO.md §4.2/§4.7).
      */
     fun onFabClick() {
+        // the mode the screen was drawn with, so the tap reads the button that was on it
+        val shareMode = state.value.shareMode
         val state = store.state
-        when (state.dayPlans[state.settledDate].toFabState()) {
+        when (state.dayPlans[state.settledDate].toFabState(shareMode)) {
             is FabState.SetAlarms -> store.dispatch(SetAlarms(state.settledDate))
             is FabState.Share -> store.startShare(state.settledDate)
             FabState.Hidden, FabState.Synced -> Unit

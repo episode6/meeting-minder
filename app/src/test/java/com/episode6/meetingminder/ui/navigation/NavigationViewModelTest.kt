@@ -2,6 +2,7 @@ package com.episode6.meetingminder.ui.navigation
 
 import java.time.Instant
 import java.time.Duration
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.store.DismissAlarm
 import com.episode6.meetingminder.model.ScheduleChangeAlert
 import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
@@ -124,7 +125,7 @@ class NavigationViewModelTest {
         val alert = RingingAlarm(
             alarmId = 7, date = today, key = EventKey(SCHEDULE_CHANGE_ALARM_EVENT_ID, 0), title = "", location = null,
             begin = Instant.EPOCH, end = Instant.EPOCH, soundIndex = 1, snoozeLength = Duration.ofMinutes(2),
-            scheduleChange = ScheduleChangeAlert(emptyList(), syncsBusyCalendar = false),
+            scheduleChange = ScheduleChangeAlert(emptyList(), shareMode = ShareMode.TEXT),
         )
         runStoreTest({ createAppStore(this, AppState(anchorDate = today, permissions = allGranted, ringing = alert), setOf(recordDismissals)) }) { store ->
             val viewModel = NavigationViewModel(store)

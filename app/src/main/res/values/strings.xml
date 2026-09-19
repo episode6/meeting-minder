@@ -157,7 +157,7 @@
     <!-- snackbar after a sync-only share (no text sent) succeeded; %1$s is the calendar's name -->
     <string name="busy_sync_done">Busy times synced to %1$s</string>
     <string name="settings_busy_sync_send_text">Also send a schedule text</string>
-    <string name="settings_busy_sync_send_text_description">Open the share sheet with your busy times after syncing. Turn off to only sync to the calendar.</string>
+    <string name="settings_busy_sync_send_text_description">Open the share sheet with your busy times as well as syncing them. Turn off to only sync to the calendar.</string>
     <!-- %1$s is the account email; a Busy calendar radio row whose calendar has SYNC_EVENTS off (TODO.md §4.7) -->
     <string name="settings_busy_calendar_not_syncing">%1$s · sync off, pick to turn on</string>
     <string name="busy_sync_enable_calendar_failed">Couldn\'t turn on sync for that calendar</string>
@@ -252,6 +252,8 @@
     <string name="schedule_alert_reshare">Re-share</string>
     <!-- "Re-share" while busy-calendar sync (TODO.md §4.7) is effective -->
     <string name="schedule_alert_sync_reshare">Sync &amp; Re-share</string>
+    <!-- "Re-share" in sync-only mode (TODO.md §4.7): no text is sent -->
+    <string name="schedule_alert_resync">Re-sync</string>
     <!-- the notification's title and action in sync-only mode (TODO.md §4.7) -->
     <string name="schedule_changed_title_synced">Your schedule changed since you synced it</string>
     <string name="schedule_changed_title_on_day_synced">Your %1$s schedule changed since you synced it</string>

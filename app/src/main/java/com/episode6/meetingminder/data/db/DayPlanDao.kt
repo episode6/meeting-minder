@@ -60,6 +60,14 @@ interface DayPlanDao {
     /** "Mark as not shared" (TODO.md §4.2): clears the share bookkeeping, leaving the selection/alarms alone. */
     suspend fun clearShared(date: LocalDate) = setShared(date, sharedAt = null, sharedSnapshot = null)
 
+    /**
+     * Undoes one share of [date] — the one recorded at [sharedAt] — and nothing newer: a
+     * sync-only share whose sync wrote nothing (TODO.md §4.7). A re-share since has moved
+     * `shared_at` on, so it is left alone. Returns the rows cleared (0 or 1).
+     */
+    @Query("UPDATE day_plan SET shared_at = NULL, shared_snapshot = NULL WHERE date = :date AND shared_at = :sharedAt")
+    suspend fun clearSharedIfAt(date: LocalDate, sharedAt: Long): Int
+
     @Query("SELECT * FROM selected_event WHERE date = :date")
     suspend fun selectedEventsOn(date: LocalDate): List<SelectedEventEntity>
 

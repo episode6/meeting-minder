@@ -1131,6 +1131,10 @@ off and the sync effective, the share action is a sync alone (`ShareMode.SYNC_ON
 chooser, and a successful sync says "Busy times synced to Family" (the only confirmation there is).
 Once synced the day shows no FAB at all (`FabState.Synced`, the subtitle still "synced 8:12 AM"):
 the banner's "Re-sync" is the prompt when the day changes, and the overflow's "Sync again" forces one.
+Since the sync *is* the share here, a sync that doesn't reach the calendar (failed write, calendar
+gone, lost access) undoes that share's `shared_at` and baseline — only that one, a re-share since is
+kept — so the day reads "not synced yet" again beside the "Couldn't sync busy times" snackbar. The
+loud schedule-change alert says "since you synced" and offers "Re-sync" in this mode too.
 Every other "shared" surface is reworded for it: the subtitle "synced 8:12 AM" / "N alarms set · not
 synced yet", the overflow "Sync again" / "Remove busy blocks" (the same `MarkNotShared`), the banner
 "N changes since you synced" / "Re-sync", and the notification "…since you synced it" / "Sync update".

@@ -6,7 +6,6 @@ import assertk.assertions.containsExactly
 import assertk.assertions.hasSize
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
-import assertk.assertions.isFalse
 import assertk.assertions.isInstanceOf
 import assertk.assertions.isNotNull
 import assertk.assertions.isNull
@@ -305,7 +304,7 @@ class ShareDaySideEffectsTest {
 
         assertThat(output).containsExactly(
             ShareFinished,
-            SyncBusyCalendar(today, listOf(BusyRange(standup.begin, standup.end)), announce = true),
+            SyncBusyCalendar(today, listOf(BusyRange(standup.begin, standup.end)), syncOnlySharedAt = now.toEpochMilli()),
         )
         // still a share as far as change detection and "Mark as not shared" are concerned
         assertThat(dayPlanDao.plansFlow.value.single().sharedAt).isEqualTo(now.toEpochMilli())
@@ -321,7 +320,20 @@ class ShareDaySideEffectsTest {
             .output(ShareDay(today), state = loaded(standup)).toList()
 
         assertThat(output.first()).isInstanceOf(SetPendingShare::class)
-        assertThat(output.filterIsInstance<SyncBusyCalendar>().single().announce).isFalse()
+        assertThat(output.filterIsInstance<SyncBusyCalendar>().single().syncOnlySharedAt).isNull()
+    }
+
+    @Test
+    fun shareDay_withTheTextOff_whenTheCalendarListCantBeRead_stillOpensTheChooser() = runTest {
+        // the day's events come from the store, so the calendar list is the first provider read
+        repository.error = IllegalStateException("provider hiccup")
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
+
+        val output = shareDay(dayPlanDao, FakeChangeSnapshotDao(), busySyncOn(familyCalendar.id, sendText = false))
+            .output(ShareDay(today), state = loaded(standup)).toList()
+
+        assertThat(output.first()).isInstanceOf(SetPendingShare::class)
+        assertThat(output.filterIsInstance<SyncBusyCalendar>().single().syncOnlySharedAt).isNull()
     }
 
     @Test

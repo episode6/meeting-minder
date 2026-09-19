@@ -254,7 +254,9 @@ data class EnableCalendarSync(val calendarId: Long) : AsyncAction
  * alarm reconcile fans out). Carries the ranges rather than re-deriving them, so what
  * lands on the calendar is what the share text said, cut down to [date] by the syncer (an
  * event across midnight is shared whole from either of its pages but bookkept per day).
- * [announce] is set by a sync-only share (no chooser opened): a successful sync then says so
- * in a snackbar, since nothing else shows the tap did anything.
+ * [syncOnlySharedAt] is set by a sync-only share (no chooser opened) to the `shared_at` it
+ * recorded: there the sync *is* the share, so a successful one says so in a snackbar, and
+ * one that wrote nothing undoes that record (only that one — a re-share since is left
+ * alone) so the day doesn't claim a sync that never reached the calendar.
  */
-data class SyncBusyCalendar(val date: LocalDate, val ranges: List<BusyRange>, val announce: Boolean = false) : AsyncAction
+data class SyncBusyCalendar(val date: LocalDate, val ranges: List<BusyRange>, val syncOnlySharedAt: Long? = null) : AsyncAction

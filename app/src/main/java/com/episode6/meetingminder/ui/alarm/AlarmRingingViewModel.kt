@@ -165,7 +165,7 @@ internal fun RingingAlarm.toScreenState(now: Instant, zone: ZoneId) = AlarmRingi
 internal fun RingingAlarm.toAlertScreenState(change: ScheduleChangeAlert, now: Instant, zone: ZoneId) = ScheduleChangeAlertScreenState(
     now = now.atZone(zone).toLocalTime(),
     lines = change.changes.map { it.toLine(zone) },
-    syncsBusyCalendar = change.syncsBusyCalendar,
+    shareMode = change.shareMode,
     soundName = soundName,
     silenced = silenced,
 )

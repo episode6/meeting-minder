@@ -29,6 +29,9 @@ misc.xml
 deploymentTargetDropDown.xml
 render.experimental.xml
 
+# Clinic (per-machine run configurations)
+.clinic/
+
 # Keystore files
 *.jks
 *.keystore

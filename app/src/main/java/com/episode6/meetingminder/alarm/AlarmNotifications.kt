@@ -8,10 +8,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import androidx.annotation.StringRes
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.ui.navigation.DeepLinks
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.model.RingingAlarm
@@ -101,9 +103,10 @@ object AlarmNotifications {
                 .addAction(R.drawable.ic_notification_alarm, context.getString(R.string.alarm_dismiss), dismiss)
                 .build()
         }
-        val title = context.getString(R.string.schedule_changed_title)
+        val syncOnly = change.shareMode == ShareMode.SYNC_ONLY
+        val title = context.getString(if (syncOnly) R.string.schedule_changed_title_synced else R.string.schedule_changed_title)
         val lines = change.changes.map { context.resources.text(it.toLine(zone)) }
-        val reshare = if (change.syncsBusyCalendar) R.string.schedule_alert_sync_reshare else R.string.schedule_alert_reshare
+        val reshare = change.shareMode.alertReshareLabel()
         builder
             .setContentTitle(title)
             .setContentText(lines.joinToString(context.getString(R.string.schedule_change_separator)))
@@ -179,4 +182,12 @@ object AlarmNotifications {
     )
 
     private val TimeFormatter: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+}
+
+/** The schedule-change alert's re-share button, on the notification and the screen alike (TODO.md §4.7). */
+@StringRes
+fun ShareMode.alertReshareLabel(): Int = when (this) {
+    ShareMode.TEXT -> R.string.schedule_alert_reshare
+    ShareMode.SYNC_AND_TEXT -> R.string.schedule_alert_sync_reshare
+    ShareMode.SYNC_ONLY -> R.string.schedule_alert_resync
 }

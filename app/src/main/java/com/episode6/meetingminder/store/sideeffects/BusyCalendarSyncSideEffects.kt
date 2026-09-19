@@ -2,6 +2,9 @@ package com.episode6.meetingminder.store.sideeffects
 
 import android.util.Log
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.data.db.ChangeSnapshotDao
+import com.episode6.meetingminder.data.db.DayPlanDao
+import com.episode6.meetingminder.monitor.ChangeMonitor
 import com.episode6.meetingminder.share.BusyCalendarSyncer
 import com.episode6.meetingminder.share.BusySyncResult
 import com.episode6.meetingminder.store.AppState
@@ -36,9 +39,14 @@ private const val TAG = "MeetingMinderBusySync"
  *   so the chooser opens without waiting on provider IO (the `RsvpAccept` shape). A
  *   [BusySyncResult.Failed] is a snackbar and nothing else — the share itself went out, so
  *   it never blocks or reverses it; [BusySyncResult.Synced] and [BusySyncResult.Skipped]
- *   say nothing (the share is the visible outcome; a second snackbar would be noise) —
- *   except a [SyncBusyCalendar.announce] sync, from a sync-only share that opened no
- *   chooser, whose [BusySyncResult.Synced] is the "Busy times synced to Family" snackbar. A `SecurityException` (`WRITE_CALENDAR` revoked under us) re-checks permissions
+ *   say nothing (the share is the visible outcome; a second snackbar would be noise).
+ *   A sync-only share ([SyncBusyCalendar.syncOnlySharedAt] set) opened no chooser, so there
+ *   the sync *is* the share: [BusySyncResult.Synced] is the "Busy times synced to Family"
+ *   snackbar, and any outcome that didn't get the day onto the calendar — `Failed`,
+ *   `Skipped`, or a throw — undoes the `shared_at` that share recorded (and its baseline),
+ *   so "Sync busy times" comes back instead of a day that claims to be synced. Only that
+ *   one share is undone (`DayPlanDao.clearSharedIfAt`); the blocks a failed sync did write
+ *   stay recorded in `busy_block` for the next sync to reconcile. A `SecurityException` (`WRITE_CALENDAR` revoked under us) re-checks permissions
  *   the way the RSVP write does; anything else thrown before a write (the settings, the
  *   fresh calendar list, a Room read) is the calendar-less "Couldn't sync busy times"
  *   snackbar — the user asked for a sync that didn't happen — and never ends the effect.
@@ -61,22 +69,50 @@ private const val TAG = "MeetingMinderBusySync"
 interface BusyCalendarSyncSideEffects {
     @OptIn(ExperimentalCoroutinesApi::class)
     @Provides @IntoSet
-    fun syncBusyCalendar(syncer: BusyCalendarSyncer): SideEffect<AppState> = sideEffect {
+    fun syncBusyCalendar(
+        syncer: BusyCalendarSyncer,
+        dayPlanDao: DayPlanDao,
+        changeSnapshotDao: ChangeSnapshotDao,
+        changeMonitor: ChangeMonitor,
+    ): SideEffect<AppState> = sideEffect {
+        // a sync-only share whose sync didn't reach the calendar: see the class doc
+        suspend fun undoSyncOnlyShare(action: SyncBusyCalendar) {
+            val sharedAt = action.syncOnlySharedAt ?: return
+            try {
+                if (dayPlanDao.clearSharedIfAt(action.date, sharedAt) == 0) return
+                changeSnapshotDao.delete(action.date)
+                changeMonitor.onShareChanged(action.date)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "could not undo the sync-only share of ${action.date}", e)
+            }
+        }
+
         actions.filterIsInstance<SyncBusyCalendar>().flatMapMerge { action ->
             flow<Action> {
+                val syncOnly = action.syncOnlySharedAt != null
                 try {
-                    val result = syncer.sync(action.date, action.ranges)
-                    when {
-                        result is BusySyncResult.Failed ->
+                    when (val result = syncer.sync(action.date, action.ranges)) {
+                        is BusySyncResult.Failed -> {
+                            undoSyncOnlyShare(action)
                             emit(ShowMessage(UiMessage.next(R.string.busy_sync_failed, result.calendarName)))
-                        result is BusySyncResult.Synced && action.announce ->
-                            emit(ShowMessage(UiMessage.next(R.string.busy_sync_done, result.calendarName)))
-                        else -> Unit
+                        }
+                        is BusySyncResult.Synced ->
+                            if (syncOnly) emit(ShowMessage(UiMessage.next(R.string.busy_sync_done, result.calendarName)))
+                        // the calendar stopped resolving, or "Remove busy blocks" got to the
+                        // lock first; beside a text share that's fine, but a sync-only share
+                        // that wrote nothing mustn't be silent
+                        BusySyncResult.Skipped -> if (syncOnly) {
+                            undoSyncOnlyShare(action)
+                            emit(ShowMessage(UiMessage.next(R.string.busy_sync_failed_unknown_calendar)))
+                        }
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: SecurityException) {
                     Log.w(TAG, "busy sync of ${action.date} lost calendar access", e)
+                    undoSyncOnlyShare(action)
                     emit(PermissionsMaybeChanged)
                 } catch (e: Exception) {
                     // BusyCalendarSyncer turns a failed provider *write* into Failed itself;
@@ -87,6 +123,7 @@ interface BusyCalendarSyncSideEffects {
                     // this effect's chain ends and no later share syncs for the rest of the
                     // process.
                     Log.w(TAG, "busy sync of ${action.date} failed before anything was written", e)
+                    undoSyncOnlyShare(action)
                     emit(ShowMessage(UiMessage.next(R.string.busy_sync_failed_unknown_calendar)))
                 }
             }

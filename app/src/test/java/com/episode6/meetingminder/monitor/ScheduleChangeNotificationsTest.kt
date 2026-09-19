@@ -54,7 +54,7 @@ class ScheduleChangeNotificationsTest {
     }
 
     private fun build(date: LocalDate, syncOnly: Boolean = false) =
-        ScheduleChangeNotifications.build(context, date, changesOn(date), today, zone, syncOnly)
+        ScheduleChangeNotifications.build(context, date, changesOn(date), today, zone, syncOnly = syncOnly)
 
     private fun posted(date: LocalDate): Notification? = shadowOf(notificationManager)
         .getNotification(ScheduleChangeNotifications.NOTIFICATION_TAG, ScheduleChangeNotifications.notificationId(date))

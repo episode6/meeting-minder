@@ -17,6 +17,7 @@ import com.episode6.meetingminder.data.db.decodeScheduleChanges
 import com.episode6.meetingminder.data.db.encodeScheduleChanges
 import com.episode6.meetingminder.data.db.promoteSyncedRsvps
 import com.episode6.meetingminder.data.settings.SettingsRepository
+import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.permissions.PermissionChecker
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
@@ -85,7 +86,11 @@ class ChangeMonitor(
                 // notification's wording, a text-less busy sync) needs it, so the common
                 // case never re-reads the calendar list
                 val maybeSyncOnly = prefs.busySync.enabled && !prefs.busySync.sendText
-                val calendars = if (prefs.calendarOverrides.isNotEmpty() || maybeSyncOnly) repository.calendars() else emptyList()
+                val calendars = when {
+                    prefs.calendarOverrides.isNotEmpty() -> repository.calendars()
+                    maybeSyncOnly -> calendarsForWording()
+                    else -> emptyList()
+                }
                 val filter = if (prefs.calendarOverrides.isEmpty()) {
                     CalendarFilter.Visible
                 } else {
@@ -115,6 +120,17 @@ class ChangeMonitor(
             return@withLock
         }
         scheduler.update(sharedDays, reason)
+    }
+
+    // Only the notification's wording depends on this read (TODO.md §4.7), so a failure
+    // falls back to "shared" wording rather than skipping every day's check.
+    private suspend fun calendarsForWording(): List<CalendarInfo> = try {
+        repository.calendars()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "could not read the calendars for the notification's wording", e)
+        emptyList()
     }
 
     /**
