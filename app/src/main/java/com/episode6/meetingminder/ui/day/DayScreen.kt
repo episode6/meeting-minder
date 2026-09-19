@@ -114,8 +114,8 @@ private val SharedDateFormatter = DateTimeFormatter.ofPattern("MMM d")
  * the overflow menu over the [DayPager]. Reports each settled page through [onPageSettled]
  * (a fling reports only where it stops); "Today" scrolls the pager back to its anchor page,
  * which then settles like any swipe; "Refresh" ([onRefreshClick]) asks for a calendar sync
- * and reloads the shown days. A chip's long-press menu reports "Open in calendar" through
- * [onEventOpenClick] and "Respond Yes / No / Maybe" through [onEventRespond] with the
+ * and reloads the shown days. A chip's long-press sheet reports "Open in calendar" through
+ * [onEventOpenClick] and "Yes / No / Maybe" through [onEventRespond] with the
  * page's date, like a tap does. All pages share [scrollState], which jumps once to
  * [DayUiState.initialFirstVisibleHour] when it arrives, unless the user has already scrolled.
  * A shared day that has changed since shows the [ScheduleChangeBanner] above the pager, whose

@@ -4,10 +4,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -24,16 +25,21 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** The chip's long-press menu: "Open in calendar" first, then the three answers only for a respondable event. */
+/**
+ * The chip's long-press sheet: the full title with when and where, "Open in calendar", then
+ * the three answers only for a respondable event, with the current one selected.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "en-rUS")
-class EventChipMenuTest {
+class EventSheetTest {
 
     @get:Rule
     val composeRule = createComposeRule()
 
     private val responses = mutableListOf<EventResponse>()
     private var opened = false
+
+    private val longTitle = "Quarterly business review with the Northwind partnership team (legal + finance)"
 
     private fun show(event: TimelineEvent) {
         composeRule.setContent {
@@ -43,6 +49,7 @@ class EventChipMenuTest {
                     onClick = {},
                     onOpenClick = { opened = true },
                     onRespond = { responses += it },
+                    timeFormat = TimelineTimeFormat(is24Hour = false, locale = java.util.Locale.US),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
@@ -51,38 +58,53 @@ class EventChipMenuTest {
         }
     }
 
-    private fun longPressChip() {
-        composeRule.onNodeWithText(PreviewEvents.standup.title).performTouchInput { longClick() }
+    private fun longPressChip(title: String = PreviewEvents.standup.title) {
+        composeRule.onAllNodesWithText(title)[0].performTouchInput { longClick() }
         composeRule.waitForIdle()
     }
 
+    private fun sheetIsGone() = composeRule.onAllNodesWithText("Open in calendar").fetchSemanticsNodes().isEmpty()
+
     @Test
-    fun aRespondableChip_offersOpenThenTheThreeAnswers_withTheCurrentOneMarked() {
+    fun theSheet_showsTheFullTitle_withWhenAndWhere() {
+        show(PreviewEvents.designReview.copy(title = longTitle))
+
+        longPressChip(longTitle)
+
+        // the chip's copy plus the sheet's
+        assertThat(composeRule.onAllNodesWithText(longTitle).fetchSemanticsNodes().size).isEqualTo(2)
+        composeRule.onNodeWithText("Monday, Sep 14").assertIsDisplayed()
+        composeRule.onNodeWithText("10:00 AM – 11:00 AM").assertIsDisplayed()
+        composeRule.onNodeWithText("Meet").assertIsDisplayed()
+    }
+
+    @Test
+    fun aRespondableChip_offersOpenThenTheThreeAnswers_withTheCurrentOneSelected() {
         show(PreviewEvents.standup.copy(respondable = true, response = EventResponse.MAYBE))
 
         longPressChip()
 
         composeRule.onNodeWithText("Open in calendar").assertIsDisplayed()
-        composeRule.onNodeWithText("Respond Yes").assertIsDisplayed()
-        composeRule.onNodeWithText("Respond No").assertIsDisplayed()
-        composeRule.onNodeWithText("Respond Maybe").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Your current response").assertIsDisplayed()
+        composeRule.onNodeWithText("Your response").assertIsDisplayed()
+        composeRule.onNodeWithText("Yes").assertIsNotSelected()
+        composeRule.onNodeWithText("No").assertIsNotSelected()
+        composeRule.onNodeWithText("Maybe").assertIsSelected()
     }
 
     @Test
-    fun choosingAnAnswer_reportsIt_andClosesTheMenu() {
+    fun choosingAnAnswer_reportsIt_andClosesTheSheet() {
         show(PreviewEvents.standup.copy(respondable = true))
 
         longPressChip()
-        composeRule.onNodeWithText("Respond No").performClick()
+        composeRule.onNodeWithText("No").performClick()
         composeRule.waitForIdle()
 
         assertThat(responses).containsExactly(EventResponse.NO)
-        assertThat(composeRule.onAllNodesWithText("Respond No").fetchSemanticsNodes().size).isEqualTo(0)
+        assertThat(sheetIsGone()).isTrue()
     }
 
     @Test
-    fun openInCalendar_reportsTheOpen() {
+    fun openInCalendar_reportsTheOpen_andClosesTheSheet() {
         show(PreviewEvents.standup.copy(respondable = true))
 
         longPressChip()
@@ -90,6 +112,7 @@ class EventChipMenuTest {
         composeRule.waitForIdle()
 
         assertThat(opened).isTrue()
+        assertThat(sheetIsGone()).isTrue()
     }
 
     @Test
@@ -99,6 +122,7 @@ class EventChipMenuTest {
         longPressChip()
 
         composeRule.onNodeWithText("Open in calendar").assertIsDisplayed()
-        assertThat(composeRule.onAllNodesWithText("Respond Yes").fetchSemanticsNodes().size).isEqualTo(0)
+        assertThat(composeRule.onAllNodesWithText("Your response").fetchSemanticsNodes().size).isEqualTo(0)
+        assertThat(composeRule.onAllNodesWithText("Yes").fetchSemanticsNodes().size).isEqualTo(0)
     }
 }

@@ -31,10 +31,10 @@ import kotlinx.coroutines.flow.flow
 private const val TAG = "MeetingMinderRespond"
 
 /**
- * The long-press menu's "Respond Yes / No / Maybe" (TODO.md §4.6, the explicit half): looks
- * the event up in the loaded window, refuses one the menu shouldn't have offered
+ * The long-press sheet's "Yes / No / Maybe" (TODO.md §4.6, the explicit half): looks
+ * the event up in the loaded window, refuses one the sheet shouldn't have offered
  * ([canRespond], which the chip also checks — the window may have reloaded under the
- * open menu), writes the answer through [CalendarRepository.respondToInstance] and says
+ * open sheet), writes the answer through [CalendarRepository.respondToInstance] and says
  * so in a snackbar. Picking the answer the calendar already holds is confirmed without a
  * write: a recurring occurrence would otherwise get a fresh exception, and anything else a
  * pointless dirty flag for the sync adapter. The write changes `SELF_ATTENDEE_STATUS` at

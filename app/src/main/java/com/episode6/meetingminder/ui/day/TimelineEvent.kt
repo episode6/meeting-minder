@@ -64,9 +64,9 @@ data class TimelineEvent(
     val alarmAt: LocalTime? = null,
     /** The outcome of the RSVP sent when the alarm was set. */
     val rsvp: ChipRsvp = ChipRsvp.None,
-    /** Whether the long-press menu offers "Respond Yes / No / Maybe" ([canRespond]). */
+    /** Whether the long-press sheet offers "Yes / No / Maybe" ([canRespond]). */
     val respondable: Boolean = false,
-    /** Your answer on the calendar as it stands, marked in the long-press menu; null while unanswered. */
+    /** Your answer on the calendar as it stands, marked in the long-press sheet; null while unanswered. */
     val response: EventResponse? = null,
 ) {
     /** Declined and cancelled chips ignore taps; long-press (the menu) still works. */
