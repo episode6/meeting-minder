@@ -6,6 +6,7 @@ import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import assertk.assertions.isNull
 import assertk.assertions.isTrue
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.FakeScheduledAlarmDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmDao
@@ -422,19 +423,19 @@ class AlarmRingingSessionTest {
 
     @Test
     fun aScheduleChangeAlert_ringsLikeAnAlarm_withItsChanges() = runTest {
-        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), syncsBusyCalendar = true)
+        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), shareMode = ShareMode.SYNC_AND_TEXT)
         val session = session(FakeScheduledAlarmDao(listOf(changeRow(1))))
 
         session.fire(1)
         runCurrent()
 
         assertThat(outputs.events).containsExactly("publish:1", "ringing:1:true", "sound:1")
-        assertThat(session.ringing?.scheduleChange).isEqualTo(ScheduleChangeAlert(listOf(moved), syncsBusyCalendar = true))
+        assertThat(session.ringing?.scheduleChange).isEqualTo(ScheduleChangeAlert(listOf(moved), shareMode = ShareMode.SYNC_AND_TEXT))
     }
 
     @Test
     fun aScheduleChangeAlertFiringAgainWhileItRings_replacesItself_soundAndAll() = runTest {
-        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), syncsBusyCalendar = false)
+        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), shareMode = ShareMode.TEXT)
         val dao = FakeScheduledAlarmDao(listOf(changeRow(1)))
         val session = session(dao)
         session.fire(1)
@@ -444,7 +445,7 @@ class AlarmRingingSessionTest {
         outputs.events.clear()
 
         // ScheduleChangeAlerts re-arms the day's one row for the newer change
-        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved, new), syncsBusyCalendar = false)
+        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved, new), shareMode = ShareMode.TEXT)
         dao.setState(1, AlarmState.SCHEDULED)
         session.fire(1)
         runCurrent()
@@ -456,7 +457,7 @@ class AlarmRingingSessionTest {
 
     @Test
     fun anUnansweredScheduleChangeAlert_justStops_neverSnoozedOrMissed() = runTest {
-        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), syncsBusyCalendar = false)
+        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), shareMode = ShareMode.TEXT)
         val dao = FakeScheduledAlarmDao(listOf(changeRow(1)))
         val session = session(dao)
         session.fire(1)
@@ -473,7 +474,7 @@ class AlarmRingingSessionTest {
 
     @Test
     fun swipingAScheduleChangeAlertAway_stopsIt_withoutAcknowledgingTheDay() = runTest {
-        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), syncsBusyCalendar = false)
+        changeAlerts.alerts[today] = ScheduleChangeAlert(listOf(moved), shareMode = ShareMode.TEXT)
         val dao = FakeScheduledAlarmDao(listOf(changeRow(1)))
         val session = session(dao)
         session.fire(1)

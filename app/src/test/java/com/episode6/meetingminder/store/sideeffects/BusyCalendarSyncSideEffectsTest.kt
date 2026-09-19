@@ -5,17 +5,27 @@ import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
+import assertk.assertions.isNotNull
+import assertk.assertions.isNull
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
 import com.episode6.meetingminder.data.db.BusyBlockEntity
+import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.DayPlanEntity
 import com.episode6.meetingminder.data.db.FakeBusyBlockDao
+import com.episode6.meetingminder.data.db.FakeChangeSnapshotDao
 import com.episode6.meetingminder.data.db.FakeDayPlanDao
 import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarInfo
+import com.episode6.meetingminder.monitor.ChangeMonitor
+import com.episode6.meetingminder.monitor.FakeCalendarPermissionChecker
+import com.episode6.meetingminder.monitor.FakeChangeWorkScheduler
+import com.episode6.meetingminder.monitor.FakeScheduleChangeAlerter
+import com.episode6.meetingminder.monitor.FakeScheduleChangeNotifier
+import com.episode6.meetingminder.monitor.MainUiVisibility
 import com.episode6.meetingminder.share.BusyCalendarSyncer
 import com.episode6.meetingminder.store.BusySyncSettingChanged
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
@@ -34,6 +44,8 @@ import java.time.ZoneOffset
  * cleanup deletes. The syncer itself is the real one over the fakes — these cases are about
  * which days and which calendar it is pointed at, and what comes back out as actions.
  */
+private const val SHARED_AT = 1_000L
+
 class BusyCalendarSyncSideEffectsTest {
 
     private val today = LocalDate.of(2026, 9, 14)
@@ -49,7 +61,7 @@ class BusyCalendarSyncSideEffectsTest {
 
     private val repository = FakeCalendarRepository(calendars = listOf(family, work))
     private val dao = FakeBusyBlockDao()
-    private val dayPlanDao = FakeDayPlanDao(plans = listOf(DayPlanEntity(today, sharedAt = 1)))
+    private val dayPlanDao = FakeDayPlanDao(plans = listOf(DayPlanEntity(today, sharedAt = SHARED_AT, sharedSnapshot = "[]")))
 
     private fun calendar(id: Long, name: String) = CalendarInfo(
         id = id, accountName = "me@example.com", accountType = "com.google", displayName = name, color = 0, visible = true,
@@ -62,8 +74,19 @@ class BusyCalendarSyncSideEffectsTest {
 
     private fun syncer(settings: FakeSettingsRepository) = BusyCalendarSyncer(repository, dao, dayPlanDao, settings, clock)
 
+    private val snapshots = FakeChangeSnapshotDao(listOf(ChangeSnapshotEntity(today, SHARED_AT, "[]")))
+    private val notifier = FakeScheduleChangeNotifier()
+
     private fun syncEffect(settings: FakeSettingsRepository = settings()) =
-        object : BusyCalendarSyncSideEffects {}.syncBusyCalendar(syncer(settings))
+        object : BusyCalendarSyncSideEffects {}.syncBusyCalendar(
+            syncer(settings),
+            dayPlanDao,
+            snapshots,
+            ChangeMonitor(repository, snapshots, dayPlanDao, dao, FakeCalendarPermissionChecker(), notifier, FakeChangeWorkScheduler(), settings, clock, FakeScheduleChangeAlerter(), MainUiVisibility()),
+        )
+
+    /** What a sync-only `ShareDay` fans out: the same share, with the `shared_at` it recorded. */
+    private fun syncOnly(vararg ranges: BusyRange) = SyncBusyCalendar(today, ranges.toList(), syncOnlySharedAt = SHARED_AT)
 
     private fun cleanupEffect(settings: FakeSettingsRepository = settings()) =
         object : BusyCalendarSyncSideEffects {}.busySyncSettingChanged(syncer(settings), clock)
@@ -86,6 +109,66 @@ class BusyCalendarSyncSideEffectsTest {
         assertThat(output).isEmpty()
         assertThat(repository.busyBlockInserts.map { it.calendarId to it.range }).containsExactly(family.id to BusyRange(nine, ten))
         assertThat(dao.entries.map { it.date }).containsExactly(today)
+    }
+
+    @Test
+    fun syncBusyCalendar_forASyncOnlyShare_saysItWorked_withTheCalendarsName_andKeepsTheShare() = runTest {
+        val output = syncEffect().output(syncOnly(BusyRange(nine, ten)), state = TestAppState).toList()
+
+        // a sync-only share opened no chooser, so this snackbar is the only confirmation
+        val message = (output.single() as ShowMessage).message
+        assertThat(message.text).isEqualTo(R.string.busy_sync_done)
+        assertThat(message.formatArgs).containsExactly(family.displayName)
+        assertThat(dayPlanDao.plansFlow.value.single().sharedAt).isEqualTo(SHARED_AT)
+        assertThat(snapshots.forDate(today)).isNotNull()
+    }
+
+    @Test
+    fun syncBusyCalendar_forASyncOnlyShare_whenAWriteFails_undoesTheShare_butKeepsTheRowsItWrote() = runTest {
+        val eleven = Instant.parse("2026-09-14T11:00:00Z")
+        var inserts = 0
+        repository.busyBlockInsertError = { if (++inserts > 1) IllegalStateException("provider said no") else null }
+
+        val output = syncEffect().output(syncOnly(BusyRange(nine, ten), BusyRange(eleven, eleven.plusSeconds(1_800))), state = TestAppState).toList()
+
+        assertThat((output.single() as ShowMessage).message.text).isEqualTo(R.string.busy_sync_failed)
+        // back to "not synced yet", so "Sync busy times" returns
+        assertThat(dayPlanDao.plansFlow.value.single().sharedAt).isNull()
+        assertThat(snapshots.forDate(today)).isNull()
+        assertThat(notifier.cancelled).containsExactly(today)
+        // the block that did land is still ours to reconcile next time
+        assertThat(dao.entries.map { it.beginMillis }).containsExactly(nine.toEpochMilli())
+    }
+
+    @Test
+    fun syncBusyCalendar_forASyncOnlyShare_thatIsSkipped_undoesTheShare_andSaysSo() = runTest {
+        repository.calendars = listOf(work) // the chosen calendar went away after the share read it
+
+        val output = syncEffect().output(syncOnly(BusyRange(nine, ten)), state = TestAppState).toList()
+
+        assertThat((output.single() as ShowMessage).message.text).isEqualTo(R.string.busy_sync_failed_unknown_calendar)
+        assertThat(dayPlanDao.plansFlow.value.single().sharedAt).isNull()
+    }
+
+    @Test
+    fun syncBusyCalendar_forASyncOnlyShare_leavesANewerShareAlone() = runTest {
+        repository.busyBlockInsertError = { IllegalStateException("provider said no") }
+        // re-shared since: shared_at moved on from the value this sync carries
+        dayPlanDao.setShared(today, sharedAt = SHARED_AT + 1, sharedSnapshot = "[]")
+
+        syncEffect().output(syncOnly(BusyRange(nine, ten)), state = TestAppState).toList()
+
+        assertThat(dayPlanDao.plansFlow.value.single().sharedAt).isEqualTo(SHARED_AT + 1)
+        assertThat(snapshots.forDate(today)).isNotNull()
+    }
+
+    @Test
+    fun syncBusyCalendar_besideATextShare_neverUndoesIt_theTextWentOut() = runTest {
+        repository.busyBlockInsertError = { IllegalStateException("provider said no") }
+
+        syncEffect().output(SyncBusyCalendar(today, listOf(BusyRange(nine, ten))), state = TestAppState).toList()
+
+        assertThat(dayPlanDao.plansFlow.value.single().sharedAt).isEqualTo(SHARED_AT)
     }
 
     @Test

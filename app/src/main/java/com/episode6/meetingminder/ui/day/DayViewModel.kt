@@ -3,7 +3,8 @@ package com.episode6.meetingminder.ui.day
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.R
-import com.episode6.meetingminder.data.calendar.effectiveBusyCalendar
+import com.episode6.meetingminder.data.calendar.ShareMode
+import com.episode6.meetingminder.data.calendar.shareMode
 import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.BusyRange
@@ -76,22 +77,22 @@ class DayViewModel(private val store: AppStore, private val clock: Clock, privat
     }
 
     /**
-     * Busy-calendar sync's effective state (TODO.md §4.7): drives the FAB/menu/banner
-     * labels. DataStore's first emission is a disk read, so the settings side starts with
-     * the defaults (sync off): the `combine` below then never holds a store update back
-     * behind that read, and the labels switch to "Sync & Share" once the preference is in.
+     * What a share does right now ([ShareMode], TODO.md §4.7): drives the FAB/menu/banner/
+     * subtitle wording. DataStore's first emission is a disk read, so the settings side
+     * starts with the defaults (sync off): the `combine` below then never holds a store
+     * update back behind that read, and the labels switch to "Sync …" once the preference is in.
      */
-    private val busySyncs: Flow<Boolean> = combine(
+    private val shareMode: Flow<ShareMode> = combine(
         settings.settings.map { it.busySync }.onStart { emit(BusySync()) },
         store.mapStore { it.calendars },
-    ) { busySync, calendars -> effectiveBusyCalendar(busySync, calendars) != null }
+    ) { busySync, calendars -> shareMode(busySync, calendars) }
 
-    val state: StateFlow<DayUiState> = combine(store, minuteTicks, busySyncs) { state, now, syncs -> state.toDayUiState(now, clock.zone, syncs) }
+    val state: StateFlow<DayUiState> = combine(store, minuteTicks, shareMode) { state, now, mode -> state.toDayUiState(now, clock.zone, mode) }
         .distinctUntilChanged()
         .stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            store.state.toDayUiState(LocalDateTime.now(clock), clock.zone, busySyncs = false),
+            store.state.toDayUiState(LocalDateTime.now(clock), clock.zone),
         )
 
     /** Each pending snackbar message once; call [onMessageShown] as it is displayed. */
@@ -130,14 +131,17 @@ class DayViewModel(private val store: AppStore, private val clock: Clock, privat
     /**
      * The FAB was tapped: "Set alarms (N)" (or "Clear alarms", the same state with nothing
      * selected) reconciles the settled day's alarms against its selection ([SetAlarms]);
-     * "Share schedule" formats and shares the day's busy ranges ([startShare], TODO.md §4.2).
+     * "Share schedule" (or "Sync busy times") shares the day's busy ranges ([startShare],
+     * TODO.md §4.2/§4.7).
      */
     fun onFabClick() {
+        // the mode the screen was drawn with, so the tap reads the button that was on it
+        val shareMode = state.value.shareMode
         val state = store.state
-        when (state.dayPlans[state.settledDate].toFabState()) {
+        when (state.dayPlans[state.settledDate].toFabState(shareMode)) {
             is FabState.SetAlarms -> store.dispatch(SetAlarms(state.settledDate))
             is FabState.Share -> store.startShare(state.settledDate)
-            FabState.Hidden -> Unit
+            FabState.Hidden, FabState.Synced -> Unit
         }
     }
 
@@ -183,13 +187,13 @@ class DayViewModel(private val store: AppStore, private val clock: Clock, privat
     }
 }
 
-/** [DayUiState] for the store's loaded window at wall-clock time [now] in [zone], with busy-calendar sync's effective state [busySyncs] (TODO.md §4.7). */
-internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId, busySyncs: Boolean = false) = DayUiState(
+/** [DayUiState] for the store's loaded window at wall-clock time [now] in [zone], with what a share does right now, [shareMode] (TODO.md §4.7). */
+internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId, shareMode: ShareMode = ShareMode.TEXT) = DayUiState(
     anchorDate = anchorDate,
     date = settledDate,
     isToday = settledDate == anchorDate,
     meetingCount = eventsByDay[settledDate]?.events?.count { it.isMeeting },
-    fabState = dayPlans[settledDate].toFabState(busySyncs),
+    fabState = dayPlans[settledDate].toFabState(shareMode),
     armedCount = dayPlans[settledDate]?.selected?.values?.count { it.alarmId != null } ?: 0,
     sharedAt = dayPlans[settledDate]?.sharedAt?.let { LocalDateTime.ofInstant(it, zone) },
     days = eventsByDay.mapValues { (date, day) ->
@@ -197,7 +201,7 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId, busySyncs: 
     },
     initialFirstVisibleHour = eventsByDay[anchorDate]?.let { initialFirstVisibleHour(it.date, it.events, zone) },
     changeBanner = changeBannerFor(settledDate, zone),
-    busySyncs = busySyncs,
+    shareMode = shareMode,
 )
 
 /**
@@ -221,17 +225,18 @@ internal fun AppState.changeBannerFor(date: LocalDate, zone: ZoneId): ScheduleCh
 
 /**
  * The FAB's state (TODO.md §3.5): hidden with nothing picked, "Set alarms (N)" with a
- * selection and no alarms yet, "Share schedule" once alarms are set. [DayPlan.alarmsSetAt]
+ * selection and no alarms yet, "Share schedule" (in [shareMode]'s wording) once alarms are set. [DayPlan.alarmsSetAt]
  * is cleared by any later change of selection (`DayPlanDao.toggleSelectedEvent`), which is
  * what puts the day back into "Set alarms" until the next reconcile (§2 interaction rules).
  * That reconcile is also the only thing that cancels a deselected event's alarm, so while
  * [DayPlan.armedKeys] is non-empty the FAB stays even with nothing selected — as
- * `SetAlarms(0)`, which [DayScreen] labels "Clear alarms".
+ * `SetAlarms(0)`, which [DayScreen] labels "Clear alarms". A sync-only day that has been
+ * synced shows no button at all ([FabState.Synced]); its banner carries the re-sync.
  */
-internal fun DayPlan?.toFabState(syncs: Boolean = false): FabState {
+internal fun DayPlan?.toFabState(shareMode: ShareMode = ShareMode.TEXT): FabState {
     val selected = this?.selected.orEmpty()
     return when {
-        this?.alarmsSetAt != null -> FabState.Share(syncs)
+        this?.alarmsSetAt != null -> if (shareMode == ShareMode.SYNC_ONLY && sharedAt != null) FabState.Synced else FabState.Share(shareMode)
         selected.isEmpty() && this?.armedKeys.orEmpty().isEmpty() -> FabState.Hidden
         else -> FabState.SetAlarms(selected.size)
     }

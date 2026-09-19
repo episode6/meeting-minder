@@ -1124,7 +1124,23 @@ calendar: title `busy` — or `<first name> busy` ("Geoff busy", "Jane busy") on
 typed their first name into the section's optional "Your first name" field, so a calendar two
 people sync to says whose block is whose; blank, the default, keeps the bare `busy` — the range's begin/end, availability busy, no description,
 location, attendees, reminders or colour, device zone as the event time zone — nothing else about
-the meeting ever reaches that calendar. Re-sharing a day reconciles that day's blocks against the
+the meeting ever reaches that calendar. **Sync without the text:** the section's "Also send a
+schedule text" toggle (on by default, shown while the sync is on) makes the text optional. With it
+off and the sync effective, the share action is a sync alone (`ShareMode.SYNC_ONLY`): the FAB reads
+"Sync busy times", the tap records `shared_at`/the baseline exactly as a share does, opens no
+chooser, and a successful sync says "Busy times synced to Family" (the only confirmation there is).
+Once synced the day shows no FAB at all (`FabState.Synced`, the subtitle still "synced 8:12 AM"):
+the banner's "Re-sync" is the prompt when the day changes, and the overflow's "Sync again" forces one.
+Since the sync *is* the share here, a sync that doesn't reach the calendar (failed write, calendar
+gone, lost access) undoes that share's `shared_at` and baseline — only that one, a re-share since is
+kept — so the day reads "not synced yet" again beside the "Couldn't sync busy times" snackbar. The
+loud schedule-change alert says "since you synced" and offers "Re-sync" in this mode too.
+Every other "shared" surface is reworded for it: the subtitle "synced 8:12 AM" / "N alarms set · not
+synced yet", the overflow "Sync again" / "Remove busy blocks" (the same `MarkNotShared`), the banner
+"N changes since you synced" / "Re-sync", and the notification "…since you synced it" / "Sync update".
+When the chosen calendar stops resolving, `shareMode` falls back to `TEXT`, so the button still
+shares rather than claiming a sync that would write nothing. Background change detection still
+never writes. Re-sharing a day reconciles that day's blocks against the
 new ranges (unchanged ranges keep their event, moved/removed ranges are deleted, new ranges are
 inserted); only events the app itself wrote are ever touched. A changed first name is picked up
 the same way: nothing is rewritten when the field is edited, and the next share of a day replaces

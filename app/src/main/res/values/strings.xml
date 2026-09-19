@@ -24,6 +24,8 @@
     <string name="day_fab_share">Share schedule</string>
     <!-- FAB label once alarms are set, while busy-calendar sync (TODO.md §4.7) is effective -->
     <string name="day_fab_sync_share">Sync &amp; Share</string>
+    <!-- FAB label once alarms are set, while the sync is effective and "Also send a schedule text" is off -->
+    <string name="day_fab_sync">Sync busy times</string>
     <!-- app bar subtitle once alarms are set, e.g. "3 alarms set · not shared yet" -->
     <plurals name="day_subtitle_alarms_set">
         <item quantity="one">%d alarm set</item>
@@ -34,6 +36,10 @@
     <string name="day_subtitle_shared_at">shared %1$s</string>
     <!-- the same when the share happened on a different day: %1$s the date ("Sep 13"), %2$s the time -->
     <string name="day_subtitle_shared_on">shared %1$s, %2$s</string>
+    <!-- the three subtitles above in sync-only mode (TODO.md §4.7): the day went to the busy calendar, not a text -->
+    <string name="day_subtitle_not_synced_yet">%1$s · not synced yet</string>
+    <string name="day_subtitle_synced_at">synced %1$s</string>
+    <string name="day_subtitle_synced_on">synced %1$s, %2$s</string>
     <!-- snackbars after "Set alarms" -->
     <plurals name="day_alarms_set_today">
         <item quantity="one">%d alarm set for today</item>
@@ -110,6 +116,9 @@
     <!-- "Share again" while busy-calendar sync (TODO.md §4.7) is effective -->
     <string name="menu_sync_share_again">Sync &amp; share again</string>
     <string name="menu_mark_not_shared">Mark as not shared</string>
+    <!-- the two items above in sync-only mode (TODO.md §4.7) -->
+    <string name="menu_sync_again">Sync again</string>
+    <string name="menu_remove_busy_blocks">Remove busy blocks</string>
     <string name="check_for_updates_no_browser">No app found to open the updates page</string>
 
     <string name="settings_title">Settings</string>
@@ -135,16 +144,20 @@
     <string name="settings_calendar_not_syncing">%1$s · not syncing</string>
     <string name="settings_section_busy_calendar">Busy calendar</string>
     <string name="settings_busy_sync_title">Sync busy times to a calendar</string>
-    <string name="settings_busy_sync_description">When you share a day, add a \"busy\" block for each busy time to the calendar below. Only times are written, never your meetings\' titles.</string>
+    <string name="settings_busy_sync_description">When you share or sync a day, add a \"busy\" block for each busy time to the calendar below. Only times are written, never your meetings\' titles.</string>
     <!-- toggle subtitle when there's no calendar the app can write to (TODO.md §4.7) -->
     <string name="settings_busy_sync_no_writable">No calendar you can write to</string>
     <!-- shown under the radio list when the stored calendar id no longer resolves to a writable calendar -->
     <string name="settings_busy_sync_pick">Pick a calendar to sync to</string>
     <string name="settings_busy_sync_first_name">Your first name (optional)</string>
     <!-- under the first-name field; %1$s is the title the next sync writes: "busy", or "Geoff busy" -->
-    <string name="settings_busy_sync_first_name_description">Blocks are titled \"%1$s\". A day already synced picks up a new name the next time you share it.</string>
+    <string name="settings_busy_sync_first_name_description">Blocks are titled \"%1$s\". A day already synced picks up a new name the next time you sync it.</string>
     <!-- snackbar after a share whose busy-block write failed; %1$s is the calendar's name. The share itself still went out -->
     <string name="busy_sync_failed">Couldn\'t sync busy times to %1$s</string>
+    <!-- snackbar after a sync-only share (no text sent) succeeded; %1$s is the calendar's name -->
+    <string name="busy_sync_done">Busy times synced to %1$s</string>
+    <string name="settings_busy_sync_send_text">Also send a schedule text</string>
+    <string name="settings_busy_sync_send_text_description">Open the share sheet with your busy times as well as syncing them. Turn off to only sync to the calendar.</string>
     <!-- %1$s is the account email; a Busy calendar radio row whose calendar has SYNC_EVENTS off (TODO.md §4.7) -->
     <string name="settings_busy_calendar_not_syncing">%1$s · sync off, pick to turn on</string>
     <string name="busy_sync_enable_calendar_failed">Couldn\'t turn on sync for that calendar</string>
@@ -239,6 +252,12 @@
     <string name="schedule_alert_reshare">Re-share</string>
     <!-- "Re-share" while busy-calendar sync (TODO.md §4.7) is effective -->
     <string name="schedule_alert_sync_reshare">Sync &amp; Re-share</string>
+    <!-- "Re-share" in sync-only mode (TODO.md §4.7): no text is sent -->
+    <string name="schedule_alert_resync">Re-sync</string>
+    <!-- the notification's title and action in sync-only mode (TODO.md §4.7) -->
+    <string name="schedule_changed_title_synced">Your schedule changed since you synced it</string>
+    <string name="schedule_changed_title_on_day_synced">Your %1$s schedule changed since you synced it</string>
+    <string name="schedule_changed_sync_update">Sync update</string>
     <!-- the day view's "changed since you shared" banner -->
     <plurals name="day_banner_changes">
         <item quantity="one">%d change since you shared</item>
@@ -249,4 +268,11 @@
     <string name="day_banner_reshare">Re-share</string>
     <!-- "Re-share" while busy-calendar sync (TODO.md §4.7) is effective -->
     <string name="day_banner_sync_reshare">Sync &amp; re-share</string>
+    <!-- the banner in sync-only mode (TODO.md §4.7) -->
+    <plurals name="day_banner_changes_synced">
+        <item quantity="one">%d change since you synced</item>
+        <item quantity="other">%d changes since you synced</item>
+    </plurals>
+    <string name="day_banner_selection_changed_synced">Your picks changed since you synced</string>
+    <string name="day_banner_resync">Re-sync</string>
 </resources>

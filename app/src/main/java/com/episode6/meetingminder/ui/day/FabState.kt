@@ -1,6 +1,7 @@
 package com.episode6.meetingminder.ui.day
 
 import androidx.compose.runtime.Immutable
+import com.episode6.meetingminder.data.calendar.ShareMode
 
 /** The day view's FAB (TODO.md §3.5): hidden, "Set alarms (N)", or (from PR-8/9) "Share schedule". */
 @Immutable
@@ -15,9 +16,17 @@ sealed interface FabState {
     data class SetAlarms(val count: Int) : FabState
 
     /**
-     * [syncs] is true while busy-calendar sync (TODO.md §4.7) is effective — the toggle is
-     * on and it points at a calendar that's still writable — which swaps the FAB's label to
-     * "Sync & Share". The write itself is wired in PR-15c; sharing already runs unconditionally.
+     * What the tap does, and so the label ([ShareMode], TODO.md §4.7): "Share schedule",
+     * "Sync & Share" while busy-calendar sync is effective, or "Sync busy times" when the
+     * sync is effective and Settings' "Also send a schedule text" is off.
      */
-    data class Share(val syncs: Boolean) : FabState
+    data class Share(val mode: ShareMode = ShareMode.TEXT) : FabState
+
+    /**
+     * A [ShareMode.SYNC_ONLY] day whose alarms are set and that has been synced: no button.
+     * Syncing again only means something once the day changes, and the "changed since you
+     * synced" banner's "Re-sync" says so with the changes (the overflow's "Sync again"
+     * forces it). The subtitle still reads "synced 8:12 AM" with its bell.
+     */
+    data object Synced : FabState
 }

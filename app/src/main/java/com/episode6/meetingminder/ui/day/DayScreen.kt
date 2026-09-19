@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -54,6 +55,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import kotlinx.coroutines.launch
@@ -92,11 +94,12 @@ data class DayUiState(
     /** The "changed since you shared" banner for [date] (TODO.md §4.3); null when [date] isn't shared or nothing changed. */
     val changeBanner: ScheduleChangeBannerState? = null,
     /**
-     * Busy-calendar sync's effective state for [date] (TODO.md §4.7): true swaps the
-     * overflow's "Share again" to "Sync & share again" and the banner's "Re-share" to
-     * "Sync & re-share". The FAB itself reads [FabState.Share.syncs] directly.
+     * What a share does right now (TODO.md §4.7): the overflow's "Share again" reads "Sync &
+     * share again" while it syncs too, and in [ShareMode.SYNC_ONLY] the overflow, banner and
+     * subtitle talk about syncing rather than sharing ("Sync again", "Remove busy blocks",
+     * "Re-sync", "synced 8:12 AM"). The FAB itself reads [FabState.Share.mode].
      */
-    val busySyncs: Boolean = false,
+    val shareMode: ShareMode = ShareMode.TEXT,
 ) {
     fun timelineFor(date: LocalDate): DayTimelineState = days[date] ?: DayTimelineState(date)
 }
@@ -174,7 +177,7 @@ fun DayScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Subtitle(state.date, state.meetingCount, state.fabState, state.armedCount, state.sharedAt)
+                        Subtitle(state.date, state.meetingCount, state.fabState, state.armedCount, state.sharedAt, state.shareMode)
                     }
                 },
                 actions = {
@@ -189,7 +192,7 @@ fun DayScreen(
                     }
                     OverflowMenu(
                         hasBeenShared = state.sharedAt != null,
-                        busySyncs = state.busySyncs,
+                        shareMode = state.shareMode,
                         onPermissionsClick = onPermissionsClick,
                         onSettingsClick = onSettingsClick,
                         onLicensesClick = onLicensesClick,
@@ -210,7 +213,7 @@ fun DayScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
-            ChangeBanner(state.changeBanner, state.busySyncs, onShareAgainClick)
+            ChangeBanner(state.changeBanner, state.shareMode, onShareAgainClick)
             DayPager(
                 state = state,
                 pagerState = pagerState,
@@ -228,11 +231,11 @@ fun DayScreen(
 
 /** [ScheduleChangeBanner] sliding in and out with [state]; the last non-null state keeps rendering while it animates away. */
 @Composable
-private fun ChangeBanner(state: ScheduleChangeBannerState?, syncs: Boolean, onReshareClick: () -> Unit) {
+private fun ChangeBanner(state: ScheduleChangeBannerState?, shareMode: ShareMode, onReshareClick: () -> Unit) {
     var lastState by remember { mutableStateOf(state) }
     if (state != null) lastState = state
     AnimatedVisibility(visible = state != null) {
-        lastState?.let { ScheduleChangeBanner(it, onReshareClick, syncs = syncs) }
+        lastState?.let { ScheduleChangeBanner(it, onReshareClick, shareMode = shareMode) }
     }
 }
 
@@ -242,8 +245,15 @@ private fun ChangeBanner(state: ScheduleChangeBannerState?, syncs: Boolean, onRe
  * front, as in render 3.
  */
 @Composable
-private fun Subtitle(date: LocalDate, meetingCount: Int?, fabState: FabState, armedCount: Int, sharedAt: LocalDateTime?) {
-    val armed = fabState is FabState.Share
+private fun Subtitle(
+    date: LocalDate,
+    meetingCount: Int?,
+    fabState: FabState,
+    armedCount: Int,
+    sharedAt: LocalDateTime?,
+    shareMode: ShareMode,
+) {
+    val armed = fabState is FabState.Share || fabState == FabState.Synced
     val color = if (armed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(DayViewDefaults.SubtitleIconSpacing)) {
         if (armed) {
@@ -255,7 +265,7 @@ private fun Subtitle(date: LocalDate, meetingCount: Int?, fabState: FabState, ar
             )
         }
         Text(
-            subtitleText(date, meetingCount, fabState, armedCount, sharedAt),
+            subtitleText(date, meetingCount, fabState, armedCount, sharedAt, shareMode),
             style = MaterialTheme.typography.bodySmall,
             color = color,
             maxLines = 1,
@@ -270,27 +280,39 @@ private fun Subtitle(date: LocalDate, meetingCount: Int?, fabState: FabState, ar
  * not yet shared, or "shared 8:12 AM" once [sharedAt] is set (render 3/render 4) — with
  * the date in front ("shared Sep 13, 9:00 PM") when the share happened on a day other
  * than [date], so a bare time can't read as that day's evening; blank (but still a line
- * tall) while the day loads.
+ * tall) while the day loads. "synced …" / "not synced yet" in [ShareMode.SYNC_ONLY].
  */
 @Composable
-private fun subtitleText(date: LocalDate, meetingCount: Int?, fabState: FabState, armedCount: Int, sharedAt: LocalDateTime?): String {
+private fun subtitleText(
+    date: LocalDate,
+    meetingCount: Int?,
+    fabState: FabState,
+    armedCount: Int,
+    sharedAt: LocalDateTime?,
+    shareMode: ShareMode,
+): String {
     if (meetingCount == null) return ""
     val meetings = when (meetingCount) {
         0 -> stringResource(R.string.day_subtitle_no_meetings)
         else -> pluralStringResource(R.plurals.day_subtitle_meetings, meetingCount, meetingCount)
     }
+    val syncOnly = shareMode == ShareMode.SYNC_ONLY
     return when (fabState) {
         is FabState.SetAlarms -> stringResource(R.string.day_subtitle_with_selected_count, meetings, fabState.count)
-        is FabState.Share -> if (sharedAt != null) {
+        is FabState.Share, FabState.Synced -> if (sharedAt != null) {
             val time = rememberTimelineTimeFormat().timeWithPeriod(sharedAt.toLocalTime())
             if (sharedAt.toLocalDate() == date) {
-                stringResource(R.string.day_subtitle_shared_at, time)
+                stringResource(if (syncOnly) R.string.day_subtitle_synced_at else R.string.day_subtitle_shared_at, time)
             } else {
-                stringResource(R.string.day_subtitle_shared_on, sharedAt.toLocalDate().format(SharedDateFormatter), time)
+                stringResource(
+                    if (syncOnly) R.string.day_subtitle_synced_on else R.string.day_subtitle_shared_on,
+                    sharedAt.toLocalDate().format(SharedDateFormatter),
+                    time,
+                )
             }
         } else {
             stringResource(
-                R.string.day_subtitle_not_shared_yet,
+                if (syncOnly) R.string.day_subtitle_not_synced_yet else R.string.day_subtitle_not_shared_yet,
                 pluralStringResource(R.plurals.day_subtitle_alarms_set, armedCount, armedCount),
             )
         }
@@ -310,15 +332,16 @@ private fun DayFab(state: FabState, onClick: () -> Unit) {
     // non-Hidden target (the last one seen) so its own exit transition never has to render
     // FabState.Hidden's empty content while AnimatedVisibility is still animating it out.
     var lastVisibleState by remember { mutableStateOf<FabState>(FabState.SetAlarms(0)) }
-    if (state != FabState.Hidden) lastVisibleState = state
+    val visible = state != FabState.Hidden && state != FabState.Synced
+    if (visible) lastVisibleState = state
 
-    AnimatedVisibility(visible = state != FabState.Hidden) {
+    AnimatedVisibility(visible = visible) {
         // contentKey groups by class so a SetAlarms(1) -> SetAlarms(2) count change updates
         // the label in place instead of crossfading the whole FAB; only a SetAlarms <-> Share
         // transition (a different key) gets the crossfade.
         AnimatedContent(targetState = lastVisibleState, contentKey = { it::class }, label = "dayFabState") { target ->
             when (target) {
-                FabState.Hidden -> Unit
+                FabState.Hidden, FabState.Synced -> Unit
                 is FabState.SetAlarms -> if (target.count == 0) {
                     ExtendedFloatingActionButton(
                         onClick = onClick,
@@ -334,8 +357,24 @@ private fun DayFab(state: FabState, onClick: () -> Unit) {
                 }
                 is FabState.Share -> ExtendedFloatingActionButton(
                     onClick = onClick,
-                    icon = { Icon(Icons.Outlined.Share, contentDescription = null) },
-                    text = { Text(stringResource(if (target.syncs) R.string.day_fab_sync_share else R.string.day_fab_share)) },
+                    // sync-only writes to a calendar and opens no share sheet, so no share glyph
+                    icon = {
+                        Icon(
+                            if (target.mode == ShareMode.SYNC_ONLY) Icons.Outlined.Sync else Icons.Outlined.Share,
+                            contentDescription = null,
+                        )
+                    },
+                    text = {
+                        Text(
+                            stringResource(
+                                when (target.mode) {
+                                    ShareMode.TEXT -> R.string.day_fab_share
+                                    ShareMode.SYNC_AND_TEXT -> R.string.day_fab_sync_share
+                                    ShareMode.SYNC_ONLY -> R.string.day_fab_sync
+                                },
+                            ),
+                        )
+                    },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                 )
@@ -371,7 +410,7 @@ private fun InitialScroll(firstVisibleHour: Float?, scrollState: ScrollState) {
 @Composable
 private fun OverflowMenu(
     hasBeenShared: Boolean,
-    busySyncs: Boolean,
+    shareMode: ShareMode,
     onPermissionsClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onLicensesClick: () -> Unit,
@@ -386,8 +425,13 @@ private fun OverflowMenu(
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
         buildList {
             if (hasBeenShared) {
-                add((if (busySyncs) R.string.menu_sync_share_again else R.string.menu_share_again) to onShareAgainClick)
-                add(R.string.menu_mark_not_shared to onMarkNotSharedClick)
+                val (again, markNot) = when (shareMode) {
+                    ShareMode.TEXT -> R.string.menu_share_again to R.string.menu_mark_not_shared
+                    ShareMode.SYNC_AND_TEXT -> R.string.menu_sync_share_again to R.string.menu_mark_not_shared
+                    ShareMode.SYNC_ONLY -> R.string.menu_sync_again to R.string.menu_remove_busy_blocks
+                }
+                add(again to onShareAgainClick)
+                add(markNot to onMarkNotSharedClick)
             }
             add(R.string.menu_permissions to onPermissionsClick)
             add(R.string.menu_settings to onSettingsClick)
@@ -481,7 +525,7 @@ internal fun DayScreenAlarmsSetPreview() {
         DayUiState(
             anchorDate = PreviewDate,
             meetingCount = 3,
-            fabState = FabState.Share(syncs = false),
+            fabState = FabState.Share(),
             armedCount = 3,
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
         ),
@@ -496,7 +540,7 @@ internal fun DayScreenSharedPreview() {
         DayUiState(
             anchorDate = PreviewDate,
             meetingCount = 3,
-            fabState = FabState.Share(syncs = false),
+            fabState = FabState.Share(),
             armedCount = 3,
             sharedAt = PreviewDate.atTime(8, 12),
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
@@ -515,11 +559,32 @@ internal fun DayScreenScheduleChangedPreview() {
         DayUiState(
             anchorDate = PreviewDate,
             meetingCount = 3,
-            fabState = FabState.Share(syncs = false),
+            fabState = FabState.Share(),
             armedCount = 3,
             sharedAt = PreviewDate.atTime(8, 12),
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
             changeBanner = ScheduleChangeBannerState(PreviewBannerLines),
+        ),
+    )
+}
+
+/**
+ * Sync-only (TODO.md §4.7), synced and since changed: no FAB (`FabState.Synced`), the bell
+ * subtitle "synced 8:12 AM", and the banner's "2 changes since you synced" with "Re-sync".
+ */
+@Preview(showBackground = true)
+@Composable
+internal fun DayScreenSyncOnlyChangedPreview() {
+    DayScreenPreviewFrame(
+        DayUiState(
+            anchorDate = PreviewDate,
+            meetingCount = 3,
+            fabState = FabState.Synced,
+            armedCount = 3,
+            sharedAt = PreviewDate.atTime(8, 12),
+            days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
+            changeBanner = ScheduleChangeBannerState(PreviewBannerLines),
+            shareMode = ShareMode.SYNC_ONLY,
         ),
     )
 }
@@ -532,7 +597,7 @@ internal fun DayScreenDarkPreview() {
         DayUiState(
             anchorDate = PreviewDate,
             meetingCount = 3,
-            fabState = FabState.Share(syncs = false),
+            fabState = FabState.Share(),
             armedCount = 3,
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
             changeBanner = ScheduleChangeBannerState(PreviewBannerLines),
@@ -548,7 +613,7 @@ internal fun DayScreenLargeFontPreview() {
         DayUiState(
             anchorDate = PreviewDate,
             meetingCount = 3,
-            fabState = FabState.Share(syncs = false),
+            fabState = FabState.Share(),
             armedCount = 3,
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
             changeBanner = ScheduleChangeBannerState(PreviewBannerLines),

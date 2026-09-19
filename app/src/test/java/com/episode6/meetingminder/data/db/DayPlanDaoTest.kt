@@ -157,4 +157,16 @@ class DayPlanDaoTest {
 
         assertThat(dao.observeDayPlans().first()).containsExactly(DayPlanEntity(today, alarmsSetAt = 5_000))
     }
+
+    @Test
+    fun clearSharedIfAt_clearsOnlyTheShareRecordedAtThatInstant() = runTest {
+        dao.upsertDayPlan(DayPlanEntity(today, alarmsSetAt = 5_000, sharedAt = 9_000, sharedSnapshot = "[]"))
+
+        // a re-share since moved shared_at on: the older share's undo leaves it alone
+        assertThat(dao.clearSharedIfAt(today, sharedAt = 8_000)).isEqualTo(0)
+        assertThat(dao.observeDayPlans().first().single().sharedAt).isEqualTo(9_000L)
+
+        assertThat(dao.clearSharedIfAt(today, sharedAt = 9_000)).isEqualTo(1)
+        assertThat(dao.observeDayPlans().first()).containsExactly(DayPlanEntity(today, alarmsSetAt = 5_000))
+    }
 }

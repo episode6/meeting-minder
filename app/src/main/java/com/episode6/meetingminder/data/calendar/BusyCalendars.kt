@@ -56,3 +56,31 @@ fun effectiveBusyCalendar(settings: BusySync, calendars: List<CalendarInfo>): Ca
     val calendarId = settings.calendarId ?: return null
     return calendars.writable().firstOrNull { it.id == calendarId }
 }
+
+/**
+ * What a share of a day does (TODO.md §4.7): [TEXT] opens the chooser with the schedule text
+ * only, [SYNC_AND_TEXT] also writes the day's busy blocks, and [SYNC_ONLY] writes the blocks
+ * and opens nothing — for a user whose partner reads the calendar rather than a text. Either
+ * way the day is recorded as shared (synced), which is what change detection's "re-share"
+ * nags and "Mark as not shared" work from.
+ */
+enum class ShareMode {
+    TEXT,
+    SYNC_AND_TEXT,
+    SYNC_ONLY,
+    ;
+
+    val syncs: Boolean get() = this != TEXT
+}
+
+/**
+ * The [ShareMode] a share runs in right now: a sync only while [effectiveBusyCalendar]
+ * resolves, so a sync-only user whose calendar went away (or was made read-only) falls back
+ * to [ShareMode.TEXT] — the labels say "Share" again and the share still goes somewhere,
+ * rather than a "Sync" button that writes nothing.
+ */
+fun shareMode(settings: BusySync, calendars: List<CalendarInfo>): ShareMode = when {
+    effectiveBusyCalendar(settings, calendars) == null -> ShareMode.TEXT
+    settings.sendText -> ShareMode.SYNC_AND_TEXT
+    else -> ShareMode.SYNC_ONLY
+}

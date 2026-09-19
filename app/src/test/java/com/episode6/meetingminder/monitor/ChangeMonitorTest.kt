@@ -17,6 +17,7 @@ import com.episode6.meetingminder.data.db.SelectedEventEntity
 import com.episode6.meetingminder.data.db.decodeScheduleChanges
 import com.episode6.meetingminder.data.db.encodeChangeSnapshotEvents
 import com.episode6.meetingminder.data.db.encodeScheduleChanges
+import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.model.CalendarEvent
@@ -375,5 +376,48 @@ class ChangeMonitorTest {
 
         assertThat(decodeScheduleChanges(today, snapshots.entries.getValue(today).changesJson)).isEmpty()
         assertThat(notifier.shown).isEmpty()
+    }
+
+    private val familyCalendar = CalendarInfo(
+        id = 5, accountName = "me", accountType = "com.google", displayName = "Family", color = 0, visible = true,
+        syncEvents = true, ownerAccount = "me", isPrimary = false, accessLevel = 700, canOrganizerRespond = false,
+    )
+
+    private val syncOnlySettings get() =
+        FakeSettingsRepository(Settings(busySync = BusySync(enabled = true, calendarId = familyCalendar.id, sendText = false)))
+
+    @Test
+    fun runCheck_withTheTextOff_butTheCalendarReadOnly_keepsTheSharedWording() = runTest {
+        repository.calendars = listOf(familyCalendar.copy(accessLevel = 300))
+        repository.events[today] = listOf(designReview, invite)
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+
+        monitor(snapshots, syncOnlySettings).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, syncOnly = false))
+    }
+
+    @Test
+    fun runCheck_withTheTextOff_whenTheCalendarListCantBeRead_stillChecks_withTheSharedWording() = runTest {
+        repository.calendarsError = IllegalStateException("provider hiccup")
+        repository.events[today] = listOf(designReview, invite)
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+
+        monitor(snapshots, syncOnlySettings).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        // only the wording needed that read: the check itself still ran and re-armed
+        assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, syncOnly = false))
+        assertThat(scheduler.updates).containsExactly(setOf(today) to ChangeCheckReason.CONTENT_TRIGGER)
+    }
+
+    @Test
+    fun runCheck_withASyncOnlyBusySync_wordsTheNotificationForASync() = runTest {
+        repository.calendars = listOf(familyCalendar)
+        repository.events[today] = listOf(designReview, invite)
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+
+        monitor(snapshots, syncOnlySettings).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, syncOnly = true))
     }
 }

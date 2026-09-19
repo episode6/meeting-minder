@@ -10,6 +10,7 @@ import assertk.assertions.isNotEqualTo
 import assertk.assertions.isNull
 import assertk.assertions.isTrue
 import com.episode6.meetingminder.data.calendar.FakeCalendarRepository
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
 import com.episode6.meetingminder.data.db.FakeChangeSnapshotDao
@@ -163,7 +164,7 @@ class ScheduleChangeAlertsTest {
     fun load_isTheDaysRecordedChanges() = runTest {
         recordChanges(today, new)
 
-        assertThat(alerts.load(today)).isEqualTo(ScheduleChangeAlert(listOf(new), syncsBusyCalendar = false))
+        assertThat(alerts.load(today)).isEqualTo(ScheduleChangeAlert(listOf(new), shareMode = ShareMode.TEXT))
     }
 
     @Test
@@ -172,13 +173,16 @@ class ScheduleChangeAlertsTest {
         settings.setBusySyncEnabled(true)
         settings.setBusySyncCalendar(family.id)
 
-        assertThat(alerts.load(today)?.syncsBusyCalendar).isEqualTo(true)
+        assertThat(alerts.load(today)?.shareMode).isEqualTo(ShareMode.SYNC_AND_TEXT)
+
+        settings.setBusySyncSendText(false)
+        assertThat(alerts.load(today)?.shareMode).isEqualTo(ShareMode.SYNC_ONLY)
 
         repository.calendars = emptyList()
-        assertThat(alerts.load(today)?.syncsBusyCalendar).isEqualTo(false)
+        assertThat(alerts.load(today)?.shareMode).isEqualTo(ShareMode.TEXT)
 
         repository.error = SecurityException("no calendar access")
-        assertThat(alerts.load(today)?.syncsBusyCalendar).isEqualTo(false)
+        assertThat(alerts.load(today)?.shareMode).isEqualTo(ShareMode.TEXT)
     }
 
     @Test

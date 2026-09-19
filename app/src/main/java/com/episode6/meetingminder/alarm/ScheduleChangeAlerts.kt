@@ -2,7 +2,8 @@ package com.episode6.meetingminder.alarm
 
 import android.util.Log
 import com.episode6.meetingminder.data.calendar.CalendarRepository
-import com.episode6.meetingminder.data.calendar.effectiveBusyCalendar
+import com.episode6.meetingminder.data.calendar.ShareMode
+import com.episode6.meetingminder.data.calendar.shareMode
 import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmDao
@@ -91,7 +92,7 @@ class ScheduleChangeAlerts(
         if (date < LocalDate.now(clock)) return null
         val changes = snapshotDao.forDate(date)?.let { decodeScheduleChanges(date, it.changesJson) }.orEmpty()
         if (changes.isEmpty()) return null
-        return ScheduleChangeAlert(changes, syncsBusyCalendar = syncsBusyCalendar())
+        return ScheduleChangeAlert(changes, shareMode = shareMode())
     }
 
     override fun acknowledge(date: LocalDate) {
@@ -106,14 +107,14 @@ class ScheduleChangeAlerts(
         title = "", beginMillis = now, endMillis = now, soundIndex = 0,
     )
 
-    // only decides the words on a button, so any failure reads as "no sync"
-    private suspend fun syncsBusyCalendar(): Boolean = try {
+    // only decides the words on the alert, so any failure reads as "no sync"
+    private suspend fun shareMode(): ShareMode = try {
         val busySync = settings.current().busySync
-        busySync.enabled && effectiveBusyCalendar(busySync, repository.calendars()) != null
+        if (busySync.enabled) shareMode(busySync, repository.calendars()) else ShareMode.TEXT
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         Log.w(TAG, "couldn't read the busy calendar", e)
-        false
+        ShareMode.TEXT
     }
 }

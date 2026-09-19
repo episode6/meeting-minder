@@ -102,6 +102,7 @@ fun SettingsScreen(
     onBusySyncToggle: (Boolean) -> Unit,
     onBusyCalendarSelected: (CalendarInfo) -> Unit,
     onBusyFirstNameChanged: (String) -> Unit,
+    onBusySendTextToggle: (Boolean) -> Unit,
     onPermissionsClick: () -> Unit,
     onLicensesClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -214,6 +215,14 @@ fun SettingsScreen(
                     }
                 }
                 item { BusyFirstNameRow(firstName = state.busySyncFirstName, onFirstNameChanged = onBusyFirstNameChanged) }
+                item {
+                    ToggleRow(
+                        title = stringResource(R.string.settings_busy_sync_send_text),
+                        description = stringResource(R.string.settings_busy_sync_send_text_description),
+                        checked = state.busySyncSendText,
+                        onCheckedChange = onBusySendTextToggle,
+                    )
+                }
             }
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
 
@@ -467,6 +476,7 @@ internal fun SettingsScreenPreview() {
             onBusySyncToggle = {},
             onBusyCalendarSelected = {},
             onBusyFirstNameChanged = {},
+            onBusySendTextToggle = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )
@@ -492,6 +502,7 @@ internal fun SettingsScreenDarkPreview() {
             onBusySyncToggle = {},
             onBusyCalendarSelected = {},
             onBusyFirstNameChanged = {},
+            onBusySendTextToggle = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )
@@ -516,6 +527,7 @@ internal fun SettingsScreenLargeFontPreview() {
             onBusySyncToggle = {},
             onBusyCalendarSelected = {},
             onBusyFirstNameChanged = {},
+            onBusySendTextToggle = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )
@@ -554,6 +566,14 @@ internal fun SettingsScreenBusySyncOnPreview() {
                 }
             }
             item { BusyFirstNameRow(firstName = "Geoff", onFirstNameChanged = {}) }
+            item {
+                ToggleRow(
+                    title = stringResource(R.string.settings_busy_sync_send_text),
+                    description = stringResource(R.string.settings_busy_sync_send_text_description),
+                    checked = false,
+                    onCheckedChange = {},
+                )
+            }
         }
     }
 }

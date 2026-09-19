@@ -6,6 +6,7 @@ import assertk.assertions.isEqualTo
 import assertk.assertions.isFalse
 import assertk.assertions.isNull
 import assertk.assertions.isTrue
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.FakeScheduledAlarmDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
@@ -168,7 +169,7 @@ class AlarmRingerTest {
 
     private val alert = ScheduleChangeAlert(
         listOf(ScheduleChange.New(today, EventKey(8, 0), Instant.parse("2026-09-14T15:00:00Z"), Instant.parse("2026-09-14T15:30:00Z"))),
-        syncsBusyCalendar = true,
+        shareMode = ShareMode.SYNC_AND_TEXT,
     )
 
     @Test

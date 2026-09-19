@@ -16,6 +16,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import com.episode6.meetingminder.R
+import com.episode6.meetingminder.alarm.alertReshareLabel
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.monitor.ScheduleChangeLine
 import com.episode6.meetingminder.monitor.text
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
@@ -27,8 +29,8 @@ data class ScheduleChangeAlertScreenState(
     val now: LocalTime,
     /** One line per change, times only, exactly what the quiet notification and the day view's banner say. */
     val lines: List<ScheduleChangeLine>,
-    /** A re-share would also sync the busy calendar (TODO.md §4.7): the button reads "Sync & Re-share". */
-    val syncsBusyCalendar: Boolean,
+    /** What a re-share does right now (TODO.md §4.7): "Re-share", "Sync & Re-share", or "Re-sync" with "since you synced". */
+    val shareMode: ShareMode,
     val soundName: String?,
     val silenced: Boolean = false,
 )
@@ -59,7 +61,11 @@ fun ScheduleChangeAlertScreen(
         details = {
             Text(
                 // the banner's words: the heading above already says "schedule changed"
-                text = pluralStringResource(R.plurals.day_banner_changes, state.lines.size, state.lines.size),
+                text = pluralStringResource(
+                    if (state.shareMode == ShareMode.SYNC_ONLY) R.plurals.day_banner_changes_synced else R.plurals.day_banner_changes,
+                    state.lines.size,
+                    state.lines.size,
+                ),
                 style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center,
@@ -76,7 +82,7 @@ fun ScheduleChangeAlertScreen(
         buttons = {
             Button(onClick = onReshare, modifier = Modifier.fillMaxWidth().heightIn(min = AlarmRingingDefaults.ButtonHeight)) {
                 Text(
-                    stringResource(if (state.syncsBusyCalendar) R.string.schedule_alert_sync_reshare else R.string.schedule_alert_reshare),
+                    stringResource(state.shareMode.alertReshareLabel()),
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
@@ -94,7 +100,7 @@ private val PreviewAlert = ScheduleChangeAlertScreenState(
         ScheduleChangeLine.New("3:00 – 3:30 PM"),
         ScheduleChangeLine.Moved("12:00 – 1:00 PM", "12:30 – 1:30 PM"),
     ),
-    syncsBusyCalendar = true,
+    shareMode = ShareMode.SYNC_AND_TEXT,
     soundName = "Siren sweep",
 )
 
@@ -107,13 +113,29 @@ internal fun ScheduleChangeAlertScreenPreview() {
     }
 }
 
+/** Sync-only busy-calendar sync (TODO.md §4.7): "2 changes since you synced" and "Re-sync". */
+@Preview(showBackground = true)
+@Composable
+internal fun ScheduleChangeAlertScreenSyncOnlyPreview() {
+    MeetingMinderTheme(darkTheme = true) {
+        ScheduleChangeAlertScreen(
+            PreviewAlert.copy(shareMode = ShareMode.SYNC_ONLY),
+            onReshare = {},
+            onOpenItinerary = {},
+            onSilence = {},
+            onDismiss = {},
+            animated = false,
+        )
+    }
+}
+
 /** Silenced, one cancellation, no busy-calendar sync: "Re-share", no Silence button. */
 @Preview(showBackground = true)
 @Composable
 internal fun ScheduleChangeAlertScreenSilencedPreview() {
     MeetingMinderTheme(darkTheme = true) {
         ScheduleChangeAlertScreen(
-            PreviewAlert.copy(lines = listOf(ScheduleChangeLine.Cancelled("2:00 – 2:45 PM")), syncsBusyCalendar = false, silenced = true),
+            PreviewAlert.copy(lines = listOf(ScheduleChangeLine.Cancelled("2:00 – 2:45 PM")), shareMode = ShareMode.TEXT, silenced = true),
             onReshare = {},
             onOpenItinerary = {},
             onSilence = {},

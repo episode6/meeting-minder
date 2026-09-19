@@ -6,6 +6,7 @@ import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
 import assertk.assertions.isEqualTo
+import assertk.assertions.isTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
@@ -163,5 +164,15 @@ class DataStoreSettingsRepositoryTest {
         repository.setBusySyncFirstName("x".repeat(BUSY_FIRST_NAME_MAX_LENGTH + 5))
 
         assertThat(repository.current().busySync.firstName).isEqualTo("x".repeat(BUSY_FIRST_NAME_MAX_LENGTH))
+    }
+
+    @Test
+    fun setBusySyncSendText_defaultsOn_andPersistsOff() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-busy-send-text-test"))
+        assertThat(repository.current().busySync.sendText).isTrue()
+
+        repository.setBusySyncSendText(false)
+
+        assertThat(repository.current().busySync).isEqualTo(BusySync(sendText = false))
     }
 }

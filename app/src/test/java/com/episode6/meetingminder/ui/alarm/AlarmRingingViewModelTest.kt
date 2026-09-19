@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.ui.alarm
 
+import com.episode6.meetingminder.data.calendar.ShareMode
 import com.episode6.meetingminder.store.SilenceAlarm
 import com.episode6.meetingminder.monitor.toLine
 import com.episode6.meetingminder.model.ScheduleChangeAlert
@@ -180,14 +181,14 @@ class AlarmRingingViewModelTest {
     @Test
     fun aScheduleChangeAlert_isShownAsOne_withItsChangesAsLines() = runTest {
         val change = ScheduleChange.New(alarm.date, EventKey(8, 0), Instant.parse("2026-09-14T15:00:00Z"), Instant.parse("2026-09-14T15:30:00Z"))
-        val alert = alarm.copy(silenced = true, soundName = "Argon", scheduleChange = ScheduleChangeAlert(listOf(change), syncsBusyCalendar = true))
+        val alert = alarm.copy(silenced = true, soundName = "Argon", scheduleChange = ScheduleChangeAlert(listOf(change), shareMode = ShareMode.SYNC_AND_TEXT))
         val viewModel = AlarmRingingViewModel(store(alert), clock)
 
         viewModel.state.test {
             val shown = awaitMatching { it is AlarmRingingUiState.ScheduleChanged } as AlarmRingingUiState.ScheduleChanged
             assertThat(shown.alarm).isEqualTo(alert)
             assertThat(shown.screen.lines).isEqualTo(listOf(change.toLine(clock.zone)))
-            assertThat(shown.screen.syncsBusyCalendar).isEqualTo(true)
+            assertThat(shown.screen.shareMode).isEqualTo(ShareMode.SYNC_AND_TEXT)
             assertThat(shown.screen.silenced).isEqualTo(true)
             assertThat(shown.screen.soundName).isEqualTo("Argon")
             cancelAndIgnoreRemainingEvents()
