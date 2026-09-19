@@ -16,16 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.QuestionMark
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -130,9 +125,9 @@ internal fun chipContentLayout(chipHeight: Dp, density: Density): ChipContentLay
  * - [past] (ended, on today): the whole chip at 60% alpha.
  *
  * Tapping toggles selection with a haptic tick ([onClick]; null makes the chip
- * non-selectable, as in the all-day row) and long-press opens the [EventMenu]: "Open in
- * calendar" ([onOpenClick]) first, then — for a [TimelineEvent.respondable] event — "Respond
- * Yes / No / Maybe" ([onRespond], TODO.md §4.6).
+ * non-selectable, as in the all-day row) and long-press opens the [EventSheet]: the full
+ * title, when and where, "Open in calendar" ([onOpenClick]) and — for a
+ * [TimelineEvent.respondable] event — Yes / No / Maybe ([onRespond], TODO.md §4.6).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -211,7 +206,7 @@ fun EventChip(
         else -> stringResource(R.string.event_action_select)
     }
     val longClickLabel = stringResource(R.string.event_action_more)
-    var menuExpanded by remember { mutableStateOf(false) }
+    var sheetOpen by remember { mutableStateOf(false) }
 
     Box(
         modifier
@@ -240,7 +235,7 @@ fun EventChip(
                 },
                 onLongClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    menuExpanded = true
+                    sheetOpen = true
                 },
             )
             .semantics(mergeDescendants = true) {
@@ -339,72 +334,18 @@ fun EventChip(
                 }
             }
         }
-        EventMenu(
-            expanded = menuExpanded,
-            onDismiss = { menuExpanded = false },
-            respondable = event.respondable,
-            response = event.response,
-            onOpenClick = onOpenClick,
-            onRespond = onRespond,
-        )
-    }
-}
-
-/**
- * The chip's long-press menu, anchored to the chip: "Open in calendar" first (what a
- * long-press used to do on its own), then, only while [respondable], the three answers
- * with the calendar's current one ([response]) ticked.
- */
-@Composable
-private fun EventMenu(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    respondable: Boolean,
-    response: EventResponse?,
-    onOpenClick: () -> Unit,
-    onRespond: (EventResponse) -> Unit,
-) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.event_menu_open_in_calendar)) },
-            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null) },
-            onClick = {
-                onDismiss()
-                onOpenClick()
-            },
-        )
-        if (!respondable) return@DropdownMenu
-        EventResponse.entries.forEach { candidate ->
-            DropdownMenuItem(
-                text = { Text(stringResource(candidate.menuLabel)) },
-                leadingIcon = { Icon(candidate.icon, contentDescription = null) },
-                trailingIcon = if (candidate == response) {
-                    { Icon(Icons.Outlined.Done, contentDescription = stringResource(R.string.event_menu_current_response)) }
-                } else {
-                    null
-                },
-                onClick = {
-                    onDismiss()
-                    onRespond(candidate)
-                },
+        if (sheetOpen) {
+            EventSheet(
+                event = event,
+                allDay = contentLayout == ChipContentLayout.TitleOnly,
+                timeFormat = timeFormat,
+                onDismiss = { sheetOpen = false },
+                onOpenClick = onOpenClick,
+                onRespond = onRespond,
             )
         }
     }
 }
-
-private val EventResponse.menuLabel: Int
-    get() = when (this) {
-        EventResponse.YES -> R.string.event_menu_respond_yes
-        EventResponse.NO -> R.string.event_menu_respond_no
-        EventResponse.MAYBE -> R.string.event_menu_respond_maybe
-    }
-
-private val EventResponse.icon
-    get() = when (this) {
-        EventResponse.YES -> Icons.Outlined.Check
-        EventResponse.NO -> Icons.Outlined.Close
-        EventResponse.MAYBE -> Icons.Outlined.QuestionMark
-    }
 
 @Composable
 private fun ChipTime(text: String, style: TextStyle) {

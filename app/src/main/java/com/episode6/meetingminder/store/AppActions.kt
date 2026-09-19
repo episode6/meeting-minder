@@ -154,7 +154,7 @@ data class RsvpAccept(val date: LocalDate, val key: EventKey) : AsyncAction
 data class RsvpAccepted(val date: LocalDate, val key: EventKey, val result: RsvpResult) : AsyncAction
 
 /**
- * The user picked "Respond Yes / No / Maybe" from [key]'s long-press menu on [date]: write
+ * The user picked "Yes / No / Maybe" from [key]'s long-press sheet on [date]: write
  * [response] for that one occurrence (`RespondToEventSideEffects` →
  * `CalendarRepository.respondToInstance`), confirm with a snackbar and reload the day
  * ([CalendarContentChanged]). The selection itself is left alone; a "No" leaves the chip

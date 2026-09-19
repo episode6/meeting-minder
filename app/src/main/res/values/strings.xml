@@ -95,13 +95,17 @@
     <string name="event_action_select">select</string>
     <string name="event_action_deselect">deselect</string>
     <string name="event_action_more">show options</string>
-    <!-- the chip's long-press menu: open the event, or answer its invite for this one occurrence (TODO.md §4.6) -->
-    <string name="event_menu_open_in_calendar">Open in calendar</string>
-    <string name="event_menu_respond_yes">Respond Yes</string>
-    <string name="event_menu_respond_no">Respond No</string>
-    <string name="event_menu_respond_maybe">Respond Maybe</string>
-    <string name="event_menu_current_response">Your current response</string>
-    <!-- snackbars after a long-press menu response -->
+    <!-- the chip's long-press sheet: the full title, when and where, then open the event or answer its invite for this one occurrence (TODO.md §4.6) -->
+    <string name="event_sheet_open_in_calendar">Open in calendar</string>
+    <string name="event_sheet_your_response">Your response</string>
+    <string name="event_sheet_respond_yes">Yes</string>
+    <string name="event_sheet_respond_no">No</string>
+    <string name="event_sheet_respond_maybe">Maybe</string>
+    <string name="event_sheet_all_day">All day</string>
+    <!-- an event crossing midnight, one end per line: "Monday, Sep 14, 11:00 PM –" then "Tuesday, Sep 15, 1:00 AM" -->
+    <string name="event_sheet_spanning_begin">%1$s, %2$s –</string>
+    <string name="event_sheet_spanning_end">%1$s, %2$s</string>
+    <!-- snackbars after a long-press sheet response -->
     <string name="respond_sent_yes">Responded Yes</string>
     <string name="respond_sent_no">Responded No</string>
     <string name="respond_sent_maybe">Responded Maybe</string>
