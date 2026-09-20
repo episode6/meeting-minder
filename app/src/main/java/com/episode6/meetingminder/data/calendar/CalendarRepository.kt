@@ -18,7 +18,7 @@ sealed interface CalendarFilter {
 /**
  * Read access to every calendar on every account (TODO.md §4.1), plus the only writes
  * the app ever makes: the RSVP of [respondToInstance] (§4.6) — "Yes, going" when
- * alarms are set, or the answer picked from a chip's long-press menu — and the busy-calendar
+ * alarms are set, or the answer picked from a chip's long-press sheet — and the busy-calendar
  * sync's [insertBusyBlock] and [deleteOwnEvent] (§4.7), which only ever touch events the
  * app itself inserted, plus its [enableCalendarSync], which turns `SYNC_EVENTS` on for the
  * calendar the user picked as the sync's target.

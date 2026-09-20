@@ -184,9 +184,10 @@ notification would make every busy block buzz.
 The full v1.0 flow (TODO.md PR-1 through PR-13) is implemented, so every step below should
 work end to end. The app launches to today's page of the day pager with the device's
 visible calendars loaded — swipe between days (the app-bar date and "N meetings" subtitle
-follow the settled page), Today scrolls back, long-press a chip for its menu ("Open in
-calendar" opens it in the calendar app; "Respond Yes / No / Maybe" appear only for an invite
-with a self-attendee row and write that answer for the one occurrence, with a "Responded …"
+follow the settled page), Today scrolls back, long-press a chip for its bottom sheet (the
+full title, date, time and location; "Open in calendar" opens it in the calendar app; the
+Yes / No / Maybe row appears only for an invite with a self-attendee row, has the current
+answer selected, and writes the one tapped for the one occurrence, with a "Responded …"
 snackbar and the chip updating at once — a No makes it dashed and unselectable), the Refresh
 button shows "Refreshing calendars…" and reloads the shown days (on an emulator with only a
 `LOCAL` calendar there is no sync adapter, so nothing else happens), and an event inserted

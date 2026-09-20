@@ -30,7 +30,7 @@ import java.time.ZoneId
  * updates our own `attendees/{id}` row, a recurring occurrence inserts an
  * `exception/{eventId}` with `ORIGINAL_INSTANCE_TIME = begin`. Every write is addressed by
  * the occurrence's own `eventId`, never the series id in its key. A "No" or "Maybe" from
- * the long-press menu takes the same shapes with a different status.
+ * the long-press sheet takes the same shapes with a different status.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])

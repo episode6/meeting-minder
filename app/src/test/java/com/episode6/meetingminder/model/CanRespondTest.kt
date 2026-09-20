@@ -8,7 +8,7 @@ import org.junit.Test
 import java.time.Instant
 
 /**
- * Which events the long-press menu offers "Respond Yes / No / Maybe" for: everything the
+ * Which events the long-press sheet offers "Yes / No / Maybe" for: everything the
  * provider can take an answer for, whether or not the automatic path would skip it.
  */
 class CanRespondTest {

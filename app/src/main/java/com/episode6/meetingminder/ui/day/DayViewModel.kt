@@ -118,7 +118,7 @@ class DayViewModel(private val store: AppStore, private val clock: Clock, privat
         store.dispatch(ToggleEvent(date, event.key))
     }
 
-    /** "Respond Yes / No / Maybe" from a chip's long-press menu on [date]'s page (TODO.md §4.6). */
+    /** "Yes / No / Maybe" from a chip's long-press sheet on [date]'s page (TODO.md §4.6). */
     fun onEventRespond(date: LocalDate, event: TimelineEvent, response: EventResponse) {
         store.dispatch(RespondToEvent(date, event.key, response))
     }
@@ -172,7 +172,7 @@ class DayViewModel(private val store: AppStore, private val clock: Clock, privat
     fun calendarEventFor(key: EventKey): CalendarEvent? =
         store.state.eventsByDay.values.firstNotNullOfOrNull { day -> day.events.firstOrNull { it.key == key } }
 
-    /** No app on the device can open the event ("Open in calendar" from a chip's long-press menu). */
+    /** No app on the device can open the event ("Open in calendar" from a chip's long-press sheet). */
     fun onOpenInCalendarFailed() {
         store.dispatch(ShowMessage(UiMessage.next(R.string.open_in_calendar_failed)))
     }

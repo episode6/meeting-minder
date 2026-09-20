@@ -44,6 +44,7 @@ internal object PreviewEvents {
         location = null,
         begin = PreviewDate.minusDays(1).atStartOfDay(),
         end = PreviewDate.plusDays(4).atStartOfDay(),
+        allDay = true,
         color = team,
     )
     val standup = event(2, "Daily standup", 9 to 0, 9 to 30)

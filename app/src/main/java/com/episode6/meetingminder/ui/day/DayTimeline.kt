@@ -59,7 +59,7 @@ private val MinChipMinutes = ceil(DayViewDefaults.MinChipHeight / DayViewDefault
  *
  * Stateless and data-free: [scrollState] is hoisted so [DayPager] can share one across
  * its pages and the callbacks only report which event was tapped, opened
- * ([onEventOpenClick], the long-press menu's first item) or answered ([onEventRespond]).
+ * ([onEventOpenClick], the long-press sheet's first action) or answered ([onEventRespond]).
  * All-day chips aren't selectable (all-day events are never meetings, never alarmed and
  * never shared); they only answer long-press. Needs a bounded height.
  */

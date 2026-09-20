@@ -55,6 +55,8 @@ data class TimelineEvent(
     /** Wall-clock times in the device zone; the timeline clamps them to its day. */
     val begin: LocalDateTime,
     val end: LocalDateTime,
+    /** An all-day event (read in UTC, [end] the exclusive midnight after its last day). */
+    val allDay: Boolean = false,
     /** The calendar's colour (`Instances.DISPLAY_COLOR`); chips never use the theme colour. */
     val color: Color,
     val status: ChipStatus = ChipStatus.Normal,
@@ -64,12 +66,12 @@ data class TimelineEvent(
     val alarmAt: LocalTime? = null,
     /** The outcome of the RSVP sent when the alarm was set. */
     val rsvp: ChipRsvp = ChipRsvp.None,
-    /** Whether the long-press menu offers "Respond Yes / No / Maybe" ([canRespond]). */
+    /** Whether the long-press sheet offers "Yes / No / Maybe" ([canRespond]). */
     val respondable: Boolean = false,
-    /** Your answer on the calendar as it stands, marked in the long-press menu; null while unanswered. */
+    /** Your answer on the calendar as it stands, marked in the long-press sheet; null while unanswered. */
     val response: EventResponse? = null,
 ) {
-    /** Declined and cancelled chips ignore taps; long-press (the menu) still works. */
+    /** Declined and cancelled chips ignore taps; long-press (the sheet) still works. */
     val toggleable: Boolean get() = status != ChipStatus.Declined
 
     val armed: Boolean get() = selected && alarmAt != null
@@ -106,6 +108,7 @@ fun CalendarEvent.toTimelineEvent(
         location = location,
         begin = LocalDateTime.ofInstant(begin, readZone),
         end = LocalDateTime.ofInstant(end, readZone),
+        allDay = allDay,
         color = Color(color),
         status = when {
             status == EventStatus.CANCELED || selfStatus == SelfStatus.DECLINED -> ChipStatus.Declined
