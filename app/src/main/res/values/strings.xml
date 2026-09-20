@@ -102,6 +102,8 @@
     <string name="event_sheet_respond_no">No</string>
     <string name="event_sheet_respond_maybe">Maybe</string>
     <string name="event_sheet_all_day">All day</string>
+    <!-- what TalkBack says on an answer button, whose visible label is the bare "Yes" -->
+    <string name="event_sheet_respond_a11y">Respond %1$s</string>
     <!-- an event crossing midnight, one end per line: "Monday, Sep 14, 11:00 PM –" then "Tuesday, Sep 15, 1:00 AM" -->
     <string name="event_sheet_spanning_begin">%1$s, %2$s –</string>
     <string name="event_sheet_spanning_end">%1$s, %2$s</string>

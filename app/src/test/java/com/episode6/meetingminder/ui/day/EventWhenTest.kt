@@ -30,6 +30,12 @@ class EventWhenTest {
     }
 
     @Test
+    fun aTimedEventOverSeveralDays_isSpanning() {
+        assertThat(eventWhen(day.atTime(10, 0), day.plusDays(2).atTime(11, 0), allDay = false))
+            .isEqualTo(EventWhen.Spanning(day.atTime(10, 0), day.plusDays(2).atTime(11, 0)))
+    }
+
+    @Test
     fun aOneDayAllDayEvent_endsOnItsOwnDay() {
         assertThat(eventWhen(day.atStartOfDay(), day.plusDays(1).atStartOfDay(), allDay = true))
             .isEqualTo(EventWhen.AllDay(day, day))

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -79,6 +80,21 @@ class EventSheetTest {
     }
 
     @Test
+    fun anEventCrossingMidnight_givesEachEndItsOwnDatedLine() {
+        val overnight = PreviewEvents.standup.copy(
+            title = "Overnight deploy",
+            begin = PreviewDate.atTime(23, 0),
+            end = PreviewDate.plusDays(1).atTime(1, 30),
+        )
+        show(overnight)
+
+        longPressChip(overnight.title)
+
+        composeRule.onNodeWithText("Monday, Sep 14, 11:00 PM –").assertIsDisplayed()
+        composeRule.onNodeWithText("Tuesday, Sep 15, 1:30 AM").assertIsDisplayed()
+    }
+
+    @Test
     fun aRespondableChip_offersOpenThenTheThreeAnswers_withTheCurrentOneSelected() {
         show(PreviewEvents.standup.copy(respondable = true, response = EventResponse.MAYBE))
 
@@ -86,9 +102,9 @@ class EventSheetTest {
 
         composeRule.onNodeWithText("Open in calendar").assertIsDisplayed()
         composeRule.onNodeWithText("Your response").assertIsDisplayed()
-        composeRule.onNodeWithText("Yes").assertIsNotSelected()
-        composeRule.onNodeWithText("No").assertIsNotSelected()
-        composeRule.onNodeWithText("Maybe").assertIsSelected()
+        composeRule.onNodeWithContentDescription("Respond Yes").assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Respond No").assertIsNotSelected()
+        composeRule.onNodeWithContentDescription("Respond Maybe").assertIsSelected()
     }
 
     @Test
@@ -96,7 +112,7 @@ class EventSheetTest {
         show(PreviewEvents.standup.copy(respondable = true))
 
         longPressChip()
-        composeRule.onNodeWithText("No").performClick()
+        composeRule.onNodeWithContentDescription("Respond No").performClick()
         composeRule.waitForIdle()
 
         assertThat(responses).containsExactly(EventResponse.NO)

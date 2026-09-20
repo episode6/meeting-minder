@@ -38,7 +38,7 @@ class TimelineEventTest {
                 status = ChipStatus.Normal,
                 selected = true,
                 alarmAt = LocalTime.of(8, 55),
-                // an accepted invite with a self-attendee row: the menu offers the answers, with "Yes" ticked
+                // an accepted invite with a self-attendee row: the sheet offers the answers, with "Yes" selected
                 respondable = true,
                 response = EventResponse.YES,
             ),
@@ -58,6 +58,9 @@ class TimelineEventTest {
 
         assertThat(chip).prop(TimelineEvent::begin).isEqualTo(LocalDateTime.of(2026, 9, 14, 0, 0))
         assertThat(chip).prop(TimelineEvent::end).isEqualTo(LocalDateTime.of(2026, 9, 15, 0, 0))
+        // the chip carries all-day itself: the sheet's wording and the a11y label read it, not the layout
+        assertThat(chip).prop(TimelineEvent::allDay).isTrue()
+        assertThat(event().toTimelineEvent(newYork)).prop(TimelineEvent::allDay).isFalse()
     }
 
     @Test

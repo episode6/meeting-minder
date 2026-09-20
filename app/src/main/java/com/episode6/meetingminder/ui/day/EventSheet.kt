@@ -1,6 +1,7 @@
 package com.episode6.meetingminder.ui.day
 
 import android.content.res.Configuration
+import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,11 +30,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
@@ -48,7 +52,19 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val SheetDateFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
+/**
+ * "Monday, Sep 14": the weekday, month and day the locale orders them in. Built per locale
+ * like [TimelineTimeFormat], since a formatter held in a `val` would fix the JVM's default
+ * locale at class load. No year — the sheet is opened from a day the user just navigated to,
+ * and the app bar's own date doesn't carry one either.
+ */
+@Composable
+private fun rememberSheetDateFormatter(): DateTimeFormatter {
+    val locale = LocalResources.current.configuration.locales[0]
+    return remember(locale) {
+        DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, "EEEEMMMd"), locale)
+    }
+}
 
 private object EventSheetDefaults {
     val HorizontalPadding = 24.dp
@@ -109,7 +125,6 @@ internal fun eventWhen(begin: LocalDateTime, end: LocalDateTime, allDay: Boolean
 @Composable
 internal fun EventSheet(
     event: TimelineEvent,
-    allDay: Boolean,
     timeFormat: TimelineTimeFormat,
     onDismiss: () -> Unit,
     onOpenClick: () -> Unit,
@@ -121,7 +136,6 @@ internal fun EventSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         EventSheetContent(
             event = event,
-            allDay = allDay,
             timeFormat = timeFormat,
             onOpenClick = {
                 onOpenClick()
@@ -138,7 +152,6 @@ internal fun EventSheet(
 @Composable
 internal fun EventSheetContent(
     event: TimelineEvent,
-    allDay: Boolean,
     timeFormat: TimelineTimeFormat,
     onOpenClick: () -> Unit,
     onRespond: (EventResponse) -> Unit,
@@ -160,7 +173,7 @@ internal fun EventSheetContent(
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.semantics { heading() },
                 )
-                (whenLines(eventWhen(event.begin, event.end, allDay), timeFormat) + listOfNotNull(event.location))
+                (whenLines(eventWhen(event.begin, event.end, event.allDay), timeFormat) + listOfNotNull(event.location))
                     .forEach { line ->
                         Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -200,36 +213,43 @@ private fun ResponseRow(response: EventResponse?, onRespond: (EventResponse) -> 
             .heightIn(min = EventSheetDefaults.ResponseRowMinHeight),
     ) {
         options.forEachIndexed { index, candidate ->
+            val label = stringResource(candidate.label)
+            // the visible label is the bare "Yes"; TalkBack says what it answers, as the menu did
+            val spoken = stringResource(R.string.event_sheet_respond_a11y, label)
             SegmentedButton(
                 selected = candidate == response,
                 onClick = { onRespond(candidate) },
                 shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                modifier = Modifier.semantics { contentDescription = spoken },
             ) {
-                Text(stringResource(candidate.label))
+                Text(label)
             }
         }
     }
 }
 
 @Composable
-private fun whenLines(time: EventWhen, format: TimelineTimeFormat): List<String> = when (time) {
-    is EventWhen.SameDay -> listOf(
-        time.date.format(SheetDateFormatter),
-        stringResource(R.string.event_time_range, format.timeWithPeriod(time.begin), format.timeWithPeriod(time.end)),
-    )
-    is EventWhen.AllDay -> listOf(
-        if (time.first == time.last) {
-            time.first.format(SheetDateFormatter)
-        } else {
-            stringResource(R.string.event_time_range, time.first.format(SheetDateFormatter), time.last.format(SheetDateFormatter))
-        },
-        stringResource(R.string.event_sheet_all_day),
-    )
-    // like Google Calendar's own event view: each end on its own line
-    is EventWhen.Spanning -> listOf(
-        stringResource(R.string.event_sheet_spanning_begin, time.begin.format(SheetDateFormatter), format.timeWithPeriod(time.begin.toLocalTime())),
-        stringResource(R.string.event_sheet_spanning_end, time.end.format(SheetDateFormatter), format.timeWithPeriod(time.end.toLocalTime())),
-    )
+private fun whenLines(time: EventWhen, format: TimelineTimeFormat): List<String> {
+    val dates = rememberSheetDateFormatter()
+    return when (time) {
+        is EventWhen.SameDay -> listOf(
+            time.date.format(dates),
+            stringResource(R.string.event_time_range, format.timeWithPeriod(time.begin), format.timeWithPeriod(time.end)),
+        )
+        is EventWhen.AllDay -> listOf(
+            if (time.first == time.last) {
+                time.first.format(dates)
+            } else {
+                stringResource(R.string.event_time_range, time.first.format(dates), time.last.format(dates))
+            },
+            stringResource(R.string.event_sheet_all_day),
+        )
+        // like Google Calendar's own event view: each end on its own line
+        is EventWhen.Spanning -> listOf(
+            stringResource(R.string.event_sheet_spanning_begin, time.begin.format(dates), format.timeWithPeriod(time.begin.toLocalTime())),
+            stringResource(R.string.event_sheet_spanning_end, time.end.format(dates), format.timeWithPeriod(time.end.toLocalTime())),
+        )
+    }
 }
 
 private val EventResponse.label: Int
@@ -262,16 +282,29 @@ internal fun EventSheetContentDarkPreview() {
 @Preview(showBackground = true, widthDp = 360)
 @Composable
 internal fun EventSheetContentAllDayPreview() {
-    EventSheetPreviewFrame(PreviewEvents.planningWeek, allDay = true)
+    EventSheetPreviewFrame(PreviewEvents.planningWeek)
+}
+
+/** An event crossing midnight: each end takes its own line, with its own date. */
+@Preview(showBackground = true, widthDp = 360)
+@Composable
+internal fun EventSheetContentSpanningPreview() {
+    EventSheetPreviewFrame(
+        PreviewEvents.designReview.copy(
+            title = "Overnight deploy window",
+            location = null,
+            begin = PreviewDate.atTime(23, 0),
+            end = PreviewDate.plusDays(1).atTime(1, 30),
+        ),
+    )
 }
 
 @Composable
-private fun EventSheetPreviewFrame(event: TimelineEvent, allDay: Boolean = false) {
+private fun EventSheetPreviewFrame(event: TimelineEvent) {
     MeetingMinderTheme {
         Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
             EventSheetContent(
                 event = event,
-                allDay = allDay,
                 timeFormat = TimelineTimeFormat(is24Hour = false, locale = Locale.US),
                 onOpenClick = {},
                 onRespond = {},

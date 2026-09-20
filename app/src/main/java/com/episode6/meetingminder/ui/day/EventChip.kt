@@ -185,7 +185,7 @@ fun EventChip(
     // what TalkBack reads instead of the visible text, whose dashes, separators and bell
     // don't read out well: "Design review, 10:00 AM to 11:00 AM, Meet"
     val a11yLabel = when {
-        contentLayout == ChipContentLayout.TitleOnly -> stringResource(R.string.event_a11y_all_day, event.title)
+        event.allDay -> stringResource(R.string.event_a11y_all_day, event.title)
         event.location != null -> stringResource(
             R.string.event_a11y_timed_with_location,
             event.title,
@@ -337,7 +337,6 @@ fun EventChip(
         if (sheetOpen) {
             EventSheet(
                 event = event,
-                allDay = contentLayout == ChipContentLayout.TitleOnly,
                 timeFormat = timeFormat,
                 onDismiss = { sheetOpen = false },
                 onOpenClick = onOpenClick,
