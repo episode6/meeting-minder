@@ -646,7 +646,7 @@ meeting that moves doesn't).
 | Moved | selected key, begin/end differ from the snapshot, new slot ends after now |
 | Cancelled | selected key gone / `STATUS_CANCELED`, and it hadn't started yet |
 | Declined by me | selected key, now `SELF_ATTENDEE_STATUS = DECLINED` |
-| Ignored | title/colour/description/reminder/attendee-list edits, sync rewrites with identical values, events already over, all-day events |
+| Ignored | title/colour/description/reminder/attendee-list edits, sync rewrites with identical values, an event replaced by another at identical times (see the NB), events already over, all-day events |
 
 **Notification** (channel `schedule_updates`, `IMPORTANCE_DEFAULT`, fixed id, `setOnlyAlertOnce`,
 `InboxStyle` one line per change): title "Your schedule changed since you shared it", text
@@ -680,6 +680,13 @@ NB (PR-11), where the build settled things this section leaves open:
   selected event that is still running is never read as cancelled; the window is expressed
   through the "hasn't started / not over yet" conditions. A selected event moved to another
   day reads as Cancelled on the shared day. Declined wins over Moved for the same event.
+- **Replaced at identical times is no change.** An edit can give an occurrence a new
+  `EventKey` without touching its times ("this and following events" moves every later
+  occurrence to a new series id; delete + recreate), which by key alone is Cancelled + New for
+  a slot that never moved. The differ pairs a key gone from the day one-to-one with a key new
+  to the day at exactly the same begin and end and reports neither. `maintainAlarms` already
+  keeps the alarm of a vanished key, so the alarm still rings on time; the selection is
+  **not** re-keyed, so the replacement's chip shows unselected until tapped.
 - **Notification**: tag `schedule_updates`, id = the day's epoch day. A check that finds the
   same changes as last time does nothing; one where changes only dropped out updates the
   notification without alerting (and doesn't revive a dismissed one); no changes left cancels
