@@ -223,6 +223,81 @@ class ChangeDetectorTest {
         assertThat(detect(emptyList(), listOf(laterAllDay))).isEmpty()
     }
 
+    // Replaced at identical times: the key changed ("this and following events", delete + recreate), the slot didn't
+
+    @Test
+    fun ignored_aSelectedEventReplacedAtTheSameTimes_isNeitherCancelledNorNew() {
+        val recreated = testCalendarEvent(9, designReview.begin, designReview.end, title = "Design review (weekly)")
+
+        assertThat(detect(listOf(designReview.snapshot(selected = true)), listOf(recreated))).isEmpty()
+    }
+
+    @Test
+    fun ignored_anUnselectedMeetingReplacedAtTheSameTimes_isNotNew() {
+        val recreated = testCalendarEvent(9, oneOnOne.begin, oneOnOne.end)
+
+        assertThat(detect(listOf(oneOnOne.snapshot(selected = false)), listOf(recreated))).isEmpty()
+    }
+
+    @Test
+    fun replaced_atDifferentTimes_isStillCancelledAndNew() {
+        val recreated = testCalendarEvent(9, at(13, 30), at(14, 30))
+
+        assertThat(detect(listOf(designReview.snapshot(selected = true)), listOf(recreated))).containsExactly(
+            ScheduleChange.Cancelled(date, designReview.key, at(13), at(14)),
+            ScheduleChange.New(date, recreated.key, recreated.begin, recreated.end),
+        )
+    }
+
+    @Test
+    fun replaced_pairsOneToOne_soASecondMeetingInTheSlotIsNew() {
+        val recreated = testCalendarEvent(9, designReview.begin, designReview.end)
+        val doubleBooked = testCalendarEvent(10, designReview.begin, designReview.end)
+
+        assertThat(detect(listOf(designReview.snapshot(selected = true)), listOf(recreated, doubleBooked)))
+            .containsExactly(ScheduleChange.New(date, doubleBooked.key, doubleBooked.begin, doubleBooked.end))
+    }
+
+    @Test
+    fun replaced_whileTheOriginalIsStillThere_isNew() {
+        val doubleBooked = testCalendarEvent(9, designReview.begin, designReview.end)
+
+        assertThat(detect(listOf(designReview.snapshot(selected = true)), listOf(designReview, doubleBooked)))
+            .containsExactly(ScheduleChange.New(date, doubleBooked.key, doubleBooked.begin, doubleBooked.end))
+    }
+
+    @Test
+    fun replaced_aSoloBlockGoneWithAnInviteInItsSlot_isStillNew() {
+        val hold = testCalendarEvent(4, at(14), at(15), meeting = false)
+        val invite = testCalendarEvent(9, at(14), at(15))
+
+        assertThat(detect(listOf(hold.snapshot(selected = false)), listOf(invite)))
+            .containsExactly(ScheduleChange.New(date, invite.key, invite.begin, invite.end))
+    }
+
+    @Test
+    fun ignored_aSelectedSoloBlockRecreatedAtTheSameTimes_isSilent() {
+        val recreated = testCalendarEvent(9, dentist.begin, dentist.end, meeting = false)
+
+        assertThat(detect(listOf(dentist.snapshot(selected = true)), listOf(recreated))).isEmpty()
+    }
+
+    @Test
+    fun replaced_twoGoneFromOneSlot_theSelectedOneTakesTheArrival() {
+        val duplicate = testCalendarEvent(4, designReview.begin, designReview.end)
+        val recreated = testCalendarEvent(9, designReview.begin, designReview.end)
+
+        assertThat(detect(listOf(duplicate.snapshot(selected = false), designReview.snapshot(selected = true)), listOf(recreated))).isEmpty()
+    }
+
+    @Test
+    fun replaced_byACancelledEvent_isStillCancelled() {
+        val cancelledCopy = testCalendarEvent(9, designReview.begin, designReview.end).copy(status = EventStatus.CANCELED)
+
+        assertThat(detect(listOf(designReview.snapshot(selected = true)), listOf(cancelledCopy)))
+            .containsExactly(ScheduleChange.Cancelled(date, designReview.key, at(13), at(14)))
+    }
+
     @Test
     fun changes_areOrderedByTheTimeTheyAreAbout() {
         val invite = testCalendarEvent(9, at(15), at(15, 30))
