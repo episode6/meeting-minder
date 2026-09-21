@@ -65,6 +65,12 @@ data class Settings(
     val calendarOverrides: Map<Long, Boolean> = emptyMap(),
     /** Settings → Busy calendar (TODO.md §4.7): whether, and to which calendar, a share also syncs busy blocks. */
     val busySync: BusySync = BusySync(),
+    /**
+     * Whether a new change to today, found by a background check, also rings the full-screen
+     * schedule-change alert (TODO.md §4.3's "loud alert" NB). Opt-in: off, the default, leaves
+     * the ordinary "schedule changed" notification to make the noise.
+     */
+    val loudChangeAlerts: Boolean = false,
 )
 
 object SettingsDefaults {
@@ -114,6 +120,9 @@ interface SettingsRepository {
 
     /** Sets [BusySync.sendText]: whether a share still sends the schedule text while the sync is on. */
     suspend fun setBusySyncSendText(sendText: Boolean)
+
+    /** Sets [Settings.loudChangeAlerts]. */
+    suspend fun setLoudChangeAlerts(loudChangeAlerts: Boolean)
 
     /**
      * The runtime permissions (`Manifest.permission` names) this app has asked the system
@@ -198,6 +207,10 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         dataStore.edit { it[Keys.BusySyncSendText] = sendText }
     }
 
+    override suspend fun setLoudChangeAlerts(loudChangeAlerts: Boolean) {
+        dataStore.edit { it[Keys.LoudChangeAlerts] = loudChangeAlerts }
+    }
+
     override val requestedPermissions: Flow<Set<String>> = dataStore.data.map { it[Keys.RequestedPermissions].orEmpty() }
 
     override suspend fun markPermissionRequested(permission: String) {
@@ -217,6 +230,7 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
             firstName = this[Keys.BusySyncFirstName].orEmpty(),
             sendText = this[Keys.BusySyncSendText] ?: true,
         ),
+        loudChangeAlerts = this[Keys.LoudChangeAlerts] ?: false,
     )
 
     private fun Preferences.calendarOverrides(): Map<Long, Boolean> {
@@ -241,5 +255,6 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         val BusySyncCalendarId = longPreferencesKey("busy_sync_calendar_id")
         val BusySyncFirstName = stringPreferencesKey("busy_sync_first_name")
         val BusySyncSendText = booleanPreferencesKey("busy_sync_send_text")
+        val LoudChangeAlerts = booleanPreferencesKey("loud_change_alerts")
     }
 }

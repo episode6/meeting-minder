@@ -82,7 +82,8 @@ internal object SettingsOptions {
 
 /**
  * Settings (TODO.md §5 PR-12; no render): lead time / snooze / auto-timeout / sound pack
- * as chip pickers, a "Test alarm" button, the "show declined events" toggle, the
+ * as chip pickers, a "Test alarm" button, the opt-in "Loud schedule-change alerts" toggle,
+ * the "show declined events" toggle, the
  * Settings → Calendars list with a per-calendar include switch (and a "not syncing"
  * hint), and re-entry points into Permissions and Licenses.
  */
@@ -103,6 +104,7 @@ fun SettingsScreen(
     onBusyCalendarSelected: (CalendarInfo) -> Unit,
     onBusyFirstNameChanged: (String) -> Unit,
     onBusySendTextToggle: (Boolean) -> Unit,
+    onLoudChangeAlertsToggle: (Boolean) -> Unit,
     onPermissionsClick: () -> Unit,
     onLicensesClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -153,6 +155,17 @@ fun SettingsScreen(
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                     OutlinedButton(onClick = onTestAlarmClick) { Text(stringResource(R.string.settings_test_alarm)) }
                 }
+            }
+            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+
+            section(R.string.settings_section_schedule_changes)
+            item {
+                ToggleRow(
+                    title = stringResource(R.string.settings_loud_change_alerts),
+                    description = stringResource(R.string.settings_loud_change_alerts_description),
+                    checked = state.loudChangeAlerts,
+                    onCheckedChange = onLoudChangeAlertsToggle,
+                )
             }
             item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
 
@@ -477,6 +490,7 @@ internal fun SettingsScreenPreview() {
             onBusyCalendarSelected = {},
             onBusyFirstNameChanged = {},
             onBusySendTextToggle = {},
+            onLoudChangeAlertsToggle = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )
@@ -503,6 +517,7 @@ internal fun SettingsScreenDarkPreview() {
             onBusyCalendarSelected = {},
             onBusyFirstNameChanged = {},
             onBusySendTextToggle = {},
+            onLoudChangeAlertsToggle = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )
@@ -528,6 +543,7 @@ internal fun SettingsScreenLargeFontPreview() {
             onBusyCalendarSelected = {},
             onBusyFirstNameChanged = {},
             onBusySendTextToggle = {},
+            onLoudChangeAlertsToggle = {},
             onPermissionsClick = {},
             onLicensesClick = {},
         )

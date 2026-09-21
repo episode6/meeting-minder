@@ -57,6 +57,7 @@ class SettingsChipsSemanticsTest {
                     onBusyCalendarSelected = {},
                     onBusyFirstNameChanged = {},
                     onBusySendTextToggle = {},
+                    onLoudChangeAlertsToggle = {},
                     onPermissionsClick = {},
                     onLicensesClick = {},
                 )
@@ -112,6 +113,7 @@ class SettingsChipsSemanticsTest {
                     onBusyCalendarSelected = {},
                     onBusyFirstNameChanged = {},
                     onBusySendTextToggle = {},
+                    onLoudChangeAlertsToggle = {},
                     onPermissionsClick = {},
                     onLicensesClick = {},
                 )
@@ -143,6 +145,7 @@ class SettingsChipsSemanticsTest {
                     onBusyCalendarSelected = {},
                     onBusyFirstNameChanged = {},
                     onBusySendTextToggle = {},
+                    onLoudChangeAlertsToggle = {},
                     onPermissionsClick = {},
                     onLicensesClick = {},
                 )
@@ -173,6 +176,7 @@ class SettingsChipsSemanticsTest {
                     onBusyCalendarSelected = {},
                     onBusyFirstNameChanged = {},
                     onBusySendTextToggle = {},
+                    onLoudChangeAlertsToggle = {},
                     onPermissionsClick = {},
                     onLicensesClick = {},
                 )

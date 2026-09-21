@@ -64,6 +64,9 @@ class ChangeMonitorTest {
     private fun monitor(snapshotDao: ChangeSnapshotDao, settings: FakeSettingsRepository = FakeSettingsRepository()) =
         ChangeMonitor(repository, snapshotDao, dayPlanDao, busyBlockDao, permissions, notifier, scheduler, settings, clock, alerter, mainUi)
 
+    /** Settings → Schedule changes' opt-in: without it nothing below rings. */
+    private fun loudOptedIn() = FakeSettingsRepository(Settings(loudChangeAlerts = true))
+
     private val moved = ScheduleChange.Moved(today, designReview.key, today.at(13), today.at(14), today.at(13, 30), today.at(14, 30))
     private val new = ScheduleChange.New(today, invite.key, invite.begin, invite.end)
 
@@ -288,12 +291,24 @@ class ChangeMonitorTest {
     }
 
     @Test
-    fun runCheck_inTheBackground_aNewChangeToday_ringsTheLoudAlert_andTheNotificationStaysSilent() = runTest {
+    fun runCheck_withoutTheLoudAlertsOptIn_neverRings_andTheNotificationMakesTheNoise() = runTest {
         alerter.rings = true
         val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
         repository.events[today] = listOf(designReview, invite)
 
         monitor(snapshots).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+
+        assertThat(alerter.alerted).isEmpty()
+        assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, silent = false))
+    }
+
+    @Test
+    fun runCheck_inTheBackground_aNewChangeToday_ringsTheLoudAlert_andTheNotificationStaysSilent() = runTest {
+        alerter.rings = true
+        val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
+        repository.events[today] = listOf(designReview, invite)
+
+        monitor(snapshots, loudOptedIn()).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
 
         assertThat(alerter.alerted).containsExactly(today)
         assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, silent = true))
@@ -307,7 +322,7 @@ class ChangeMonitorTest {
         val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
         repository.events[today] = listOf(designReview, invite)
 
-        monitor(snapshots).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
+        monitor(snapshots, loudOptedIn()).runCheck(ChangeCheckReason.CONTENT_TRIGGER)
 
         assertThat(alerter.alerted).isEmpty()
         assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, silent = false))
@@ -318,7 +333,7 @@ class ChangeMonitorTest {
         val snapshots = FakeChangeSnapshotDao(listOf(sharedSnapshot(today, listOf(designReview))))
         repository.events[today] = listOf(designReview, invite)
 
-        monitor(snapshots).runCheck(ChangeCheckReason.PERIODIC)
+        monitor(snapshots, loudOptedIn()).runCheck(ChangeCheckReason.PERIODIC)
 
         assertThat(alerter.alerted).containsExactly(today)
         assertThat(notifier.shown).containsExactly(FakeScheduleChangeNotifier.Shown(today, listOf(new), alert = true, silent = false))
@@ -333,7 +348,7 @@ class ChangeMonitorTest {
         )
         repository.events[today] = listOf(designReview)
         repository.events[tomorrow] = listOf(tomorrowsInvite)
-        val monitor = monitor(snapshots)
+        val monitor = monitor(snapshots, loudOptedIn())
 
         // a background check, but the change is on a day shared ahead
         monitor.runCheck(ChangeCheckReason.CONTENT_TRIGGER)

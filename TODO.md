@@ -715,7 +715,9 @@ calendar sync never wakes the process when nothing is monitored. It enqueues a f
 work, `calendar-change-broadcast` (`KEEP`, 5 s settle, reason `PROVIDER_CHANGED`, which
 re-arms like the periodic check), and a disarm cancels a waiting one.
 
-NB (the loud alert): a **new** change on **today**, found by a **background** check (any
+NB (the loud alert): **opt-in** — Settings → Schedule changes → "Loud schedule-change alerts"
+(`Settings.loudChangeAlerts`, off by default; off, the notification alone makes the noise).
+With it on, a **new** change on **today**, found by a **background** check (any
 `ChangeCheckReason` but `IN_APP`) while the app isn't on screen, also rings a full-screen
 alert, because the quiet notification proved too easy to miss. Not for a day shared ahead (an
 invite for tomorrow mustn't ring in the night) and not while `MainActivity` is started (the

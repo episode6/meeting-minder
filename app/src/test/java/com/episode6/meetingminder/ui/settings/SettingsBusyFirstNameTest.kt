@@ -56,6 +56,7 @@ class SettingsBusyFirstNameTest {
                 onBusyCalendarSelected = {},
                 onBusyFirstNameChanged = { edits += it },
                 onBusySendTextToggle = {},
+                onLoudChangeAlertsToggle = {},
                 onPermissionsClick = {},
                 onLicensesClick = {},
             )

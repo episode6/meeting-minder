@@ -4,6 +4,7 @@ import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
+import assertk.assertions.isTrue
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.data.settings.BusySync
@@ -305,5 +306,15 @@ class SettingsViewModelTest {
 
         assertThat(settings.settings.value.busySync).isEqualTo(BusySync(enabled = true, calendarId = 1L, sendText = false))
         assertThat(busySyncChanges.replayCache).isEmpty()
+    }
+
+    @Test
+    fun onLoudChangeAlertsToggle_writesTheSetting() = runStoreTest({ createAppStore(this, AppState(anchorDate = today), emptySet()) }) { store ->
+        val settings = FakeSettingsRepository()
+        val viewModel = SettingsViewModel(store, settings)
+
+        viewModel.onLoudChangeAlertsToggle(true)
+
+        assertThat(settings.settings.value.loudChangeAlerts).isTrue()
     }
 }
