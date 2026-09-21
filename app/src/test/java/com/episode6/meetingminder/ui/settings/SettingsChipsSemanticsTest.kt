@@ -7,6 +7,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.isToggleable
@@ -15,6 +16,9 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import assertk.assertThat
+import assertk.assertions.containsExactly
 import androidx.compose.ui.test.performScrollToNode
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
@@ -185,5 +189,42 @@ class SettingsChipsSemanticsTest {
 
         composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("Sync busy times to a calendar"))
         composeRule.onNodeWithText("Sync busy times to a calendar").assertIsNotEnabled()
+    }
+
+    /** The opt-in "Loud schedule-change alerts" row is one switch, off by default, and reports the tap. */
+    @Test
+    fun loudChangeAlertsToggle_isASwitch_offByDefault_andReportsTheTap() {
+        val toggled = mutableListOf<Boolean>()
+        composeRule.setContent {
+            MeetingMinderTheme {
+                SettingsScreen(
+                    state = SettingsUiState(),
+                    snackbarHostState = SnackbarHostState(),
+                    onBackClick = {},
+                    onLeadTimeSelected = {},
+                    onSnoozeLengthSelected = {},
+                    onAutoTimeoutSelected = {},
+                    onSoundPoolSelected = {},
+                    onTestAlarmClick = {},
+                    onCalendarToggle = { _, _ -> },
+                    onShowDeclinedToggle = {},
+                    onBusySyncToggle = {},
+                    onBusyCalendarSelected = {},
+                    onBusyFirstNameChanged = {},
+                    onBusySendTextToggle = {},
+                    onLoudChangeAlertsToggle = { toggled += it },
+                    onPermissionsClick = {},
+                    onLicensesClick = {},
+                )
+            }
+        }
+
+        composeRule.onNode(hasScrollAction()).performScrollToNode(hasText("Loud schedule-change alerts"))
+        composeRule.onNode(hasText("Loud schedule-change alerts") and isToggleable())
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
+            .assertIsOff()
+            .performClick()
+
+        assertThat(toggled).containsExactly(true)
     }
 }

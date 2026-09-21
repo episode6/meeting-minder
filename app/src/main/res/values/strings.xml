@@ -164,7 +164,7 @@
     <string name="busy_sync_done">Busy times synced to %1$s</string>
     <string name="settings_section_schedule_changes">Schedule changes</string>
     <string name="settings_loud_change_alerts">Loud schedule-change alerts</string>
-    <string name="settings_loud_change_alerts_description">When today\'s schedule changes after you shared it, ring a full-screen alert like a meeting alarm. Off, you only get the notification.</string>
+    <string name="settings_loud_change_alerts_description">When today\'s schedule changes after you shared it, ring a full-screen alert like a meeting alarm. When off, you only get the notification.</string>
     <string name="settings_busy_sync_send_text">Also send a schedule text</string>
     <string name="settings_busy_sync_send_text_description">Open the share sheet with your busy times as well as syncing them. Turn off to only sync to the calendar.</string>
     <!-- %1$s is the account email; a Busy calendar radio row whose calendar has SYNC_EVENTS off (TODO.md §4.7) -->
