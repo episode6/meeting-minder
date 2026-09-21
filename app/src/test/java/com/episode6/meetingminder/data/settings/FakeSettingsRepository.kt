@@ -48,6 +48,10 @@ internal class FakeSettingsRepository(initial: Settings = Settings()) : Settings
         settings.value = settings.value.copy(busySync = settings.value.busySync.copy(sendText = sendText))
     }
 
+    override suspend fun setLoudChangeAlerts(loudChangeAlerts: Boolean) {
+        settings.value = settings.value.copy(loudChangeAlerts = loudChangeAlerts)
+    }
+
     override val requestedPermissions = MutableStateFlow(emptySet<String>())
 
     override suspend fun markPermissionRequested(permission: String) {

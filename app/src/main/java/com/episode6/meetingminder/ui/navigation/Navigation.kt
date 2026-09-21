@@ -307,6 +307,7 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                 onBusyCalendarSelected = viewModel::onBusyCalendarSelected,
                 onBusyFirstNameChanged = viewModel::onBusyFirstNameChanged,
                 onBusySendTextToggle = viewModel::onBusySendTextToggle,
+                onLoudChangeAlertsToggle = viewModel::onLoudChangeAlertsToggle,
                 onPermissionsClick = { navController.navigate(Route.Onboarding) },
                 onLicensesClick = { navController.navigate(Route.Licenses) },
             )

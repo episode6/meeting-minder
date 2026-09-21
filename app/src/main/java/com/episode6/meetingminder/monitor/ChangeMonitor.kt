@@ -47,8 +47,9 @@ private const val TAG = "MeetingMinderChanges"
  *    the result differs from what the last check recorded, records it
  *    (`changes_json`) and updates the notification — alerting only when a change is new
  *    (and, `setOnlyAlertOnce`, only if it isn't already showing), cancelling it when nothing
- *    is changed any more; a new change on today found by a background check also rings the
- *    loud full-screen alert ([ScheduleChangeAlerter]);
+ *    is changed any more; with Settings' opt-in "Loud schedule-change alerts" on, a new
+ *    change on today found by a background check also rings the loud full-screen alert
+ *    ([ScheduleChangeAlerter]);
  * 3. re-arms the background works for the days still shared, or disarms them.
  */
 @Inject
@@ -106,7 +107,7 @@ class ChangeMonitor(
                         filter,
                         prefs.showDeclined,
                         ownBlocks,
-                        loud = reason != ChangeCheckReason.IN_APP && !mainUi.visible && snapshot.date == today,
+                        loud = prefs.loudChangeAlerts && reason != ChangeCheckReason.IN_APP && !mainUi.visible && snapshot.date == today,
                         syncOnly = syncOnly,
                     )
                 }
@@ -150,7 +151,8 @@ class ChangeMonitor(
     // §4.7), so a calendar or event only one of them excludes never reads as New or
     // Cancelled — in particular the `busy` blocks the share itself wrote a moment ago.
     //
-    // [loud]: a new change also rings the full-screen alert ([ScheduleChangeAlerter]) — for
+    // [loud]: a new change also rings the full-screen alert ([ScheduleChangeAlerter]) — only
+    // when the user opted in (`Settings.loudChangeAlerts`, off by default), for
     // today only (a day shared ahead mustn't ring in the night for an invite that can wait
     // for the morning), and never while the app is on screen — not from its own foreground
     // check, and not from a background check that beat it to the lock ([MainUiVisibility]) —

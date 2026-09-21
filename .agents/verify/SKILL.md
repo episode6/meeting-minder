@@ -268,7 +268,9 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   `adb shell dumpsys jobscheduler | grep -A30 $PKG` shows the content trigger (a job with a
   `content://com.android.calendar` trigger); `adb shell cmd jobscheduler run -f $PKG <jobId>`
   forces a check. Tapping "Share update" should open the chooser with `Update:` text.
-- The loud schedule-change alert: share today, press Home (nothing rings while `MainActivity`
+- The loud schedule-change alert: turn on Settings → Schedule changes → "Loud schedule-change
+  alerts" (opt-in, off by default; with it off the same steps must only post the ordinary,
+  audible `schedule_updates` notification), share today, press Home (nothing rings while `MainActivity`
   is on screen, whichever check finds the change), then `content insert` a meeting with attendees later today. Within
   about 15 s `AlarmRingingService` is in the foreground (`dumpsys activity services $PKG |
   grep isForeground`) with a heads-up titled "Your schedule changed since you shared it"

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
 import assertk.assertions.isEqualTo
+import assertk.assertions.isFalse
 import assertk.assertions.isTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -174,5 +175,15 @@ class DataStoreSettingsRepositoryTest {
         repository.setBusySyncSendText(false)
 
         assertThat(repository.current().busySync).isEqualTo(BusySync(sendText = false))
+    }
+
+    @Test
+    fun setLoudChangeAlerts_defaultsOff_andPersistsOn() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-loud-change-alerts-test"))
+        assertThat(repository.current().loudChangeAlerts).isFalse()
+
+        repository.setLoudChangeAlerts(true)
+
+        assertThat(repository.current().loudChangeAlerts).isTrue()
     }
 }

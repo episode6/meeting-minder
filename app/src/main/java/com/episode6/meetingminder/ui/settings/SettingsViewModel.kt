@@ -84,6 +84,8 @@ data class SettingsUiState(
      * listed too, and picking it turns sync on.
      */
     val busyCalendars: List<CalendarInfo> = emptyList(),
+    /** Settings → Schedule changes: whether a change to today also rings the full-screen alert (opt-in). */
+    val loudChangeAlerts: Boolean = false,
 )
 
 /**
@@ -199,6 +201,13 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
      */
     fun onBusySendTextToggle(sendText: Boolean) = viewModelScope.launch { settings.setBusySyncSendText(sendText) }
 
+    /**
+     * Settings → Schedule changes' "Loud schedule-change alerts". Only the next background
+     * check reads it (`monitor.ChangeMonitor`); an alert already ringing is left to its own
+     * Dismiss.
+     */
+    fun onLoudChangeAlertsToggle(loudChangeAlerts: Boolean) = viewModelScope.launch { settings.setLoudChangeAlerts(loudChangeAlerts) }
+
     fun onTestAlarmClick() {
         store.dispatch(TestAlarm)
     }
@@ -221,4 +230,5 @@ private fun Settings.toUiState(calendars: List<CalendarInfo>, permissionsStatus:
     busySyncFirstName = busySync.firstName,
     busySyncSendText = busySync.sendText,
     busyCalendars = calendars.insertable(),
+    loudChangeAlerts = loudChangeAlerts,
 )
