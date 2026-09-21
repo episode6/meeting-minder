@@ -267,6 +267,30 @@ class ChangeDetectorTest {
     }
 
     @Test
+    fun replaced_aSoloBlockGoneWithAnInviteInItsSlot_isStillNew() {
+        val hold = testCalendarEvent(4, at(14), at(15), meeting = false)
+        val invite = testCalendarEvent(9, at(14), at(15))
+
+        assertThat(detect(listOf(hold.snapshot(selected = false)), listOf(invite)))
+            .containsExactly(ScheduleChange.New(date, invite.key, invite.begin, invite.end))
+    }
+
+    @Test
+    fun ignored_aSelectedSoloBlockRecreatedAtTheSameTimes_isSilent() {
+        val recreated = testCalendarEvent(9, dentist.begin, dentist.end, meeting = false)
+
+        assertThat(detect(listOf(dentist.snapshot(selected = true)), listOf(recreated))).isEmpty()
+    }
+
+    @Test
+    fun replaced_twoGoneFromOneSlot_theSelectedOneTakesTheArrival() {
+        val duplicate = testCalendarEvent(4, designReview.begin, designReview.end)
+        val recreated = testCalendarEvent(9, designReview.begin, designReview.end)
+
+        assertThat(detect(listOf(duplicate.snapshot(selected = false), designReview.snapshot(selected = true)), listOf(recreated))).isEmpty()
+    }
+
+    @Test
     fun replaced_byACancelledEvent_isStillCancelled() {
         val cancelledCopy = testCalendarEvent(9, designReview.begin, designReview.end).copy(status = EventStatus.CANCELED)
 

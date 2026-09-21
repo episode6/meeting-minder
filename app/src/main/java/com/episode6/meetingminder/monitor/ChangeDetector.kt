@@ -38,7 +38,9 @@ import java.time.LocalDate
  * occurrence moves to a new series id), or deletes and recreates the meeting. By key alone
  * that reads as Cancelled + New for a slot that never changed, so a key gone from the day is
  * paired one-to-one with a key new to the day at exactly the same begin and end, and the pair
- * is no change at all. The alarm agrees: `maintainAlarms` keeps the alarm of a key that
+ * is no change at all. Only like pairs with like (both [CalendarEvent.isMeeting] or both
+ * not), so a solo block deleted to make room for a new invite still reports the invite, and
+ * a selected row gets first pick of an arrival. The alarm agrees: `maintainAlarms` keeps the alarm of a key that
  * vanished, and it is still set for the right time.
  */
 object ChangeDetector {
@@ -58,11 +60,14 @@ object ChangeDetector {
             it.key !in before && !it.allDay && it.status != EventStatus.CANCELED && it.selfStatus != SelfStatus.DECLINED
         }
         val replacedBy = mutableMapOf<EventKey, CalendarEvent>()
-        for (was in baseline) {
+        // selected rows pick first: when two vanished events shared the slot, the arrival
+        // stands in for the one that was shared
+        for (was in baseline.sortedByDescending { it.selected }) {
             if (was.allDay || was.cancelled || was.declinedByMe) continue
             val current = after[was.key]
             if (current != null && current.status != EventStatus.CANCELED) continue
-            val arrival = arrivals.firstOrNull { it.begin == was.begin && it.end == was.end } ?: continue
+            // like with like: a vanished solo block never swallows a new invite in its slot
+            val arrival = arrivals.firstOrNull { it.begin == was.begin && it.end == was.end && it.isMeeting == was.isMeeting } ?: continue
             arrivals -= arrival
             replacedBy[was.key] = arrival
         }

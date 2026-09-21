@@ -11,7 +11,8 @@ package com.episode6.meetingminder.model
  * A plain event dragged to a new time keeps its key; a single occurrence edited in Google
  * (which becomes an exception event with a new `Events._ID`) maps back to the same key; a
  * whole series shifted by its organizer changes every occurrence's key and is treated as
- * gone + new. The key deliberately never contains the *current* start time, and never an
+ * gone + new (unless its times didn't move — "this and following events" — which
+ * `ChangeDetector` pairs back up as no change). The key deliberately never contains the *current* start time, and never an
  * `Instances._ID` (regenerated whenever the provider re-expands).
  */
 data class EventKey(val eventId: Long, val instanceTime: Long) {

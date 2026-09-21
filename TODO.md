@@ -684,9 +684,12 @@ NB (PR-11), where the build settled things this section leaves open:
   `EventKey` without touching its times ("this and following events" moves every later
   occurrence to a new series id; delete + recreate), which by key alone is Cancelled + New for
   a slot that never moved. The differ pairs a key gone from the day one-to-one with a key new
-  to the day at exactly the same begin and end and reports neither. `maintainAlarms` already
-  keeps the alarm of a vanished key, so the alarm still rings on time; the selection is
-  **not** re-keyed, so the replacement's chip shows unselected until tapped.
+  to the day at exactly the same begin and end and reports neither. Only like pairs with like
+  (both `isMeeting` or both not), so a solo block deleted to make room for a new invite still
+  reports the invite, and a selected row gets first pick of an arrival. `maintainAlarms`
+  already keeps the alarm of a vanished key, so the alarm still rings on time; the selection
+  is **not** re-keyed, so the replacement's chip shows unselected until tapped, and with the
+  notification now silent nothing prompts that tap: a re-share before it leaves the range out.
 - **Notification**: tag `schedule_updates`, id = the day's epoch day. A check that finds the
   same changes as last time does nothing; one where changes only dropped out updates the
   notification without alerting (and doesn't revive a dismissed one); no changes left cancels
