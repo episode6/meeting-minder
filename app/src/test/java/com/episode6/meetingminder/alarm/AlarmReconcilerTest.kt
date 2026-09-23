@@ -169,7 +169,7 @@ class AlarmReconcilerTest {
     }
 
     @Test
-    fun selectionGoneFromTheProvider_hasItsRowCancelled_andIsCountedAsNotAttending() {
+    fun selectionGoneFromTheProvider_hasItsRowCancelled_andIsDropped() {
         // the organizer moved the whole series (every occurrence gets a new key), deleted the
         // meeting, or cancelled it (which the repository filters out): the old key is gone
         // from the provider's day, its chip is no longer drawn, and its alarm must not ring
@@ -180,19 +180,22 @@ class AlarmReconcilerTest {
         val result = reconcile(selected = listOf(selection(standup), selection(replacement)), fresh = listOf(replacement), scheduled = listOf(row))
 
         assertThat(result.cancel).containsExactly(row)
-        assertThat(result.notAttending).containsExactly(selection(standup))
+        assertThat(result.vanished).containsExactly(selection(standup))
+        assertThat(result.notAttending).isEmpty()
         assertThat(result.schedule.map { it.eventId }).containsExactly(9L)
         assertThat(result.keep).isEmpty()
         assertThat(result.armedCount).isEqualTo(1)
     }
 
     @Test
-    fun selectionGoneFromTheProvider_withNoRow_isNeverArmed() {
+    fun selectionGoneFromTheProvider_withNoRow_isNeverArmed_andTheDayClearsOnceItIsDropped() {
         val result = reconcile(selected = listOf(selection(standup)), fresh = emptyList())
 
         assertThat(result.schedule).isEmpty()
-        assertThat(result.notAttending).containsExactly(selection(standup))
-        assertThat(result.clearsTheDay).isEqualTo(false)
+        assertThat(result.vanished).containsExactly(selection(standup))
+        // dropping the only selection leaves nothing picked, so the day goes back to
+        // "nothing picked" rather than sitting in "alarms set" with no chip selected
+        assertThat(result.clearsTheDay).isEqualTo(true)
     }
 
     @Test

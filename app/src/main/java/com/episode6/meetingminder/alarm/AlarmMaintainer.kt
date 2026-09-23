@@ -104,9 +104,10 @@ fun maintainAlarms(
  * `CalendarContentChanged` in the app (`MaintainAlarmsSideEffects`), from every background
  * change check (`monitor/CalendarChangeWorker`, so a meeting moved while the app is away is
  * re-timed without waiting for it to be opened), and from [BootReceiver] after boot, a
- * wall-clock or timezone change and an app update, once the stored alarms are re-armed. A timezone change doesn't move a timed event's instant, but the provider
- * re-expands its instances in the new zone (a floating-time event, a recurrence expanded in
- * local time), so the events are read fresh and any that moved are re-timed.
+ * wall-clock or timezone change and an app update, once the stored alarms are re-armed. A
+ * timezone change doesn't move a timed event's instant, but the provider re-expands its
+ * instances in the new zone (a floating-time event, a recurrence expanded in local time),
+ * so the events are read fresh and any that moved are re-timed.
  *
  * Each armed row's day is read with the day either side of it — a zone change can move an
  * occurrence across midnight — from every calendar, whatever the Settings filter says: the

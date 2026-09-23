@@ -815,7 +815,9 @@ temporary allowlist that permits starting a foreground service from the backgrou
 - A **narrower, automatic** reconcile (`MaintainAlarms`) runs on `CalendarContentChanged`, boot
   and time changes, and at the start of every background change check (`CalendarChangeWorker`,
   so a meeting moved while the app is away is re-timed by the check that reports the move rather
-  than ringing for the old time until the app is next opened). It only touches rows that already exist in `scheduled_alarm`: it **re-times**
+  than ringing for the old time until the app is next opened — which means the "rings at once"
+  re-time of a meeting pulled forward inside the lead time, below, can now come from a background
+  check too; that is deliberate, and unrelated to the opt-in loud schedule-change alert). It only touches rows that already exist in `scheduled_alarm`: it **re-times**
   a moved event and **cancels** the alarm (state `CANCELLED`, selection row kept so the banner
   can explain) when the event is now `STATUS_CANCELED` or declined by me. It never arms a newly
   selected event and never RSVPs; that only happens on the explicit "Set alarms" tap, which is
@@ -825,10 +827,13 @@ temporary allowlist that permits starting a foreground service from the backgrou
   what cancels it: when that tap could read the provider, a selection whose event is gone from
   the day (an organizer's cancellation, a deleted meeting, a series moved to new times — every
   occurrence gets a new key — all read as vanished, and the chip is no longer drawn, so
-  deselecting isn't possible) lands in `notAttending`, its row cancelled, rather than being
-  armed from the stored times (`reconcileAlarms`' `providerRead`); only the loaded-window
-  fallback, when the provider can't be read, still arms an absent selection from the stored
-  times. `RescheduleReceiver` re-arms every `SCHEDULED` row from Room on
+  deselecting isn't possible) lands in `AlarmReconciliation.vanished`: its row is cancelled and
+  the selection itself **deleted** rather than armed from the stored times (`reconcileAlarms`'
+  `providerRead`) — kept, its stored range would still reach `selectedBusyRanges` and so the
+  share text and the busy-calendar sync, and the FAB's count; dropped, the "picks changed"
+  banner prompts the re-share that takes the old time out, and a day whose only selection
+  vanished clears rather than claiming "alarms set". Only the loaded-window fallback, when the
+  provider can't be read, still arms an absent selection from the stored times. `RescheduleReceiver` re-arms every `SCHEDULED` row from Room on
   `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`, and on the exact-alarm
   permission-state broadcast. Alarms are cancelled by the OS on shutdown, so the boot path is
   mandatory. No direct-boot handling (the calendar provider isn't readable before first unlock).

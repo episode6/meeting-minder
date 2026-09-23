@@ -49,7 +49,9 @@ private const val TAG = "MeetingMinderAlarms"
  * one is recognised whatever Settings hides, and a selection whose meeting is gone from
  * the calendar altogether — cancelled by its organizer, deleted, or a series moved to new
  * times, which gives every occurrence a new key — has its alarm cancelled rather than left
- * to ring for the old time), and the lead time from settings; then
+ * to ring for the old time, and its selection row deleted, since nothing on screen could
+ * deselect it and its stored range would otherwise still reach the share), and the lead
+ * time from settings; then
  * cancels, inserts, re-times and arms through [AlarmScheduler], points each selection at
  * its alarm, and records `alarms_set_at`. `ObserveDayPlansSideEffects` streams the result
  * back into the store; this effect emits the snackbar ("3 alarms set for today", how many
@@ -169,6 +171,11 @@ internal class AlarmReconcileWriter(
             scheduler.cancel(row.alarmId)
             alarmDao.setState(row.alarmId, AlarmState.CANCELLED)
         }
+        // a selection whose meeting the provider no longer has is dropped: no chip can
+        // deselect it, and left in place its stored range would still be shared and synced
+        for (selection in plan.vanished) {
+            dayPlanDao.deleteSelectedEvent(date, selection.eventId, selection.instanceTime)
+        }
         // skipped and not-attending selections get no alarm, just their copy refreshed
         for (selection in plan.skipped + plan.notAttending) {
             dayPlanDao.armSelectedEvent(
@@ -239,16 +246,19 @@ private val DayLabelFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("
 
 /**
  * The snackbar after "Set alarms": how many are armed for the day, how many were skipped —
- * as already past, as declined or cancelled, or both, with the reason named when there is
- * only one — or how many were cleared when nothing was selected any more.
+ * as already past, as declined or cancelled (a vanished meeting counts as cancelled), or
+ * both, with the reason named when there is only one — or how many were cleared when
+ * nothing was selected any more. A day whose only selections vanished without a row to
+ * cancel says "skipped, cancelled" rather than "0 alarms cleared".
  */
 internal fun alarmsSetMessage(plan: AlarmReconciliation, date: LocalDate, today: LocalDate): UiMessage {
     val armed = plan.armedCount
     val past = plan.skipped.size
-    val notAttending = plan.notAttending.size
+    val notAttending = plan.notAttending.size + plan.vanished.size
     val skipped = past + notAttending
     return when {
-        plan.clearsTheDay -> UiMessage.nextPlural(R.plurals.day_alarms_cleared, plan.cancel.size, plan.cancel.size)
+        plan.clearsTheDay && (plan.cancel.isNotEmpty() || plan.vanished.isEmpty()) ->
+            UiMessage.nextPlural(R.plurals.day_alarms_cleared, plan.cancel.size, plan.cancel.size)
         skipped == 0 && date == today -> UiMessage.nextPlural(R.plurals.day_alarms_set_today, armed, armed)
         skipped == 0 -> UiMessage.nextPlural(R.plurals.day_alarms_set_on_day, armed, armed, date.format(DayLabelFormatter))
         armed == 0 && notAttending == 0 -> UiMessage.nextPlural(R.plurals.day_alarms_skipped, skipped, skipped)
