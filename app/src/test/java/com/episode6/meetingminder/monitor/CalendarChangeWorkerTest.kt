@@ -1,6 +1,7 @@
 package com.episode6.meetingminder.monitor
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.Application
 import android.app.NotificationManager
 import android.provider.CalendarContract
@@ -22,9 +23,12 @@ import assertk.assertions.isInstanceOf
 import assertk.assertions.isNotNull
 import assertk.assertions.isNull
 import com.episode6.meetingminder.appGraph
+import com.episode6.meetingminder.alarm.alarmTimeFor
 import com.episode6.meetingminder.data.calendar.FakeCalendarProvider
 import com.episode6.meetingminder.data.calendar.at
+import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.ChangeSnapshotEntity
+import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
 import com.episode6.meetingminder.data.db.decodeScheduleChanges
 import com.episode6.meetingminder.model.ScheduleChange
 import kotlinx.coroutines.runBlocking
@@ -100,6 +104,35 @@ class CalendarChangeWorkerTest {
         assertThat(works(WorkManagerChangeWorkScheduler.TRIGGER_WORK).single().state).isEqualTo(WorkInfo.State.ENQUEUED)
         assertThat(works(WorkManagerChangeWorkScheduler.PERIODIC_WORK).single().state).isEqualTo(WorkInfo.State.ENQUEUED)
         assertThat(works(WorkManagerChangeWorkScheduler.EXPIRY_WORK).single().state).isEqualTo(WorkInfo.State.ENQUEUED)
+    }
+
+    @Test
+    fun anyRun_retimesAnArmedAlarmWhoseMeetingMoved() = runBlocking {
+        // the meeting was armed for 10:00 and then moved to 11:00 while the app was away: the
+        // background check is the only thing running, so it re-times the alarm itself rather
+        // than leaving the 10:00 alarm to ring until the app is next opened
+        val graph = context.appGraph
+        val leadTime = graph.settingsRepository.current().leadTime
+        val armedAt10 = ScheduledAlarmEntity(
+            date = tomorrow, eventId = 7, instanceTime = 0,
+            fireAt = alarmTimeFor(tomorrow.at(10, zone = zone), leadTime),
+            title = "Event 7", beginMillis = tomorrow.at(10, zone = zone), endMillis = tomorrow.at(10, 30, zone = zone), soundIndex = 3,
+        )
+        val alarmId = graph.scheduledAlarmDao.insert(armedAt10)
+        addMeeting(eventId = 7, hour = 11)
+
+        val result = worker(ChangeCheckReason.PERIODIC).doWork()
+
+        assertThat(result).isInstanceOf(ListenableWorker.Result.Success::class)
+        val newFireAt = alarmTimeFor(tomorrow.at(11, zone = zone), leadTime)
+        val row = graph.scheduledAlarmDao.byId(alarmId)!!
+        assertThat(row.state).isEqualTo(AlarmState.SCHEDULED)
+        assertThat(row.fireAt).isEqualTo(newFireAt)
+        assertThat(row.beginMillis).isEqualTo(tomorrow.at(11, zone = zone))
+        // and AlarmManager agrees, which is the half the user would notice
+        val armed = shadowOf(context.getSystemService(AlarmManager::class.java)).scheduledAlarms
+            .single { shadowOf(it.operation).requestCode == alarmId.toInt() }
+        assertThat(armed.triggerAtTime).isEqualTo(newFireAt)
     }
 
     @Test

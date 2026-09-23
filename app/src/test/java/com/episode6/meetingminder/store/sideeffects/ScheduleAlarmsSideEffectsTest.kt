@@ -320,6 +320,77 @@ class ScheduleAlarmsSideEffectsTest {
     }
 
     @Test
+    fun setAlarms_cancelsTheAlarmOfASelectionWhoseMeetingIsGoneFromTheCalendar() = runTest {
+        // the standup's organizer moved the series to 9:30 while the app was away: every
+        // occurrence got a new key, so the old one is gone from the provider's day (the
+        // banner read Cancelled + New) and its chip is no longer drawn. The user taps the
+        // replacement and "Set alarms": the old alarm must go, or it rings at 8:55 for nothing
+        val armedStandup = ScheduledAlarmEntity(
+            alarmId = 1, date = today, eventId = standup.eventId, instanceTime = 0, fireAt = at(8, 55).toEpochMilli(),
+            title = standup.title, beginMillis = standup.begin.toEpochMilli(), endMillis = standup.end.toEpochMilli(), soundIndex = 5,
+        )
+        alarmDao.rows[1] = armedStandup
+        scheduler.schedule(armedStandup)
+        val replacement = testCalendarEvent(9, at(9, 30), at(10), title = standup.title)
+        val state = TestAppState.copy(eventsByDay = mapOf(today to DayEvents(today, listOf(replacement, designReview), Instant.EPOCH)))
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup).copy(alarmId = 1, alarmAt = armedStandup.fireAt), selection(replacement)))
+
+        val output = run(dayPlanDao, state)
+
+        assertThat(alarmDao.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
+        assertThat(scheduler.cancelled).containsExactly(1L)
+        assertThat(scheduler.armed.values.map { it.eventId }).containsExactly(9L)
+        // the old selection is dropped, not just disarmed: nothing on screen could deselect
+        // it, and its stored 9:00 range would otherwise still reach the share text
+        assertThat(dayPlanDao.selectedEventsOn(today).map { it.eventId }).containsExactly(9L)
+        assertThat(dayPlanDao.plansFlow.value.single().alarmsSetAt).isEqualTo(now.toEpochMilli())
+        val message = output.message
+        assertThat(message.text).isEqualTo(R.string.day_alarms_set_some_not_attending)
+        assertThat(message.formatArgs).isEqualTo(listOf<Any>(1, 1))
+    }
+
+    @Test
+    fun setAlarms_whenTheOnlySelectionIsGoneFromTheCalendar_dropsIt_andLeavesTheDayUnset() = runTest {
+        val armedStandup = ScheduledAlarmEntity(
+            alarmId = 1, date = today, eventId = standup.eventId, instanceTime = 0, fireAt = at(8, 55).toEpochMilli(),
+            title = standup.title, beginMillis = standup.begin.toEpochMilli(), endMillis = standup.end.toEpochMilli(), soundIndex = 5,
+        )
+        alarmDao.rows[1] = armedStandup
+        scheduler.schedule(armedStandup)
+        val state = TestAppState.copy(eventsByDay = mapOf(today to DayEvents(today, listOf(designReview), Instant.EPOCH)))
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup).copy(alarmId = 1, alarmAt = armedStandup.fireAt)))
+
+        val output = run(dayPlanDao, state)
+
+        assertThat(alarmDao.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
+        assertThat(dayPlanDao.selectedEventsOn(today)).isEmpty()
+        // nothing is picked any more, so the day mustn't sit in "alarms set" with no chip selected
+        assertThat(dayPlanDao.plansFlow.value.firstOrNull { it.date == today }?.alarmsSetAt).isNull()
+        assertThat(output.message.text).isEqualTo(R.plurals.day_alarms_cleared)
+    }
+
+    @Test
+    fun setAlarms_keepsTheAlarmOfASelectionMissingFromTheLoadedWindow_whenTheProviderCannotBeRead() = runTest {
+        // the fallback window isn't the provider's day, so an event missing from it isn't
+        // known to be gone: the stored times stand, as before
+        repository.error = SecurityException("calendar access revoked")
+        val armedStandup = ScheduledAlarmEntity(
+            alarmId = 1, date = today, eventId = standup.eventId, instanceTime = 0, fireAt = at(8, 55).toEpochMilli(),
+            title = standup.title, beginMillis = standup.begin.toEpochMilli(), endMillis = standup.end.toEpochMilli(), soundIndex = 5,
+        )
+        alarmDao.rows[1] = armedStandup
+        scheduler.schedule(armedStandup)
+        val state = TestAppState.copy(eventsByDay = mapOf(today to DayEvents(today, listOf(designReview), Instant.EPOCH)))
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup).copy(alarmId = 1, alarmAt = armedStandup.fireAt)))
+
+        run(dayPlanDao, state)
+
+        assertThat(alarmDao.rows.getValue(1).state).isEqualTo(AlarmState.SCHEDULED)
+        assertThat(scheduler.cancelled).isEmpty()
+        assertThat(scheduler.armed.keys.toList()).containsExactly(1L)
+    }
+
+    @Test
     fun setAlarms_cancelsTheAlarmOfADeselectedEvent() = runTest {
         val armedStandup = ScheduledAlarmEntity(
             alarmId = 1, date = today, eventId = standup.eventId, instanceTime = 0, fireAt = at(8, 55).toEpochMilli(),
@@ -500,5 +571,13 @@ class ScheduleAlarmsSideEffectsTest {
             .isEqualTo(R.plurals.day_alarms_skipped_mixed)
         assertThat(alarmsSetMessage(AlarmReconciliation(schedule = listOf(row), skipped = listOf(skipped), notAttending = listOf(skipped)), today, today).text)
             .isEqualTo(R.string.day_alarms_set_some_skipped_mixed)
+        // a vanished selection counts as "declined or cancelled"; one that had no row to
+        // cancel doesn't read as "0 alarms cleared"
+        assertThat(alarmsSetMessage(AlarmReconciliation(schedule = listOf(row), vanished = listOf(skipped)), today, today).text)
+            .isEqualTo(R.string.day_alarms_set_some_not_attending)
+        assertThat(alarmsSetMessage(AlarmReconciliation(vanished = listOf(skipped)), today, today).text)
+            .isEqualTo(R.plurals.day_alarms_not_attending)
+        assertThat(alarmsSetMessage(AlarmReconciliation(cancel = listOf(row), vanished = listOf(skipped)), today, today).text)
+            .isEqualTo(R.plurals.day_alarms_cleared)
     }
 }

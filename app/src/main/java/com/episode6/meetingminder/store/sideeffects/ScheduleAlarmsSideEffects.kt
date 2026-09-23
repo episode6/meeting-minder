@@ -46,7 +46,12 @@ private const val TAG = "MeetingMinderAlarms"
  * Applies [reconcileAlarms] for [SetAlarms] (TODO.md §4.4): reads the day's selection and
  * armed rows from Room, the fresh events from the provider ([freshEventsFor]: every
  * calendar, declined events included, so a moved event is re-timed and a since-declined
- * one is recognised whatever Settings hides), and the lead time from settings; then
+ * one is recognised whatever Settings hides, and a selection whose meeting is gone from
+ * the calendar altogether — cancelled by its organizer, deleted, or a series moved to new
+ * times, which gives every occurrence a new key — has its alarm cancelled rather than left
+ * to ring for the old time, and its selection row deleted, since nothing on screen could
+ * deselect it and its stored range would otherwise still reach the share), and the lead
+ * time from settings; then
  * cancels, inserts, re-times and arms through [AlarmScheduler], points each selection at
  * its alarm, and records `alarms_set_at`. `ObserveDayPlansSideEffects` streams the result
  * back into the store; this effect emits the snackbar ("3 alarms set for today", how many
@@ -89,9 +94,13 @@ interface ScheduleAlarmsSideEffects {
                     return@flow
                 }
                 val state = currentState()
-                val fresh = freshEventsFor(action.date, repository, state)
+                val fresh = freshEventsFor(action.date, repository)
                 val result = mutex.withLock {
-                    reconciler.apply(action.date, fresh)
+                    reconciler.apply(
+                        action.date,
+                        freshEvents = fresh ?: state.eventsByDay[action.date]?.events.orEmpty(),
+                        providerRead = fresh != null,
+                    )
                 }
                 if (result.failedToArm > 0) {
                     emit(ShowMessage(UiMessage.next(R.string.alarms_exact_permission_missing)))
@@ -110,16 +119,17 @@ interface ScheduleAlarmsSideEffects {
  * declined and cancelled events included — the same read `alarm/AlarmMaintainer` makes, so
  * a selection whose meeting was since declined is never armed here only to be cancelled
  * there, and hiding its calendar or "show declined" in Settings can't make a selected
- * event read as vanished. The loaded window (already filtered for display) is the
- * fallback when the provider can't be read.
+ * event read as vanished. Null when the provider can't be read: the caller then falls back
+ * to the loaded window (already filtered for display), and [reconcileAlarms] is told so,
+ * since an event missing from that window isn't known to be gone.
  */
-private suspend fun freshEventsFor(date: LocalDate, repository: CalendarRepository, state: AppState): List<CalendarEvent> = try {
+private suspend fun freshEventsFor(date: LocalDate, repository: CalendarRepository): List<CalendarEvent>? = try {
     repository.eventsOn(date, CalendarFilter.Only(repository.calendars().mapTo(mutableSetOf()) { it.id }))
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {
     Log.w(TAG, "calendar unreadable; reconciling $date against the loaded window", e)
-    state.eventsByDay[date]?.events.orEmpty()
+    null
 }
 
 /**
@@ -141,7 +151,8 @@ internal class AlarmReconcileWriter(
     private val clock: Clock,
     private val random: Random,
 ) {
-    suspend fun apply(date: LocalDate, freshEvents: List<CalendarEvent>): AppliedReconciliation {
+    /** [providerRead]: [freshEvents] is the provider's whole day, not the loaded window's fallback (see [reconcileAlarms]). */
+    suspend fun apply(date: LocalDate, freshEvents: List<CalendarEvent>, providerRead: Boolean): AppliedReconciliation {
         val now = clock.instant()
         val plan = reconcileAlarms(
             date = date,
@@ -154,10 +165,16 @@ internal class AlarmReconcileWriter(
             leadTime = settings.current().leadTime,
             now = now,
             soundIndex = { random.nextInt(Int.MAX_VALUE) },
+            providerRead = providerRead,
         )
         for (row in plan.cancel) {
             scheduler.cancel(row.alarmId)
             alarmDao.setState(row.alarmId, AlarmState.CANCELLED)
+        }
+        // a selection whose meeting the provider no longer has is dropped: no chip can
+        // deselect it, and left in place its stored range would still be shared and synced
+        for (selection in plan.vanished) {
+            dayPlanDao.deleteSelectedEvent(date, selection.eventId, selection.instanceTime)
         }
         // skipped and not-attending selections get no alarm, just their copy refreshed
         for (selection in plan.skipped + plan.notAttending) {
@@ -229,16 +246,19 @@ private val DayLabelFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("
 
 /**
  * The snackbar after "Set alarms": how many are armed for the day, how many were skipped —
- * as already past, as declined or cancelled, or both, with the reason named when there is
- * only one — or how many were cleared when nothing was selected any more.
+ * as already past, as declined or cancelled (a vanished meeting counts as cancelled), or
+ * both, with the reason named when there is only one — or how many were cleared when
+ * nothing was selected any more. A day whose only selections vanished without a row to
+ * cancel says "skipped, cancelled" rather than "0 alarms cleared".
  */
 internal fun alarmsSetMessage(plan: AlarmReconciliation, date: LocalDate, today: LocalDate): UiMessage {
     val armed = plan.armedCount
     val past = plan.skipped.size
-    val notAttending = plan.notAttending.size
+    val notAttending = plan.notAttending.size + plan.vanished.size
     val skipped = past + notAttending
     return when {
-        plan.clearsTheDay -> UiMessage.nextPlural(R.plurals.day_alarms_cleared, plan.cancel.size, plan.cancel.size)
+        plan.clearsTheDay && (plan.cancel.isNotEmpty() || plan.vanished.isEmpty()) ->
+            UiMessage.nextPlural(R.plurals.day_alarms_cleared, plan.cancel.size, plan.cancel.size)
         skipped == 0 && date == today -> UiMessage.nextPlural(R.plurals.day_alarms_set_today, armed, armed)
         skipped == 0 -> UiMessage.nextPlural(R.plurals.day_alarms_set_on_day, armed, armed, date.format(DayLabelFormatter))
         armed == 0 && notAttending == 0 -> UiMessage.nextPlural(R.plurals.day_alarms_skipped, skipped, skipped)

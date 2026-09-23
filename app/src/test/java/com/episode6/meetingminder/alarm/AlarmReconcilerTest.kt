@@ -51,7 +51,8 @@ class AlarmReconcilerTest {
         fresh: List<com.episode6.meetingminder.model.CalendarEvent> = listOf(standup, designReview, earlyBird),
         scheduled: List<ScheduledAlarmEntity> = emptyList(),
         at: Instant = now,
-    ) = reconcileAlarms(today, selected, fresh, scheduled, leadTime, at, soundIndex)
+        providerRead: Boolean = true,
+    ) = reconcileAlarms(today, selected, fresh, scheduled, leadTime, at, soundIndex, providerRead)
 
     @Test
     fun alarmTime_isBeginMinusLeadTime() {
@@ -152,12 +153,49 @@ class AlarmReconcilerTest {
     }
 
     @Test
-    fun movedEvent_usesTheStoredTimesWhenTheProviderNoLongerHasIt() {
+    fun selectionAbsentFromTheFallbackWindow_keepsItsRowFromTheStoredTimes_whenTheProviderCouldNotBeRead() {
         val row = scheduledRow(standup, alarmId = 5)
 
-        val result = reconcile(selected = listOf(selection(standup)), fresh = emptyList(), scheduled = listOf(row))
+        val result = reconcile(selected = listOf(selection(standup)), fresh = emptyList(), scheduled = listOf(row), providerRead = false)
 
         assertThat(result).isEqualTo(AlarmReconciliation(keep = listOf(row)))
+    }
+
+    @Test
+    fun selectionAbsentFromTheFallbackWindow_isArmedFromTheStoredTimes_whenTheProviderCouldNotBeRead() {
+        val result = reconcile(selected = listOf(selection(standup)), fresh = emptyList(), providerRead = false)
+
+        assertThat(result).isEqualTo(AlarmReconciliation(schedule = listOf(scheduledRow(standup, alarmId = 0, sound = 100))))
+    }
+
+    @Test
+    fun selectionGoneFromTheProvider_hasItsRowCancelled_andIsDropped() {
+        // the organizer moved the whole series (every occurrence gets a new key), deleted the
+        // meeting, or cancelled it (which the repository filters out): the old key is gone
+        // from the provider's day, its chip is no longer drawn, and its alarm must not ring
+        // for the old time
+        val row = scheduledRow(standup, alarmId = 5)
+        val replacement = testCalendarEvent(9, at(9, 30), at(10), title = "Daily standup")
+
+        val result = reconcile(selected = listOf(selection(standup), selection(replacement)), fresh = listOf(replacement), scheduled = listOf(row))
+
+        assertThat(result.cancel).containsExactly(row)
+        assertThat(result.vanished).containsExactly(selection(standup))
+        assertThat(result.notAttending).isEmpty()
+        assertThat(result.schedule.map { it.eventId }).containsExactly(9L)
+        assertThat(result.keep).isEmpty()
+        assertThat(result.armedCount).isEqualTo(1)
+    }
+
+    @Test
+    fun selectionGoneFromTheProvider_withNoRow_isNeverArmed_andTheDayClearsOnceItIsDropped() {
+        val result = reconcile(selected = listOf(selection(standup)), fresh = emptyList())
+
+        assertThat(result.schedule).isEmpty()
+        assertThat(result.vanished).containsExactly(selection(standup))
+        // dropping the only selection leaves nothing picked, so the day goes back to
+        // "nothing picked" rather than sitting in "alarms set" with no chip selected
+        assertThat(result.clearsTheDay).isEqualTo(true)
     }
 
     @Test
@@ -258,7 +296,7 @@ class AlarmReconcilerTest {
 
     @Test
     fun longerLeadTime_movesTheAlarmEarlier() {
-        val result = reconcileAlarms(today, listOf(selection(designReview)), listOf(designReview), emptyList(), Duration.ofMinutes(30), now, soundIndex)
+        val result = reconcileAlarms(today, listOf(selection(designReview)), listOf(designReview), emptyList(), Duration.ofMinutes(30), now, soundIndex, providerRead = true)
 
         assertThat(result.schedule.single().fireAt).isEqualTo(at(9, 30).toEpochMilli())
     }

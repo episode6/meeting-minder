@@ -41,18 +41,28 @@ data class AlarmReconciliation(
      * Selections whose event the provider now reports as cancelled, or declined by me:
      * never armed (the automatic `MaintainAlarms` cancels exactly these, so arming them
      * here would only bounce), and any row they still had is in [cancel]. Counted in the
-     * snackbar; kept as selections so the change banner can explain.
+     * snackbar; kept as selections (their chip is still drawn) so the change banner can
+     * explain.
      */
     val notAttending: List<SelectedEventEntity> = emptyList(),
+    /**
+     * Selections whose event the provider (read for this reconcile, [reconcileAlarms]'
+     * `providerRead`) no longer has at all: never armed, any row they still had is in
+     * [cancel], and the selection row itself is **deleted** — there is no chip to deselect
+     * it from, and left in place its stored range would still reach the share text, the
+     * busy-calendar sync and the FAB's count. Counted in the snackbar with [notAttending].
+     */
+    val vanished: List<SelectedEventEntity> = emptyList(),
 ) {
     /** How many alarms are armed for the day once this is applied. */
     val armedCount: Int get() = schedule.size + retime.size + keep.size
 
     /**
-     * Nothing on the day is selected any more, so applying this only cancels: every
-     * selection lands in exactly one of [schedule]/[retime]/[keep]/[skipped]/[notAttending],
-     * so all five empty means an empty selection. The day then goes back to "nothing
-     * picked" rather than "alarms set".
+     * Nothing on the day is selected any more once this is applied, so it only cancels
+     * (and drops [vanished] selections): every selection lands in exactly one of
+     * [schedule]/[retime]/[keep]/[skipped]/[notAttending]/[vanished], and the first five
+     * empty means nothing selected is left. The day then goes back to "nothing picked"
+     * rather than "alarms set".
      */
     val clearsTheDay: Boolean get() = armedCount == 0 && skipped.isEmpty() && notAttending.isEmpty()
 }
@@ -65,6 +75,16 @@ data class AlarmReconciliation(
  *  - the event is `STATUS_CANCELED` or declined by me: never armed, whatever its row
  *    (which is cancelled) — the same rule `MaintainAlarms` applies to armed rows, so the two
  *    reconciles can't fight over it; counted as [AlarmReconciliation.notAttending];
+ *  - the provider was read ([providerRead]) and no longer has the event at all: never
+ *    armed, its row cancelled, and the selection dropped ([AlarmReconciliation.vanished]).
+ *    An organizer's cancellation, a deleted meeting, or a series moved to new times (which
+ *    gives every occurrence a new [com.episode6.meetingminder.model.EventKey]) all read as
+ *    vanished, and the chip is no longer drawn, so this tap is the only way its alarm ever
+ *    gets cancelled — the automatic `MaintainAlarms` deliberately keeps a vanished key's
+ *    alarm as a hedge against a sync hiccup, but the user tapping "Set alarms" on the day
+ *    they are looking at is the commitment moment, and an alarm for a meeting that is not
+ *    on the calendar rings for nothing. With the provider unreadable ([freshEvents] is the
+ *    loaded window) an absent event is armed from the stored selection instead;
  *  - no armed row for the key: schedule one, unless the alarm time is already past
  *    (`≤ now`) — those are skipped and counted, never silently dropped;
  *  - a row with the same time, title and location: keep it;
@@ -78,6 +98,8 @@ data class AlarmReconciliation(
  *
  * [scheduled] is the day's armed (`SCHEDULED`/`SNOOZED`) rows. [soundIndex] draws each new
  * row's `sound_index`; a row keeps its draw when re-timed so a moved meeting keeps its sound.
+ * [providerRead] says [freshEvents] is the provider's whole day (every calendar), so an
+ * event absent from it is gone; false when it is only the loaded window's fallback.
  */
 fun reconcileAlarms(
     date: LocalDate,
@@ -87,6 +109,7 @@ fun reconcileAlarms(
     leadTime: Duration,
     now: Instant,
     soundIndex: () -> Int,
+    providerRead: Boolean,
 ): AlarmReconciliation {
     val fresh = freshEvents.associateBy { it.key }
     val existing = scheduled.associateBy { it.key }
@@ -99,6 +122,7 @@ fun reconcileAlarms(
     val keep = mutableListOf<ScheduledAlarmEntity>()
     val skipped = mutableListOf<SelectedEventEntity>()
     val notAttending = mutableListOf<SelectedEventEntity>()
+    val vanished = mutableListOf<SelectedEventEntity>()
 
     for (selection in selected) {
         val event = fresh[selection.key]
@@ -108,6 +132,11 @@ fun reconcileAlarms(
             selection
         }
         val row = existing[selection.key]
+        if (event == null && providerRead) {
+            vanished += current
+            if (row != null) cancel += row
+            continue
+        }
         if (event != null && (event.status == EventStatus.CANCELED || event.selfStatus == SelfStatus.DECLINED)) {
             notAttending += current
             if (row != null) cancel += row
@@ -153,5 +182,8 @@ fun reconcileAlarms(
     }
     cancel += scheduled.filter { it.key !in selectedKeys }
 
-    return AlarmReconciliation(schedule = schedule, retime = retime, cancel = cancel, keep = keep, skipped = skipped, notAttending = notAttending)
+    return AlarmReconciliation(
+        schedule = schedule, retime = retime, cancel = cancel, keep = keep,
+        skipped = skipped, notAttending = notAttending, vanished = vanished,
+    )
 }
