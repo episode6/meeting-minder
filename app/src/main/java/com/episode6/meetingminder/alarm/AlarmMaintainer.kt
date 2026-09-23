@@ -46,7 +46,8 @@ data class AlarmMaintenance(
  *  - absent: nothing. An event that vanished from the provider (including one the organizer
  *    cancelled, which the repository's query filters out) keeps its alarm until the day
  *    ends — a stale alarm after a sync hiccup is cheaper than a missed meeting, and the
- *    change banner still reports it;
+ *    change banner still reports it. The explicit "Set alarms" tap is what cancels it
+ *    (`reconcileAlarms`' `providerRead`);
  *  - cancelled or declined by me: cancel the alarm (the selection is kept, so the banner can
  *    explain), and put the day back to "Set alarms": its armed set no longer matches its
  *    selection, so a later re-accept in Google Calendar can be re-armed from the FAB;
@@ -100,9 +101,10 @@ fun maintainAlarms(
 
 /**
  * Applies [maintainAlarms] to every armed row whose event hasn't ended (TODO.md §4.4): on
- * `CalendarContentChanged` in the app (`MaintainAlarmsSideEffects`), and from [BootReceiver]
- * after boot, a wall-clock or timezone change and an app update, once the stored alarms are
- * re-armed. A timezone change doesn't move a timed event's instant, but the provider
+ * `CalendarContentChanged` in the app (`MaintainAlarmsSideEffects`), from every background
+ * change check (`monitor/CalendarChangeWorker`, so a meeting moved while the app is away is
+ * re-timed without waiting for it to be opened), and from [BootReceiver] after boot, a
+ * wall-clock or timezone change and an app update, once the stored alarms are re-armed. A timezone change doesn't move a timed event's instant, but the provider
  * re-expands its instances in the new zone (a floating-time event, a recurrence expanded in
  * local time), so the events are read fresh and any that moved are re-timed.
  *

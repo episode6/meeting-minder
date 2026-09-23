@@ -813,14 +813,22 @@ temporary allowlist that permits starting a foreground service from the backgrou
   and the stored times updated. The same action fans out one `RsvpAccept` per newly-armed event
   (§4.6); alarm scheduling never waits on the RSVP.
 - A **narrower, automatic** reconcile (`MaintainAlarms`) runs on `CalendarContentChanged`, boot
-  and time changes. It only touches rows that already exist in `scheduled_alarm`: it **re-times**
+  and time changes, and at the start of every background change check (`CalendarChangeWorker`,
+  so a meeting moved while the app is away is re-timed by the check that reports the move rather
+  than ringing for the old time until the app is next opened). It only touches rows that already exist in `scheduled_alarm`: it **re-times**
   a moved event and **cancels** the alarm (state `CANCELLED`, selection row kept so the banner
   can explain) when the event is now `STATUS_CANCELED` or declined by me. It never arms a newly
   selected event and never RSVPs; that only happens on the explicit "Set alarms" tap, which is
   the user's commitment moment (§2). An event that simply **vanishes** from the provider keeps
   its alarm until the day ends: a stale alarm after a sync hiccup is a cheaper failure than a
-  missed meeting, and the change banner (§4.3) still reports it so the user can cancel by
-  deselecting and re-tapping "Set alarms". `RescheduleReceiver` re-arms every `SCHEDULED` row from Room on
+  missed meeting, and the change banner (§4.3) still reports it. The explicit "Set alarms" tap is
+  what cancels it: when that tap could read the provider, a selection whose event is gone from
+  the day (an organizer's cancellation, a deleted meeting, a series moved to new times — every
+  occurrence gets a new key — all read as vanished, and the chip is no longer drawn, so
+  deselecting isn't possible) lands in `notAttending`, its row cancelled, rather than being
+  armed from the stored times (`reconcileAlarms`' `providerRead`); only the loaded-window
+  fallback, when the provider can't be read, still arms an absent selection from the stored
+  times. `RescheduleReceiver` re-arms every `SCHEDULED` row from Room on
   `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`, and on the exact-alarm
   permission-state broadcast. Alarms are cancelled by the OS on shutdown, so the boot path is
   mandatory. No direct-boot handling (the calendar provider isn't readable before first unlock).
