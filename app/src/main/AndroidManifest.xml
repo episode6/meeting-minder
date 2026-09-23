@@ -102,7 +102,10 @@
 
         <!-- The ringing screen, launched only by the ringing notification's full-screen
              intent: over the lock screen, waking the screen, in its own task that never
-             shows in recents. -->
+             shows in recents. Locked to portrait on purpose (against lint's advice), so a
+             phone picked up sideways doesn't rotate the screen and move Snooze / Silence /
+             Dismiss out from under the thumb; Android 16+ ignores the lock on displays of
+             600dp or wider, where it matters least. -->
         <activity
             android:name=".alarm.AlarmActivity"
             android:excludeFromRecents="true"
@@ -112,7 +115,8 @@
             android:showWhenLocked="true"
             android:taskAffinity=""
             android:theme="@style/Theme.MeetingMinder.Alarm"
-            android:turnScreenOn="true" />
+            android:turnScreenOn="true"
+            tools:ignore="DiscouragedApi,LockedOrientationActivity" />
 
         <!-- Change monitoring's accelerator (TODO.md §4.3 mechanism 3): the calendar provider's
              PROVIDER_CHANGED broadcast reaches manifest receivers because the provider adds
