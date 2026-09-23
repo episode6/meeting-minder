@@ -41,8 +41,10 @@ import dev.zacsweers.metrox.viewmodel.metroViewModel
  * background-activity-launch rules block — so it wakes the screen (`turnScreenOn`) and
  * shows over the lock screen (`showWhenLocked`) when the phone is off or locked, and opens
  * from the heads-up when it's in use. It keeps the screen on, lives in its own task
- * (`singleInstance`, empty affinity, excluded from recents), and hosts the Compose
- * [AlarmRingingScreen] as the wiring layer for [AlarmRingingViewModel].
+ * (`singleInstance`, empty affinity, excluded from recents), is locked to portrait so a
+ * phone picked up sideways doesn't move the buttons (`screenOrientation`; Android 16+
+ * ignores the lock on large screens), and hosts the Compose [AlarmRingingScreen] as the
+ * wiring layer for [AlarmRingingViewModel].
  *
  * A day's schedule-change alert (TODO.md §4.3) is hosted here too, as [ScheduleChangeAlertScreen];
  * its "Open itinerary" and "Sync & Re-share" go to `MainActivity` by deep link, past the
