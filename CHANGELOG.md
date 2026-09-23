@@ -2,6 +2,8 @@
 
 ### v1.0.40 - Unreleased
 
+- The full-screen ringing screen (a meeting alarm or the loud schedule-change alert) is now locked to portrait (`android:screenOrientation="portrait"` on `AlarmActivity`), so a phone picked up sideways no longer rotates it and moves the Snooze / Silence / Dismiss buttons under your thumb.
+
 ### v1.0.30 - 2026-09-21
 
 - A meeting that changes without its times changing no longer reads as a schedule change. Title, guest-list and description edits were always ignored, but an edit that gives the occurrence a new identity wasn't: the organizer editing "this and following events" (every later occurrence moves to a new series id) or deleting and recreating the meeting read as "Cancelled" plus "New" for a slot that never moved — a notification, and on today the loud alert, about nothing. `ChangeDetector` now pairs an event gone from the day one-to-one with an event new to the day at exactly the same begin and end and reports neither. Only like pairs with like (both meetings or both not, so a "hold" block deleted to make room for a new invite still reports the invite), and an event that was selected gets first pick of a replacement; different times, a second meeting in the same slot, or a cancelled replacement are all still reported (`ChangeDetectorTest`). The alarm was already right: `maintainAlarms` keeps the alarm of a key that vanished. Known gap: the selection stays on the old identity, so the replacement's chip shows unselected in the day view until it is tapped.

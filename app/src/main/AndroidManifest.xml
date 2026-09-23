@@ -108,6 +108,7 @@
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleInstance"
+            android:screenOrientation="portrait"
             android:showWhenLocked="true"
             android:taskAffinity=""
             android:theme="@style/Theme.MeetingMinder.Alarm"
