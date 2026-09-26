@@ -957,7 +957,9 @@ NB (PR-10), where the build settled things this section leaves open:
   sound new to the device rings by default; a source with every sound unchecked drops out
   of the draw and its weight goes to the rest, and with nothing checked at all the siren
   rings (an alarm is never silent). The page and the player list the same sounds through
-  one `SoundCatalogSource`. The bundled set is eight AOSP alarm OGGs (no Freesound picks yet).
+  one `SoundCatalogSource`. Tapping a sound's row on the page plays it (`SoundPreviewer`: natural
+  speed and pitch, alarm stream at the user's volume, up to 10 s, one at a time, stopped when the
+  page stops); its checkbox is the separate toggle. The bundled set is eight AOSP alarm OGGs (no Freesound picks yet).
   The "recently used" buffer records each alarm's first sound, and an alarm never avoids its
   own entry, which keeps a snoozed alarm sounding the same. Sirens are never recorded.
 

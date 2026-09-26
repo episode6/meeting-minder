@@ -63,6 +63,9 @@ object AlarmSoundDefaults {
     const val RAMP_START_VOLUME = 0.25f
     const val RAMP_MILLIS = 15_000L
 
+    /** How long a sound previewed in Settings → Alarm sounds plays (looped) unless stopped: about one segment of a real ring. */
+    const val PREVIEW_MILLIS = 10_000L
+
     /** How many *other* alarms' first sounds a new alarm avoids repeating. */
     const val RECENT_ALARMS = 5
 
@@ -185,7 +188,8 @@ internal fun raisedAlarmVolume(current: Int, max: Int): Int? {
 
 internal fun Random.nextFloat(from: Float, until: Float): Float = from + nextFloat() * (until - from)
 
-private fun Random.nextSirenParams(): SirenParams {
+/** A random siren within the §4.4 ranges: one per siren segment of a ring, and one per preview of it in Settings → Alarm sounds. */
+internal fun Random.nextSirenParams(): SirenParams {
     val sweepMillis = nextInt(AlarmSoundDefaults.MIN_SIREN_SWEEP_MILLIS, AlarmSoundDefaults.MAX_SIREN_SWEEP_MILLIS + 1)
     val pulseMillis = nextInt(AlarmSoundDefaults.MIN_SIREN_PULSE_MILLIS, AlarmSoundDefaults.MAX_SIREN_PULSE_MILLIS + 1)
     return SirenParams(

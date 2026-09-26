@@ -228,7 +228,9 @@ Settings (overflow → Settings): change the lead time, snooze length, auto-time
 OGGs and the siren as checkboxes in three groups, each group's header a tri-state checkbox
 that checks or unchecks the group whole; the row's subtitle reads "All sounds on" or
 "N sounds off", and an alarm draws only from checked sounds — uncheck everything and the
-siren rings), toggle a calendar's include switch
+siren rings; tapping a sound's row, not its checkbox, plays it for up to 10 s with a stop
+icon on that row — tap it again or leave the page to stop it; `adb shell dumpsys audio`
+lists an active `USAGE_ALARM` player while one plays), toggle a calendar's include switch
 (the day view should stop/start showing that calendar's events), toggle the "Show declined
 events" switch, and tap the "Test alarm" button (snackbar reads "Test alarm rings in 10
 seconds"; it fires about 10 seconds later without touching real calendar data — the test

@@ -8,11 +8,13 @@ import com.episode6.meetingminder.alarm.AlarmScheduler
 import com.episode6.meetingminder.alarm.AndroidAlarmScheduler
 import com.episode6.meetingminder.alarm.DataStoreRecentAlarmSounds
 import com.episode6.meetingminder.alarm.DeviceSoundCatalogSource
+import com.episode6.meetingminder.alarm.DeviceSoundPreviewer
 import com.episode6.meetingminder.alarm.RecentAlarmSounds
 import com.episode6.meetingminder.alarm.ScheduleChangeAlertContent
 import com.episode6.meetingminder.alarm.ScheduleChangeAlerts
 import com.episode6.meetingminder.alarm.ServiceAlarmRingingCommands
 import com.episode6.meetingminder.alarm.SoundCatalogSource
+import com.episode6.meetingminder.alarm.SoundPreviewer
 import com.episode6.meetingminder.monitor.ScheduleChangeAlerter
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesTo
@@ -40,6 +42,10 @@ interface AlarmModule {
     /** The device's alarm ringtones and the bundled sounds, as the ringing player and Settings → Alarm sounds both list them. */
     @Provides
     fun soundCatalogSource(context: Context): SoundCatalogSource = DeviceSoundCatalogSource(context)
+
+    /** Plays a sound on its own when it is tapped in Settings → Alarm sounds. */
+    @Provides
+    fun soundPreviewer(context: Context): SoundPreviewer = DeviceSoundPreviewer(context)
 
     /** The loud schedule-change alert (TODO.md §4.3), as `ChangeMonitor` sees it. */
     @Provides
