@@ -42,6 +42,8 @@ import com.episode6.meetingminder.ui.licenses.LicensesScreen
 import com.episode6.meetingminder.ui.onboarding.OnboardingRow
 import com.episode6.meetingminder.ui.onboarding.OnboardingScreen
 import com.episode6.meetingminder.ui.onboarding.OnboardingViewModel
+import com.episode6.meetingminder.ui.settings.AlarmSoundsScreen
+import com.episode6.meetingminder.ui.settings.AlarmSoundsViewModel
 import com.episode6.meetingminder.ui.settings.SettingsScreen
 import com.episode6.meetingminder.ui.settings.SettingsViewModel
 import com.episode6.meetingminder.ui.util.findActivity
@@ -299,7 +301,7 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                 onLeadTimeSelected = viewModel::onLeadTimeSelected,
                 onSnoozeLengthSelected = viewModel::onSnoozeLengthSelected,
                 onAutoTimeoutSelected = viewModel::onAutoTimeoutSelected,
-                onSoundPoolSelected = viewModel::onSoundPoolSelected,
+                onAlarmSoundsClick = { navController.navigate(Route.AlarmSounds) },
                 onTestAlarmClick = viewModel::onTestAlarmClick,
                 onCalendarToggle = { calendar, included -> viewModel.onCalendarToggle(calendar, included) },
                 onShowDeclinedToggle = viewModel::onShowDeclinedToggle,
@@ -310,6 +312,16 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                 onLoudChangeAlertsToggle = viewModel::onLoudChangeAlertsToggle,
                 onPermissionsClick = { navController.navigate(Route.Onboarding) },
                 onLicensesClick = { navController.navigate(Route.Licenses) },
+            )
+        }
+        composable<Route.AlarmSounds> {
+            val viewModel: AlarmSoundsViewModel = metroViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            AlarmSoundsScreen(
+                state = state,
+                onBackClick = { navController.popBackStack() },
+                onSoundToggle = viewModel::onSoundToggle,
+                onGroupToggle = viewModel::onGroupToggle,
             )
         }
         composable<Route.Licenses> {

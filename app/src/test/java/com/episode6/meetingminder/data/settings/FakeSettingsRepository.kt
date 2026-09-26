@@ -18,8 +18,9 @@ internal class FakeSettingsRepository(initial: Settings = Settings()) : Settings
         settings.value = settings.value.copy(autoTimeout = autoTimeout)
     }
 
-    override suspend fun setSoundPool(soundPool: AlarmSoundPool) {
-        settings.value = settings.value.copy(soundPool = soundPool)
+    override suspend fun setAlarmSoundsEnabled(soundIds: Collection<String>, enabled: Boolean) {
+        val disabled = settings.value.disabledAlarmSounds
+        settings.value = settings.value.copy(disabledAlarmSounds = if (enabled) disabled - soundIds.toSet() else disabled + soundIds)
     }
 
     override suspend fun setShowDeclined(showDeclined: Boolean) {

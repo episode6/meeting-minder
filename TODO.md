@@ -279,7 +279,7 @@ com.episode6.meetingminder
 ├── data/
 │   ├── calendar/                  CalendarRepository (interface) + ContentResolverCalendarRepository
 │   ├── db/                        Room: MeetingMinderDatabase, DayPlanDao, entities, migrations
-│   └── settings/                  DataStore-backed SettingsRepository (lead time, snooze, sound set)
+│   └── settings/                  DataStore-backed SettingsRepository (lead time, snooze, unchecked sounds)
 ├── alarm/                         AlarmScheduler (AlarmManager), AlarmReceiver, BootReceiver,
 │                                  AlarmRingingService (FGS), AlarmSoundPlayer, AlarmActivity
 ├── monitor/                       CalendarChangeWorker (WorkManager), ChangeDetector, notifications
@@ -950,8 +950,14 @@ NB (PR-10), where the build settled things this section leaves open:
   notification away (Android 14+ lets users dismiss foreground-service notifications) snoozes.
 - **"Open meeting"** (on the screen, not the notification) dismisses the alarm and opens the
   event in the calendar app once `requestDismissKeyguard` succeeds.
-- **Sound pool:** "bundled only" keeps the siren (it is generated in-app); "system only" is
-  device ringtones alone. The bundled set is eight AOSP alarm OGGs (no Freesound picks yet).
+- **Sound choice:** the "all / bundled only / system only" pool became, in v1.0.50, a
+  Settings → Alarm sounds page with a checkbox per sound in three groups (the device's alarm
+  ringtones, the bundled OGGs, the siren) and a tri-state checkbox on each group's header.
+  `Settings.disabledAlarmSounds` stores the sounds turned *off* by `AlarmSound.id`, so a
+  sound new to the device rings by default; a source with every sound unchecked drops out
+  of the draw and its weight goes to the rest, and with nothing checked at all the siren
+  rings (an alarm is never silent). The page and the player list the same sounds through
+  one `SoundCatalogSource`. The bundled set is eight AOSP alarm OGGs (no Freesound picks yet).
   The "recently used" buffer records each alarm's first sound, and an alarm never avoids its
   own entry, which keeps a snoozed alarm sounding the same. Sirens are never recorded.
 
@@ -969,8 +975,9 @@ On top of the source: random `PlaybackParams` speed 0.85–1.35 and pitch 0.8–
 `VolumeShaper` ramp from 25% to 100% over 15 s (so a fast dismiss isn't deafening), a re-roll of
 source/pitch every ~10 s while ringing, a random vibration waveform (4–8 segments of 80–700 ms),
 and a "recently used" ring buffer so the same ringtone isn't picked within the last 5 alarms.
-Settings can restrict the pool ("all / bundled only / system only") and there's a "Test alarm"
-button that fires in 10 s so the user can lock the phone and check the whole path.
+Settings → Alarm sounds lets the user uncheck any sound, or a whole source at a time (see the
+PR-10 NB above), and there's a "Test alarm" button that fires in 10 s so the user can lock the
+phone and check the whole path.
 
 **Battery optimisation.** Not required for delivery (alarm-clock alarms and the FGS start are
 both exempt), but requesting `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is a cheap
@@ -1318,7 +1325,7 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   in-app "changed since you shared" banner, re-share clears everything. `WorkManagerTestInitHelper`
   tests.
 - [x] **PR-12: Settings screen.** `[Sonnet 5, effort medium]` Lead time, snooze length, auto-timeout, calendars list with
-  per-calendar include toggles (and "not syncing" hints), show-declined toggle, sound pack choice
+  per-calendar include toggles (and "not syncing" hints), show-declined toggle, sound pack choice (since v1.0.50 the per-sound "Alarm sounds" page)
   ("all", "bundled only", "system only"), test-alarm button, permissions status re-entry to
   onboarding, licences link. DataStore-backed `SettingsRepository`.
 

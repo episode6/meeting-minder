@@ -17,6 +17,10 @@ sealed interface Route {
     @Serializable
     data object Settings : Route
 
+    /** Settings → Alarm sounds: the per-sound checkboxes (TODO.md §4.4). */
+    @Serializable
+    data object AlarmSounds : Route
+
     /** THIRD_PARTY_LICENSES.md, embedded at build time. */
     @Serializable
     data object Licenses : Route

@@ -67,7 +67,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.data.calendar.busyBlockTitle
-import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import com.episode6.meetingminder.data.settings.BUSY_FIRST_NAME_MAX_LENGTH
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
@@ -81,8 +80,9 @@ internal object SettingsOptions {
 }
 
 /**
- * Settings (TODO.md §5 PR-12; no render): lead time / snooze / auto-timeout / sound pack
- * as chip pickers, a "Test alarm" button, the opt-in "Loud schedule-change alerts" toggle,
+ * Settings (TODO.md §5 PR-12; no render): lead time / snooze / auto-timeout as chip
+ * pickers, the "Alarm sounds" row into [AlarmSoundsScreen], a "Test alarm" button, the
+ * opt-in "Loud schedule-change alerts" toggle,
  * the "show declined events" toggle, the
  * Settings → Calendars list with a per-calendar include switch (and a "not syncing"
  * hint), and re-entry points into Permissions and Licenses.
@@ -96,7 +96,7 @@ fun SettingsScreen(
     onLeadTimeSelected: (Duration) -> Unit,
     onSnoozeLengthSelected: (Duration) -> Unit,
     onAutoTimeoutSelected: (Duration) -> Unit,
-    onSoundPoolSelected: (AlarmSoundPool) -> Unit,
+    onAlarmSoundsClick: () -> Unit,
     onTestAlarmClick: () -> Unit,
     onCalendarToggle: (CalendarInfo, Boolean) -> Unit,
     onShowDeclinedToggle: (Boolean) -> Unit,
@@ -150,7 +150,17 @@ fun SettingsScreen(
                     onSelected = onAutoTimeoutSelected,
                 )
             }
-            item { SoundPoolRow(selected = state.soundPool, onSelected = onSoundPoolSelected) }
+            item {
+                SimpleRow(
+                    title = stringResource(R.string.settings_alarm_sounds),
+                    subtitle = if (state.disabledAlarmSoundCount == 0) {
+                        stringResource(R.string.settings_alarm_sounds_all_on)
+                    } else {
+                        pluralStringResource(R.plurals.settings_alarm_sounds_off, state.disabledAlarmSoundCount, state.disabledAlarmSoundCount)
+                    },
+                    onClick = onAlarmSoundsClick,
+                )
+            }
             item {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                     OutlinedButton(onClick = onTestAlarmClick) { Text(stringResource(R.string.settings_test_alarm)) }
@@ -206,7 +216,7 @@ fun SettingsScreen(
             if (state.busySyncEnabled) {
                 item {
                     // One selectableGroup so TalkBack announces the radio rows as a single
-                    // choice, matching the duration/sound-pool chip rows above.
+                    // choice, matching the duration chip rows above.
                     Column(modifier = Modifier.selectableGroup()) {
                         state.busyCalendars.forEach { calendar ->
                             BusyCalendarRow(
@@ -287,29 +297,6 @@ private fun DurationPickerRow(title: String, options: List<Long>, selectedMinute
     }
 }
 
-@Composable
-private fun SoundPoolRow(selected: AlarmSoundPool, onSelected: (AlarmSoundPool) -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Text(stringResource(R.string.settings_sound_pool), style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(8.dp))
-        FlowRow(
-            modifier = Modifier.selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            AlarmSoundPool.entries.forEach { pool ->
-                FilterChip(
-                    selected = pool == selected,
-                    onClick = { onSelected(pool) },
-                    label = { Text(pool.label()) },
-                    colors = SettingsChipColors(),
-                    modifier = Modifier.singleChoiceChip(),
-                )
-            }
-        }
-    }
-}
-
 /**
  * The chips in a [selectableGroup] row are radio buttons in all but widget: exactly one is
  * ever selected. `FilterChip` reports `Role.Checkbox`, which TalkBack would read as
@@ -327,13 +314,6 @@ private fun SettingsChipColors() = FilterChipDefaults.filterChipColors(
     selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
     selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
 )
-
-@Composable
-private fun AlarmSoundPool.label(): String = when (this) {
-    AlarmSoundPool.ALL -> stringResource(R.string.settings_sound_pool_all)
-    AlarmSoundPool.BUNDLED_ONLY -> stringResource(R.string.settings_sound_pool_bundled)
-    AlarmSoundPool.SYSTEM_ONLY -> stringResource(R.string.settings_sound_pool_system)
-}
 
 @Composable
 private fun ToggleRow(
@@ -363,7 +343,7 @@ private fun ToggleRow(
 /**
  * One writable calendar in the "Busy calendar" radio list (TODO.md §4.7): name, account
  * email and the calendar's own colour dot, exactly like [CalendarRowItem] but a single-choice
- * radio row like [SoundPoolRow]'s chips rather than an independent switch.
+ * radio row like [DurationPickerRow]'s chips rather than an independent switch.
  */
 @Composable
 private fun BusyCalendarRow(calendar: CalendarInfo, selected: Boolean, onSelected: () -> Unit) {
@@ -482,7 +462,7 @@ internal fun SettingsScreenPreview() {
             onLeadTimeSelected = {},
             onSnoozeLengthSelected = {},
             onAutoTimeoutSelected = {},
-            onSoundPoolSelected = {},
+            onAlarmSoundsClick = {},
             onTestAlarmClick = {},
             onCalendarToggle = { _, _ -> },
             onShowDeclinedToggle = {},
@@ -509,7 +489,7 @@ internal fun SettingsScreenDarkPreview() {
             onLeadTimeSelected = {},
             onSnoozeLengthSelected = {},
             onAutoTimeoutSelected = {},
-            onSoundPoolSelected = {},
+            onAlarmSoundsClick = {},
             onTestAlarmClick = {},
             onCalendarToggle = { _, _ -> },
             onShowDeclinedToggle = {},
@@ -535,7 +515,7 @@ internal fun SettingsScreenLargeFontPreview() {
             onLeadTimeSelected = {},
             onSnoozeLengthSelected = {},
             onAutoTimeoutSelected = {},
-            onSoundPoolSelected = {},
+            onAlarmSoundsClick = {},
             onTestAlarmClick = {},
             onCalendarToggle = { _, _ -> },
             onShowDeclinedToggle = {},
@@ -626,7 +606,7 @@ private val previewState = SettingsUiState(
     leadTime = Duration.ofMinutes(5),
     snoozeLength = Duration.ofMinutes(2),
     autoTimeout = Duration.ofMinutes(3),
-    soundPool = AlarmSoundPool.ALL,
+    disabledAlarmSoundCount = 2,
     showDeclined = true,
     calendars = listOf(CalendarRow(previewWork, included = true), CalendarRow(previewFamily, included = false)),
     permissionsStatus = PermissionsStatus.AllGranted,

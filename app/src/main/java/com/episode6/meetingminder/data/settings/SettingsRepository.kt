@@ -13,13 +13,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Duration
 
-/**
- * Which sounds a ringing alarm may draw from (TODO.md §4.4). The synthesised siren is
- * generated in-app, so it belongs to the in-app pool: [BUNDLED_ONLY] keeps the bundled OGGs
- * and the siren, [SYSTEM_ONLY] only the device's alarm ringtones.
- */
-enum class AlarmSoundPool { ALL, BUNDLED_ONLY, SYSTEM_ONLY }
-
 /** The most [BusySync.firstName] holds: it ends up in a calendar event's title. */
 const val BUSY_FIRST_NAME_MAX_LENGTH = 30
 
@@ -58,7 +51,15 @@ data class Settings(
     val snoozeLength: Duration = SettingsDefaults.SnoozeLength,
     /** How long an alarm rings unanswered before it snoozes itself (once) and then gives up. */
     val autoTimeout: Duration = SettingsDefaults.AutoTimeout,
-    val soundPool: AlarmSoundPool = AlarmSoundPool.ALL,
+    /**
+     * The alarm sounds the user unchecked on Settings → Alarm sounds (TODO.md §4.4), by
+     * `AlarmSound.id` (`system:<uri>`, `bundled:<name>`, `siren`). Stored as the sounds turned
+     * *off* rather than on, so a sound that is new to the device (a ringtone added by a system
+     * update, an OGG added by an app update) rings by default and an empty set is exactly
+     * "every sound". With every sound off, alarms fall back to the siren: an alarm never
+     * rings silent.
+     */
+    val disabledAlarmSounds: Set<String> = emptySet(),
     /** Whether events you declined in Google Calendar still show (dashed/strikethrough) in the itinerary. */
     val showDeclined: Boolean = true,
     /** Per-calendar include override; see the class doc. Empty means "respect `VISIBLE` for every calendar". */
@@ -89,7 +90,12 @@ interface SettingsRepository {
     suspend fun setLeadTime(leadTime: Duration)
     suspend fun setSnoozeLength(snoozeLength: Duration)
     suspend fun setAutoTimeout(autoTimeout: Duration)
-    suspend fun setSoundPool(soundPool: AlarmSoundPool)
+
+    /**
+     * Turns the alarm sounds [soundIds] on or off together (Settings → Alarm sounds): one
+     * edit, so a group's checkbox never leaves a collector seeing half the group changed.
+     */
+    suspend fun setAlarmSoundsEnabled(soundIds: Collection<String>, enabled: Boolean)
     suspend fun setShowDeclined(showDeclined: Boolean)
 
     /** Sets [Settings.calendarOverrides] for [calendarId]: `true`/`false` to force it, or null to clear the override. */
@@ -155,8 +161,11 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         dataStore.edit { it[Keys.AutoTimeoutMinutes] = autoTimeout.toMinutes().toInt() }
     }
 
-    override suspend fun setSoundPool(soundPool: AlarmSoundPool) {
-        dataStore.edit { it[Keys.AlarmSoundPool] = soundPool.name }
+    override suspend fun setAlarmSoundsEnabled(soundIds: Collection<String>, enabled: Boolean) {
+        dataStore.edit { prefs ->
+            val disabled = prefs[Keys.DisabledAlarmSounds].orEmpty()
+            prefs[Keys.DisabledAlarmSounds] = if (enabled) disabled - soundIds.toSet() else disabled + soundIds
+        }
     }
 
     override suspend fun setShowDeclined(showDeclined: Boolean) {
@@ -221,7 +230,7 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         leadTime = minutes(Keys.LeadTimeMinutes) ?: SettingsDefaults.LeadTime,
         snoozeLength = minutes(Keys.SnoozeMinutes) ?: SettingsDefaults.SnoozeLength,
         autoTimeout = minutes(Keys.AutoTimeoutMinutes) ?: SettingsDefaults.AutoTimeout,
-        soundPool = this[Keys.AlarmSoundPool]?.let { name -> AlarmSoundPool.entries.firstOrNull { it.name == name } } ?: AlarmSoundPool.ALL,
+        disabledAlarmSounds = this[Keys.DisabledAlarmSounds].orEmpty(),
         showDeclined = this[Keys.ShowDeclined] ?: true,
         calendarOverrides = calendarOverrides(),
         busySync = BusySync(
@@ -246,7 +255,8 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         val LeadTimeMinutes = intPreferencesKey("lead_time_minutes")
         val SnoozeMinutes = intPreferencesKey("snooze_minutes")
         val AutoTimeoutMinutes = intPreferencesKey("auto_timeout_minutes")
-        val AlarmSoundPool = stringPreferencesKey("sound_pool")
+        /** Replaced the pre-v1.0.50 `sound_pool` ("all / bundled only / system only"), which is no longer read. */
+        val DisabledAlarmSounds = stringSetPreferencesKey("disabled_alarm_sounds")
         val ShowDeclined = booleanPreferencesKey("show_declined")
         val CalendarOverridesIncluded = stringSetPreferencesKey("calendar_overrides_included")
         val CalendarOverridesExcluded = stringSetPreferencesKey("calendar_overrides_excluded")

@@ -1,6 +1,5 @@
 package com.episode6.meetingminder.alarm
 
-import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import kotlin.math.ceil
 import kotlin.random.Random
 
@@ -31,8 +30,19 @@ sealed interface AlarmSound {
 /** One stretch of ringing: [sound] at [speed]/[pitch] for [durationMillis], after which the player re-rolls. */
 data class SoundSegment(val sound: AlarmSound, val speed: Float, val pitch: Float, val durationMillis: Long)
 
-/** What there is to choose from on this device: its alarm ringtones and the bundled OGGs. */
-data class SoundCatalog(val system: List<AlarmSound.System>, val bundled: List<AlarmSound.Bundled>)
+/**
+ * What there is to choose from on this device: its alarm ringtones, the bundled OGGs and
+ * whether the synthesised [siren] is on the table. [SoundCatalogSource] loads the whole
+ * device's; [without] takes the user's unchecked sounds out of it.
+ */
+data class SoundCatalog(val system: List<AlarmSound.System>, val bundled: List<AlarmSound.Bundled>, val siren: Boolean = true)
+
+/** This catalog less the sounds with an [AlarmSound.id] in [disabledIds] (`Settings.disabledAlarmSounds`). */
+fun SoundCatalog.without(disabledIds: Set<String>): SoundCatalog = SoundCatalog(
+    system = system.filter { it.id !in disabledIds },
+    bundled = bundled.filter { it.id !in disabledIds },
+    siren = siren && AlarmSound.SIREN_ID !in disabledIds,
+)
 
 /** The §4.4 numbers behind the randomised alert, in one place. */
 object AlarmSoundDefaults {
@@ -76,13 +86,13 @@ object AlarmSoundDefaults {
 
 /**
  * The randomised obnoxious alert of TODO.md §4.4, as a pure, deterministic draw: the same
- * [seed] (the alarm's `sound_index`), [catalog], [pool] and [recentlyUsed] always produce
- * the same [segments], so a snoozed alarm comes back sounding the same and tests can pin
- * the output.
+ * [seed] (the alarm's `sound_index`), [catalog] and [recentlyUsed] always produce the same
+ * [segments], so a snoozed alarm comes back sounding the same and tests can pin the output.
  *
  * Each segment picks a source — a device alarm ringtone 60% of the time, a bundled OGG 30%,
- * the synthesised siren 10% (a [pool] restriction drops the excluded weights; a source with
- * nothing to offer is skipped) — plus a random playback speed and pitch. The first segment
+ * the synthesised siren 10% (a source with nothing to offer — empty on the device, or every
+ * sound of it unchecked in Settings — is skipped and its weight redistributed; with nothing
+ * at all to offer, the siren rings) — plus a random playback speed and pitch. The first segment
  * avoids every sound in [recentlyUsed] (the first sounds of the last few *other* alarms);
  * each later one avoids the sound just played. Either rule gives way when it would leave
  * nothing to pick.
@@ -90,7 +100,6 @@ object AlarmSoundDefaults {
 class AlarmSoundRecipe(
     private val seed: Int,
     private val catalog: SoundCatalog,
-    private val pool: AlarmSoundPool,
     private val recentlyUsed: Set<String>,
 ) {
     /** Endless: the player takes one per re-roll for as long as the alarm rings. */
@@ -113,9 +122,9 @@ class AlarmSoundRecipe(
 
     private fun Random.nextSound(avoid: Set<String>): AlarmSound {
         val sources = buildList {
-            if (pool != AlarmSoundPool.BUNDLED_ONLY && catalog.system.isNotEmpty()) add(Source.SYSTEM)
-            if (pool != AlarmSoundPool.SYSTEM_ONLY && catalog.bundled.isNotEmpty()) add(Source.BUNDLED)
-            if (pool != AlarmSoundPool.SYSTEM_ONLY) add(Source.SIREN)
+            if (catalog.system.isNotEmpty()) add(Source.SYSTEM)
+            if (catalog.bundled.isNotEmpty()) add(Source.BUNDLED)
+            if (catalog.siren) add(Source.SIREN)
         }.ifEmpty { listOf(Source.SIREN) }
         var roll = nextInt(sources.sumOf { it.weight })
         val source = sources.first { roll < it.weight || run { roll -= it.weight; false } }

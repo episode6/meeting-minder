@@ -48,7 +48,7 @@ class SettingsBusyFirstNameTest {
                 onLeadTimeSelected = {},
                 onSnoozeLengthSelected = {},
                 onAutoTimeoutSelected = {},
-                onSoundPoolSelected = {},
+                onAlarmSoundsClick = {},
                 onTestAlarmClick = {},
                 onCalendarToggle = { _, _ -> },
                 onShowDeclinedToggle = {},

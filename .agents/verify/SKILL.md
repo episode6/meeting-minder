@@ -224,7 +224,11 @@ the FAB reads "Sync & Share" instead and the same tap also writes the day's `bus
 see "Seeding a \"Family\" calendar for the busy-block sync" for what to check afterwards.
 
 Settings (overflow → Settings): change the lead time, snooze length, auto-timeout and the
-"Alarm sounds" row (All / Bundled only / System only), toggle a calendar's include switch
+"Alarm sounds" row (it opens a page listing every device alarm ringtone, the bundled
+OGGs and the siren as checkboxes in three groups, each group's header a tri-state checkbox
+that checks or unchecks the group whole; the row's subtitle reads "All sounds on" or
+"N sounds off", and an alarm draws only from checked sounds — uncheck everything and the
+siren rings), toggle a calendar's include switch
 (the day view should stop/start showing that calendar's events), toggle the "Show declined
 events" switch, and tap the "Test alarm" button (snackbar reads "Test alarm rings in 10
 seconds"; it fires about 10 seconds later without touching real calendar data — the test
