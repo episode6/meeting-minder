@@ -9,6 +9,8 @@ import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.PlaybackParams
 import android.media.VolumeShaper
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.net.toUri
@@ -166,9 +168,27 @@ class AlarmSoundPlayer(
     }
 }
 
-/** Transient audio focus for alarm audio; null when the request throws (the caller plays regardless). */
-internal fun AudioManager.requestAlarmFocus(): AudioFocusRequest? {
-    val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(AlarmAudioAttributes).build()
+/**
+ * Transient audio focus for alarm audio; null when the request throws (the caller plays
+ * regardless). A ring passes no [onLoss] and so never hears about losing focus: an alarm
+ * doesn't go quiet because something else wants to play. A preview passes one, called (on
+ * the main thread) when a call, an alarm or another app takes focus from it.
+ */
+internal fun AudioManager.requestAlarmFocus(onLoss: (() -> Unit)? = null): AudioFocusRequest? {
+    val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+        .setAudioAttributes(AlarmAudioAttributes)
+        .apply {
+            if (onLoss != null) {
+                setOnAudioFocusChangeListener(
+                    { change ->
+                        // a "can duck" loss is ducked by the system; the other two mean something else must be heard
+                        if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) onLoss()
+                    },
+                    Handler(Looper.getMainLooper()),
+                )
+            }
+        }
+        .build()
     return runCatching { requestAudioFocus(request) }.map { request }.getOrNull()
 }
 
@@ -211,7 +231,8 @@ private fun rampFrom(elapsedMillis: Long): VolumeShaper.Configuration? {
         .build()
 }
 
-internal sealed interface SoundOutput {
+/** One opened sound; not sealed so `DeviceSoundPreviewerTest` can supply its own (Robolectric can't play a static `AudioTrack`). */
+internal interface SoundOutput {
     /** Completes if the source errors out mid-play, so the player re-rolls early. */
     val failed: CompletableDeferred<Unit>
 
