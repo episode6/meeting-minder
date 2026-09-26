@@ -11,6 +11,8 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metrox.viewmodel.ViewModelKey
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -59,15 +61,37 @@ fun groupState(choices: List<SoundChoice>): ToggleableState = when {
  * once per screen) combined with `Settings.disabledAlarmSounds`. Every write goes through
  * [SettingsRepository.setAlarmSoundsEnabled], a group's as one edit; the ringing player reads
  * the result on its next alarm, so nothing is dispatched to the store.
+ *
+ * Opening the page also prunes the off set: an id that is no longer in the catalog (a
+ * ringtone a system update removed or renamed) can't be reached by any checkbox, and
+ * would otherwise count toward the Settings row's "N sounds off" for good.
  */
 @Inject
 @ViewModelKey(AlarmSoundsViewModel::class)
 @ContributesIntoMap(AppScope::class)
 class AlarmSoundsViewModel(private val settings: SettingsRepository, catalogSource: SoundCatalogSource) : ViewModel() {
 
-    private val catalog = viewModelScope.async { catalogSource.load() }
+    /** Null when the device's list couldn't be read: the page then shows the siren alone rather than crashing the collector. */
+    private val catalog: Deferred<SoundCatalog?> = viewModelScope.async {
+        try {
+            catalogSource.load()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+    }
 
-    val state: StateFlow<AlarmSoundsUiState> = combine(flow { emit(catalog.await()) }, settings.settings) { catalog, prefs ->
+    init {
+        viewModelScope.launch {
+            // never on a failed load: an empty list would read every stored id as stale
+            val loaded = catalog.await() ?: return@launch
+            val stale = settings.current().disabledAlarmSounds - loaded.ids() - AlarmSound.SIREN_ID
+            if (stale.isNotEmpty()) settings.setAlarmSoundsEnabled(stale, enabled = true)
+        }
+    }
+
+    val state: StateFlow<AlarmSoundsUiState> = combine(flow { emit(catalog.await() ?: SoundCatalog(emptyList(), emptyList())) }, settings.settings) { catalog, prefs ->
         AlarmSoundsUiState(
             loaded = true,
             system = catalog.system.map { SoundChoice(it.id, it.title, it.id !in prefs.disabledAlarmSounds) },
@@ -82,7 +106,7 @@ class AlarmSoundsViewModel(private val settings: SettingsRepository, catalogSour
 
     /** Checks or unchecks every sound of [group] in one edit; the ids come from the loaded catalog, not the rendered rows. */
     fun onGroupToggle(group: AlarmSoundGroup, enabled: Boolean) = viewModelScope.launch {
-        val loaded = catalog.await()
+        val loaded = catalog.await() ?: SoundCatalog(emptyList(), emptyList())
         val ids = when (group) {
             AlarmSoundGroup.SYSTEM -> loaded.system.map { it.id }
             AlarmSoundGroup.BUNDLED -> loaded.bundled.map { it.id }
@@ -91,3 +115,5 @@ class AlarmSoundsViewModel(private val settings: SettingsRepository, catalogSour
         settings.setAlarmSoundsEnabled(ids, enabled)
     }
 }
+
+private fun SoundCatalog.ids(): Set<String> = (system.map { it.id } + bundled.map { it.id }).toSet()

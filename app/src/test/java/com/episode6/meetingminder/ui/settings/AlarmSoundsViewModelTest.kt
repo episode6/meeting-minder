@@ -9,6 +9,7 @@ import assertk.assertions.isTrue
 import com.episode6.meetingminder.alarm.AlarmSound
 import com.episode6.meetingminder.alarm.FakeSoundCatalogSource
 import com.episode6.meetingminder.alarm.SoundCatalog
+import com.episode6.meetingminder.alarm.SoundCatalogSource
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import kotlinx.coroutines.Dispatchers
@@ -85,6 +86,34 @@ class AlarmSoundsViewModelTest {
 
         viewModel.onGroupToggle(AlarmSoundGroup.SYSTEM, enabled = true)
         assertThat(settings.settings.value.disabledAlarmSounds).isEqualTo(setOf(argon.id, carbon.id, AlarmSound.SIREN_ID))
+    }
+
+    /** A ringtone gone from the device can't be reached by any checkbox, so its id is dropped; catalog ids and the siren stay. */
+    @Test
+    fun onLoad_prunesIdsTheCatalogNoLongerHas_andLeavesTheRestAlone() = runTest {
+        val gone = "system:content://media/internal/audio/media/99"
+        val settings = FakeSettingsRepository(Settings(disabledAlarmSounds = setOf(gone, krypton.id, AlarmSound.SIREN_ID)))
+
+        AlarmSoundsViewModel(settings, FakeSoundCatalogSource(catalog))
+
+        assertThat(settings.settings.value.disabledAlarmSounds).isEqualTo(setOf(krypton.id, AlarmSound.SIREN_ID))
+    }
+
+    @Test
+    fun whenTheCatalogCantBeRead_thePageShowsTheSirenAlone_andPrunesNothingItCantSee() = runTest {
+        val settings = FakeSettingsRepository(Settings(disabledAlarmSounds = setOf(krypton.id)))
+        val viewModel = AlarmSoundsViewModel(settings, object : SoundCatalogSource {
+            override suspend fun load(): SoundCatalog = throw IllegalStateException("no resources")
+        })
+
+        viewModel.state.test {
+            val state = awaitItem()
+            assertThat(state.loaded).isTrue()
+            assertThat(state.system).isEqualTo(emptyList())
+            assertThat(state.bundled).isEqualTo(emptyList())
+            assertThat(state.sirenEnabled).isTrue()
+        }
+        assertThat(settings.settings.value.disabledAlarmSounds).isEqualTo(setOf(krypton.id))
     }
 
     @Test

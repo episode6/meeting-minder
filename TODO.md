@@ -1325,8 +1325,8 @@ open. Order matters where noted; PRs marked ∥ can run in parallel with their n
   in-app "changed since you shared" banner, re-share clears everything. `WorkManagerTestInitHelper`
   tests.
 - [x] **PR-12: Settings screen.** `[Sonnet 5, effort medium]` Lead time, snooze length, auto-timeout, calendars list with
-  per-calendar include toggles (and "not syncing" hints), show-declined toggle, sound pack choice (since v1.0.50 the per-sound "Alarm sounds" page)
-  ("all", "bundled only", "system only"), test-alarm button, permissions status re-entry to
+  per-calendar include toggles (and "not syncing" hints), show-declined toggle, sound pack choice ("all", "bundled only", "system only"; since
+  v1.0.50 the per-sound "Alarm sounds" page), test-alarm button, permissions status re-entry to
   onboarding, licences link. DataStore-backed `SettingsRepository`.
 
 ### Phase 4 — Polish and ship

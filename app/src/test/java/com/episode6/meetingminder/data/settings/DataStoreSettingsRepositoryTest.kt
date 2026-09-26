@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import assertk.assertions.isFalse
+import assertk.assertions.isNull
 import assertk.assertions.isTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -84,11 +85,14 @@ class DataStoreSettingsRepositoryTest {
 
     /** Settings → Alarm sounds stores the sounds turned *off*; a group's ids go on or off in one edit. */
     @Test
-    fun setAlarmSoundsEnabled_addsAndRemovesTheDisabledIds_together() = runTest {
-        val repository = DataStoreSettingsRepository(dataStore("settings-alarm-sounds-test"))
+    fun setAlarmSoundsEnabled_addsAndRemovesTheDisabledIds_together_andDropsTheLegacyPool() = runTest {
+        val dataStore = dataStore("settings-alarm-sounds-test")
+        val repository = DataStoreSettingsRepository(dataStore)
+        dataStore.edit { it[DataStoreSettingsRepository.Keys.LegacySoundPool] = "BUNDLED_ONLY" }
 
         repository.setAlarmSoundsEnabled(listOf("bundled:Argon", "bundled:Carbon", "siren"), enabled = false)
         assertThat(repository.current().disabledAlarmSounds).isEqualTo(setOf("bundled:Argon", "bundled:Carbon", "siren"))
+        assertThat(dataStore.data.first()[DataStoreSettingsRepository.Keys.LegacySoundPool]).isNull()
 
         repository.setAlarmSoundsEnabled(listOf("bundled:Argon", "bundled:Carbon"), enabled = true)
         assertThat(repository.current().disabledAlarmSounds).isEqualTo(setOf("siren"))

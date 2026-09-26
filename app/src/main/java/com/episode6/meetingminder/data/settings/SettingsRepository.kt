@@ -165,6 +165,7 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         dataStore.edit { prefs ->
             val disabled = prefs[Keys.DisabledAlarmSounds].orEmpty()
             prefs[Keys.DisabledAlarmSounds] = if (enabled) disabled - soundIds.toSet() else disabled + soundIds
+            prefs.remove(Keys.LegacySoundPool)
         }
     }
 
@@ -255,8 +256,11 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         val LeadTimeMinutes = intPreferencesKey("lead_time_minutes")
         val SnoozeMinutes = intPreferencesKey("snooze_minutes")
         val AutoTimeoutMinutes = intPreferencesKey("auto_timeout_minutes")
-        /** Replaced the pre-v1.0.50 `sound_pool` ("all / bundled only / system only"), which is no longer read. */
+        /** Replaced [LegacySoundPool] in v1.0.50. */
         val DisabledAlarmSounds = stringSetPreferencesKey("disabled_alarm_sounds")
+
+        /** The pre-v1.0.50 "all / bundled only / system only" choice: never read, removed by the next [DisabledAlarmSounds] edit. */
+        val LegacySoundPool = stringPreferencesKey("sound_pool")
         val ShowDeclined = booleanPreferencesKey("show_declined")
         val CalendarOverridesIncluded = stringSetPreferencesKey("calendar_overrides_included")
         val CalendarOverridesExcluded = stringSetPreferencesKey("calendar_overrides_excluded")
