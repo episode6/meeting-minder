@@ -7,7 +7,6 @@ import com.episode6.meetingminder.data.calendar.insertable
 import com.episode6.meetingminder.data.calendar.writable
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.data.settings.SettingsRepository
-import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.permissions.PermissionState
 import com.episode6.meetingminder.store.AppStore
@@ -67,7 +66,8 @@ data class SettingsUiState(
     val leadTime: Duration = Duration.ZERO,
     val snoozeLength: Duration = Duration.ZERO,
     val autoTimeout: Duration = Duration.ZERO,
-    val soundPool: AlarmSoundPool = AlarmSoundPool.ALL,
+    /** How many sounds are unchecked on Settings → Alarm sounds, for the row's subtitle; 0 reads "All sounds on". */
+    val disabledAlarmSoundCount: Int = 0,
     val showDeclined: Boolean = true,
     val calendars: List<CalendarRow> = emptyList(),
     val permissionsStatus: PermissionsStatus = PermissionsStatus.AllGranted,
@@ -129,8 +129,6 @@ class SettingsViewModel(private val store: AppStore, private val settings: Setti
     fun onSnoozeLengthSelected(snoozeLength: Duration) = viewModelScope.launch { settings.setSnoozeLength(snoozeLength) }
 
     fun onAutoTimeoutSelected(autoTimeout: Duration) = viewModelScope.launch { settings.setAutoTimeout(autoTimeout) }
-
-    fun onSoundPoolSelected(soundPool: AlarmSoundPool) = viewModelScope.launch { settings.setSoundPool(soundPool) }
 
     fun onShowDeclinedToggle(showDeclined: Boolean) = viewModelScope.launch {
         settings.setShowDeclined(showDeclined)
@@ -221,7 +219,7 @@ private fun Settings.toUiState(calendars: List<CalendarInfo>, permissionsStatus:
     leadTime = leadTime,
     snoozeLength = snoozeLength,
     autoTimeout = autoTimeout,
-    soundPool = soundPool,
+    disabledAlarmSoundCount = disabledAlarmSounds.size,
     showDeclined = showDeclined,
     calendars = calendars.map { CalendarRow(it, included = calendarOverrides[it.id] ?: it.visible) },
     permissionsStatus = permissionsStatus,

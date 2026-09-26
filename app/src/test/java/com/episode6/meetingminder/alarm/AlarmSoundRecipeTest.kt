@@ -9,7 +9,6 @@ import assertk.assertions.isEqualTo
 import assertk.assertions.isInstanceOf
 import assertk.assertions.isNotEqualTo
 import assertk.assertions.isTrue
-import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import org.junit.Test
 import kotlin.math.abs
 
@@ -22,13 +21,12 @@ class AlarmSoundRecipeTest {
 
     private fun recipe(
         seed: Int,
-        pool: AlarmSoundPool = AlarmSoundPool.ALL,
         recentlyUsed: Set<String> = emptySet(),
         catalog: SoundCatalog = this.catalog,
-    ) = AlarmSoundRecipe(seed, catalog, pool, recentlyUsed)
+    ) = AlarmSoundRecipe(seed, catalog, recentlyUsed)
 
-    private fun firstSounds(pool: AlarmSoundPool = AlarmSoundPool.ALL, catalog: SoundCatalog = this.catalog, seeds: Int = 20_000) =
-        (0 until seeds).map { recipe(it, pool, catalog = catalog).segments().first().sound }
+    private fun firstSounds(catalog: SoundCatalog = this.catalog, seeds: Int = 20_000) =
+        (0 until seeds).map { recipe(it, catalog = catalog).segments().first().sound }
 
     private fun List<AlarmSound>.share(predicate: (AlarmSound) -> Boolean): Double = count(predicate).toDouble() / size
 
@@ -61,19 +59,43 @@ class AlarmSoundRecipeTest {
         assertThat(abs(sounds.share { it is AlarmSound.Siren } - 0.1) < 0.02).isTrue()
     }
 
+    /** Settings → Alarm sounds with the bundled group and the siren unchecked: device ringtones alone. */
     @Test
-    fun systemOnly_neverPlaysBundledSoundsOrTheSiren() {
-        assertThat(firstSounds(AlarmSoundPool.SYSTEM_ONLY, seeds = 2_000)).each { it.isInstanceOf(AlarmSound.System::class) }
-        assertThat(recipe(3, AlarmSoundPool.SYSTEM_ONLY).segments().take(200).map { it.sound }.toList())
+    fun withBundledAndSirenUnchecked_onlySystemSoundsPlay() {
+        val systemOnly = catalog.without((bundled.map { it.id } + AlarmSound.SIREN_ID).toSet())
+
+        assertThat(firstSounds(catalog = systemOnly, seeds = 2_000)).each { it.isInstanceOf(AlarmSound.System::class) }
+        assertThat(recipe(3, catalog = systemOnly).segments().take(200).map { it.sound }.toList())
             .each { it.isInstanceOf(AlarmSound.System::class) }
     }
 
+    /** The system group unchecked: the bundled OGGs and the siren share its weight. */
     @Test
-    fun bundledOnly_keepsTheInAppSounds_theSirenIncluded() {
-        val sounds = firstSounds(AlarmSoundPool.BUNDLED_ONLY)
+    fun withSystemUnchecked_theInAppSoundsPlay_theSirenIncluded() {
+        val sounds = firstSounds(catalog = catalog.without(system.map { it.id }.toSet()))
 
         assertThat(sounds.none { it is AlarmSound.System }).isTrue()
         assertThat(abs(sounds.share { it is AlarmSound.Siren } - 0.25) < 0.02).isTrue()
+    }
+
+    /** One sound unchecked: never drawn, first or re-roll, and the rest of its group still is. */
+    @Test
+    fun anUncheckedSound_isNeverDrawn() {
+        val unchecked = catalog.without(setOf(system[3].id, bundled[5].id))
+
+        val sounds = (0 until 300).flatMap { recipe(it, catalog = unchecked).segments().take(10).map { segment -> segment.sound }.toList() }
+
+        assertThat(sounds.none { it == system[3] || it == bundled[5] }).isTrue()
+        assertThat(sounds.any { it == system[2] }).isTrue()
+        assertThat(sounds.any { it == bundled[4] }).isTrue()
+    }
+
+    @Test
+    fun everySoundUnchecked_stillRings_withTheSiren() {
+        val nothing = catalog.without((system + bundled).map { it.id }.toSet() + AlarmSound.SIREN_ID)
+
+        assertThat(recipe(1, catalog = nothing).segments().take(20).map { it.sound }.toList())
+            .each { it.isInstanceOf(AlarmSound.Siren::class) }
     }
 
     @Test
@@ -90,7 +112,7 @@ class AlarmSoundRecipeTest {
     fun nothingAtAllToOffer_fallsBackToTheSiren() {
         val empty = SoundCatalog(emptyList(), emptyList())
 
-        assertThat(recipe(1, AlarmSoundPool.SYSTEM_ONLY, catalog = empty).segments().take(20).map { it.sound }.toList())
+        assertThat(recipe(1, catalog = empty.copy(siren = false)).segments().take(20).map { it.sound }.toList())
             .each { it.isInstanceOf(AlarmSound.Siren::class) }
     }
 

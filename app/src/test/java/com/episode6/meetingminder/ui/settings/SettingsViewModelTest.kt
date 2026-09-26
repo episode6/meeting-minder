@@ -8,7 +8,6 @@ import assertk.assertions.isTrue
 import com.episode6.meetingminder.data.settings.FakeSettingsRepository
 import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.data.settings.BusySync
-import com.episode6.meetingminder.data.settings.AlarmSoundPool
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.BusySyncSettingChanged
@@ -131,16 +130,17 @@ class SettingsViewModelTest {
         assertThat(reloads.first()).isEqualTo(CalendarContentChanged)
     }
 
+    /** The "Alarm sounds" row's subtitle counts the unchecked sounds, whatever they are. */
     @Test
-    fun onSoundPoolSelected_writesThroughToSettings() = runStoreTest(
+    fun state_countsTheDisabledAlarmSounds() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today), emptySet()) },
     ) { store ->
-        val settings = FakeSettingsRepository()
+        val settings = FakeSettingsRepository(Settings(disabledAlarmSounds = setOf("bundled:Argon", "siren")))
         val viewModel = SettingsViewModel(store, settings)
 
-        viewModel.onSoundPoolSelected(AlarmSoundPool.BUNDLED_ONLY)
-
-        assertThat(settings.settings.value.soundPool).isEqualTo(AlarmSoundPool.BUNDLED_ONLY)
+        viewModel.state.test {
+            assertThat(awaitItem().disabledAlarmSoundCount).isEqualTo(2)
+        }
     }
 
     @Test

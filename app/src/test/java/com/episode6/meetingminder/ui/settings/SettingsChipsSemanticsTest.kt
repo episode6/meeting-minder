@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import assertk.assertThat
 import assertk.assertions.containsExactly
+import assertk.assertions.isEqualTo
 import androidx.compose.ui.test.performScrollToNode
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
@@ -43,7 +44,8 @@ class SettingsChipsSemanticsTest {
     private val radioButton = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
 
     @Test
-    fun durationAndSoundChips_readAsRadioButtons() {
+    fun durationChips_readAsRadioButtons_andTheAlarmSoundsRowOpensThePage() {
+        var opened = 0
         composeRule.setContent {
             MeetingMinderTheme {
                 SettingsScreen(
@@ -53,7 +55,7 @@ class SettingsChipsSemanticsTest {
                     onLeadTimeSelected = {},
                     onSnoozeLengthSelected = {},
                     onAutoTimeoutSelected = {},
-                    onSoundPoolSelected = {},
+                    onAlarmSoundsClick = { opened++ },
                     onTestAlarmClick = {},
                     onCalendarToggle = { _, _ -> },
                     onShowDeclinedToggle = {},
@@ -68,9 +70,10 @@ class SettingsChipsSemanticsTest {
             }
         }
 
-        composeRule.onNodeWithText("All").assert(radioButton)
-        composeRule.onNodeWithText("System only").assert(radioButton)
         composeRule.onAllNodes(hasText(" min", substring = true)).onFirst().assert(radioButton)
+        composeRule.onNodeWithText("All sounds on").assertExists()
+        composeRule.onNodeWithText("Alarm sounds").performClick()
+        assertThat(opened).isEqualTo(1)
     }
 
     private val family = CalendarInfo(
@@ -109,7 +112,7 @@ class SettingsChipsSemanticsTest {
                     onLeadTimeSelected = {},
                     onSnoozeLengthSelected = {},
                     onAutoTimeoutSelected = {},
-                    onSoundPoolSelected = {},
+                    onAlarmSoundsClick = {},
                     onTestAlarmClick = {},
                     onCalendarToggle = { _, _ -> },
                     onShowDeclinedToggle = {},
@@ -141,7 +144,7 @@ class SettingsChipsSemanticsTest {
                     onLeadTimeSelected = {},
                     onSnoozeLengthSelected = {},
                     onAutoTimeoutSelected = {},
-                    onSoundPoolSelected = {},
+                    onAlarmSoundsClick = {},
                     onTestAlarmClick = {},
                     onCalendarToggle = { _, _ -> },
                     onShowDeclinedToggle = {},
@@ -172,7 +175,7 @@ class SettingsChipsSemanticsTest {
                     onLeadTimeSelected = {},
                     onSnoozeLengthSelected = {},
                     onAutoTimeoutSelected = {},
-                    onSoundPoolSelected = {},
+                    onAlarmSoundsClick = {},
                     onTestAlarmClick = {},
                     onCalendarToggle = { _, _ -> },
                     onShowDeclinedToggle = {},
@@ -204,7 +207,7 @@ class SettingsChipsSemanticsTest {
                     onLeadTimeSelected = {},
                     onSnoozeLengthSelected = {},
                     onAutoTimeoutSelected = {},
-                    onSoundPoolSelected = {},
+                    onAlarmSoundsClick = {},
                     onTestAlarmClick = {},
                     onCalendarToggle = { _, _ -> },
                     onShowDeclinedToggle = {},

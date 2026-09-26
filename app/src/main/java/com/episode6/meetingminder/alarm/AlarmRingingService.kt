@@ -48,7 +48,7 @@ class AlarmRingingService : Service(), RingingOutputs {
         super.onCreate()
         val graph = appGraph
         session = AlarmRingingSession(scope, graph.alarmRinger, this)
-        player = AlarmSoundPlayer(this, graph.recentAlarmSounds, graph.settingsRepository)
+        player = AlarmSoundPlayer(this, graph.recentAlarmSounds, graph.settingsRepository, graph.soundCatalogSource)
         vibration = AlarmVibration(this)
         volumeKeys = AlarmVolumeKeys(this)
     }

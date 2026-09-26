@@ -7,10 +7,12 @@ import com.episode6.meetingminder.alarm.AlarmRingingCommands
 import com.episode6.meetingminder.alarm.AlarmScheduler
 import com.episode6.meetingminder.alarm.AndroidAlarmScheduler
 import com.episode6.meetingminder.alarm.DataStoreRecentAlarmSounds
+import com.episode6.meetingminder.alarm.DeviceSoundCatalogSource
 import com.episode6.meetingminder.alarm.RecentAlarmSounds
 import com.episode6.meetingminder.alarm.ScheduleChangeAlertContent
 import com.episode6.meetingminder.alarm.ScheduleChangeAlerts
 import com.episode6.meetingminder.alarm.ServiceAlarmRingingCommands
+import com.episode6.meetingminder.alarm.SoundCatalogSource
 import com.episode6.meetingminder.monitor.ScheduleChangeAlerter
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesTo
@@ -34,6 +36,10 @@ interface AlarmModule {
     @Provides
     @SingleIn(AppScope::class)
     fun recentAlarmSounds(dataStore: DataStore<Preferences>): RecentAlarmSounds = DataStoreRecentAlarmSounds(dataStore)
+
+    /** The device's alarm ringtones and the bundled sounds, as the ringing player and Settings → Alarm sounds both list them. */
+    @Provides
+    fun soundCatalogSource(context: Context): SoundCatalogSource = DeviceSoundCatalogSource(context)
 
     /** The loud schedule-change alert (TODO.md §4.3), as `ChangeMonitor` sees it. */
     @Provides

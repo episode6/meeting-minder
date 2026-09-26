@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
 import assertk.assertions.isEqualTo
 import assertk.assertions.isFalse
+import assertk.assertions.isNull
 import assertk.assertions.isTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -33,7 +34,7 @@ class DataStoreSettingsRepositoryTest {
                 leadTime = Duration.ofMinutes(5),
                 snoozeLength = Duration.ofMinutes(2),
                 autoTimeout = Duration.ofMinutes(3),
-                soundPool = AlarmSoundPool.ALL,
+                disabledAlarmSounds = emptySet(),
             ),
         )
     }
@@ -57,31 +58,47 @@ class DataStoreSettingsRepositoryTest {
         dataStore.edit {
             it[DataStoreSettingsRepository.Keys.SnoozeMinutes] = 4
             it[DataStoreSettingsRepository.Keys.AutoTimeoutMinutes] = 1
-            it[DataStoreSettingsRepository.Keys.AlarmSoundPool] = "BUNDLED_ONLY"
+            it[DataStoreSettingsRepository.Keys.DisabledAlarmSounds] = setOf("bundled:Argon", "siren")
         }
 
         assertThat(repository.current()).isEqualTo(
-            Settings(snoozeLength = Duration.ofMinutes(4), autoTimeout = Duration.ofMinutes(1), soundPool = AlarmSoundPool.BUNDLED_ONLY),
+            Settings(snoozeLength = Duration.ofMinutes(4), autoTimeout = Duration.ofMinutes(1), disabledAlarmSounds = setOf("bundled:Argon", "siren")),
         )
     }
 
     @Test
-    fun setSnoozeLength_autoTimeout_soundPool_andShowDeclined_persist() = runTest {
+    fun setSnoozeLength_autoTimeout_andShowDeclined_persist() = runTest {
         val repository = DataStoreSettingsRepository(dataStore("settings-pr12-test"))
 
         repository.setSnoozeLength(Duration.ofMinutes(10))
         repository.setAutoTimeout(Duration.ofMinutes(1))
-        repository.setSoundPool(AlarmSoundPool.SYSTEM_ONLY)
         repository.setShowDeclined(false)
 
         assertThat(repository.current()).isEqualTo(
             Settings(
                 snoozeLength = Duration.ofMinutes(10),
                 autoTimeout = Duration.ofMinutes(1),
-                soundPool = AlarmSoundPool.SYSTEM_ONLY,
                 showDeclined = false,
             ),
         )
+    }
+
+    /** Settings → Alarm sounds stores the sounds turned *off*; a group's ids go on or off in one edit. */
+    @Test
+    fun setAlarmSoundsEnabled_addsAndRemovesTheDisabledIds_together_andDropsTheLegacyPool() = runTest {
+        val dataStore = dataStore("settings-alarm-sounds-test")
+        val repository = DataStoreSettingsRepository(dataStore)
+        dataStore.edit { it[DataStoreSettingsRepository.Keys.LegacySoundPool] = "BUNDLED_ONLY" }
+
+        repository.setAlarmSoundsEnabled(listOf("bundled:Argon", "bundled:Carbon", "siren"), enabled = false)
+        assertThat(repository.current().disabledAlarmSounds).isEqualTo(setOf("bundled:Argon", "bundled:Carbon", "siren"))
+        assertThat(dataStore.data.first()[DataStoreSettingsRepository.Keys.LegacySoundPool]).isNull()
+
+        repository.setAlarmSoundsEnabled(listOf("bundled:Argon", "bundled:Carbon"), enabled = true)
+        assertThat(repository.current().disabledAlarmSounds).isEqualTo(setOf("siren"))
+
+        repository.setAlarmSoundsEnabled(listOf("siren"), enabled = true)
+        assertThat(repository.current()).isEqualTo(Settings())
     }
 
     @Test
@@ -141,7 +158,6 @@ class DataStoreSettingsRepositoryTest {
 
         dataStore.edit {
             it[DataStoreSettingsRepository.Keys.SnoozeMinutes] = 0
-            it[DataStoreSettingsRepository.Keys.AlarmSoundPool] = "LOUDEST_ONLY"
         }
 
         assertThat(repository.current()).isEqualTo(Settings())

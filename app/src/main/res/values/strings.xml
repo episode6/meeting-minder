@@ -132,10 +132,21 @@
     <string name="settings_lead_time">Lead time</string>
     <string name="settings_snooze_length">Snooze length</string>
     <string name="settings_auto_timeout">Auto-timeout</string>
-    <string name="settings_sound_pool">Alarm sounds</string>
-    <string name="settings_sound_pool_all">All</string>
-    <string name="settings_sound_pool_bundled">Bundled only</string>
-    <string name="settings_sound_pool_system">System only</string>
+    <!-- the row that opens Settings → Alarm sounds, and its subtitle -->
+    <string name="settings_alarm_sounds">Alarm sounds</string>
+    <string name="settings_alarm_sounds_all_on">All sounds on</string>
+    <plurals name="settings_alarm_sounds_off">
+        <item quantity="one">%d sound off</item>
+        <item quantity="other">%d sounds off</item>
+    </plurals>
+    <string name="alarm_sounds_title">Alarm sounds</string>
+    <string name="alarm_sounds_intro">Each alarm draws at random from the sounds left checked here, switching sound every few seconds. With nothing checked, the siren plays.</string>
+    <string name="alarm_sounds_group_system">Device alarm sounds</string>
+    <string name="alarm_sounds_group_bundled">Bundled sounds</string>
+    <string name="alarm_sounds_group_siren">Siren</string>
+    <!-- a group header's "3 of 8 on" -->
+    <string name="alarm_sounds_group_count">%1$d of %2$d on</string>
+    <string name="alarm_sounds_siren_description">Generated in the app, different every time</string>
     <!-- a duration chip's label, e.g. "5 min" -->
     <string name="settings_minutes_value">%d min</string>
     <string name="settings_test_alarm">Test alarm</string>

@@ -8,10 +8,8 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.media.MediaPlayer
 import android.media.PlaybackParams
-import android.media.RingtoneManager
 import android.media.VolumeShaper
 import android.os.SystemClock
-import android.provider.Settings
 import android.util.Log
 import androidx.core.net.toUri
 import com.episode6.meetingminder.R
@@ -60,6 +58,7 @@ class AlarmSoundPlayer(
     private val context: Context,
     private val recentSounds: RecentAlarmSounds,
     private val settings: SettingsRepository,
+    private val catalogSource: SoundCatalogSource,
 ) {
     private val audioManager: AudioManager = context.getSystemService(AudioManager::class.java)
 
@@ -91,8 +90,7 @@ class AlarmSoundPlayer(
         try {
             val recipe = AlarmSoundRecipe(
                 seed = alarm.soundIndex,
-                catalog = SoundCatalog(system = systemSounds(), bundled = BundledAlarmSounds.all.map { AlarmSound.Bundled(it.name) }),
-                pool = settings.current().soundPool,
+                catalog = catalogSource.load().without(settings.current().disabledAlarmSounds),
                 recentlyUsed = recentSounds.avoidFor(alarm.alarmId),
             )
             val startedAt = SystemClock.elapsedRealtime()
@@ -166,32 +164,6 @@ class AlarmSoundPlayer(
         is AlarmSound.System -> sound.title
         is AlarmSound.Bundled -> sound.name
         is AlarmSound.Siren -> context.getString(R.string.alarm_sound_siren)
-    }
-
-    /**
-     * The device's alarm ringtones; the default alarm sound if the list can't be read or is
-     * empty. A ringtone the user added from storage sits on the external volume and needs
-     * `READ_MEDIA_AUDIO` to open, which this app doesn't hold: it fails in [open], costs the
-     * backoff's silence, and the recipe may well draw it again — accepted rather than
-     * asking for a media permission for the sake of a re-roll.
-     */
-    private fun systemSounds(): List<AlarmSound.System> {
-        val sounds = try {
-            val manager = RingtoneManager(context).apply { setType(RingtoneManager.TYPE_ALARM) }
-            // the manager is throwaway, so its cursor is ours to close (a CursorLeak on every ring otherwise)
-            manager.cursor.use { cursor ->
-                List(cursor.count) { position ->
-                    cursor.moveToPosition(position)
-                    AlarmSound.System(manager.getRingtoneUri(position).toString(), cursor.getString(RingtoneManager.TITLE_COLUMN_INDEX))
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(LOG_TAG, "couldn't list alarm ringtones", e)
-            emptyList()
-        }
-        return sounds.ifEmpty {
-            listOf(AlarmSound.System(Settings.System.DEFAULT_ALARM_ALERT_URI.toString(), context.getString(R.string.alarm_sound_default)))
-        }
     }
 
     private fun requestFocus(): AudioFocusRequest? {

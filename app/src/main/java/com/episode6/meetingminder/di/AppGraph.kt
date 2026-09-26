@@ -9,6 +9,7 @@ import com.episode6.meetingminder.alarm.AlarmRescheduler
 import com.episode6.meetingminder.alarm.AlarmRinger
 import com.episode6.meetingminder.alarm.AlarmScheduler
 import com.episode6.meetingminder.alarm.RecentAlarmSounds
+import com.episode6.meetingminder.alarm.SoundCatalogSource
 import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
@@ -68,9 +69,10 @@ interface AppGraph : ViewModelGraph {
     /** `AlarmRingingService`'s row transitions (fire, snooze, dismiss, auto-timeout), and `AlarmReceiver`'s fallback. */
     val alarmRinger: AlarmRinger
 
-    /** The ringing service's sound player reads these two. */
+    /** The ringing service's sound player reads these three. */
     val recentAlarmSounds: RecentAlarmSounds
     val settingsRepository: SettingsRepository
+    val soundCatalogSource: SoundCatalogSource
 
     /** For `AlarmRingingDeviceTest`, which arms a real alarm the way the reconcile does: a row, then `setAlarmClock`. */
     val scheduledAlarmDao: ScheduledAlarmDao
