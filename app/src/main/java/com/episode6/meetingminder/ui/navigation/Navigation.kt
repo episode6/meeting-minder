@@ -25,6 +25,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -317,11 +318,14 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
         composable<Route.AlarmSounds> {
             val viewModel: AlarmSoundsViewModel = metroViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
+            // a preview never keeps playing behind another app, the lock screen or a ringing alarm
+            LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.onStopPreview() }
             AlarmSoundsScreen(
                 state = state,
                 onBackClick = { navController.popBackStack() },
                 onSoundToggle = viewModel::onSoundToggle,
                 onGroupToggle = viewModel::onGroupToggle,
+                onSoundPreview = viewModel::onSoundPreview,
             )
         }
         composable<Route.Licenses> {
