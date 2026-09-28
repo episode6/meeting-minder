@@ -2,6 +2,7 @@ package com.episode6.meetingminder.ui.day
 
 import com.episode6.meetingminder.monitor.ScheduleChangeLine
 import com.episode6.meetingminder.model.ScheduleChange
+import com.episode6.meetingminder.model.Availability
 import com.episode6.meetingminder.model.BusyRange
 import app.cash.turbine.test
 import assertk.assertThat
@@ -77,6 +78,7 @@ class DayViewModelTest {
     private val designReview = testCalendarEvent(3, at(today, 14), at(today, 15), title = "Design review")
     private val holiday = testCalendarEvent(4, at(today, 0), at(tomorrow, 0), title = "Holiday", meeting = false, allDay = true)
     private val lateShow = testCalendarEvent(5, at(today, 23), at(tomorrow, 0), title = "Late show", meeting = false)
+    private val reminder = testCalendarEvent(6, at(tomorrow, 10), at(tomorrow, 11), title = "Bins out").copy(availability = Availability.FREE)
 
     private val family = CalendarInfo(
         id = 7,
@@ -115,7 +117,7 @@ class DayViewModelTest {
     }
 
     @Test
-    fun state_mapsEachLoadedDay_andCountsOnlyMeetingsOnTheSettledDay() {
+    fun state_mapsEachLoadedDay_andCountsTheMeetingsOnTheSettledDay() {
         val state = AppState(
             anchorDate = today,
             eventsByDay = mapOf(
@@ -126,8 +128,9 @@ class DayViewModelTest {
 
         val ui = state.toDayUiState(now, zone)
 
-        assertThat(ui.meetingCount).isEqualTo(2)
-        assertThat(ui.initialFirstVisibleHour).isEqualTo(8.5f)
+        // the dentist has no guests and counts all the same; the all-day holiday doesn't
+        assertThat(ui.meetingCount).isEqualTo(3)
+        assertThat(ui.initialFirstVisibleHour).isEqualTo(6f)
         assertThat(ui.timelineFor(today)).isEqualTo(
             DayTimelineState(
                 date = today,
@@ -146,7 +149,7 @@ class DayViewModelTest {
         val state = AppState(
             anchorDate = today,
             settledDate = tomorrow,
-            eventsByDay = mapOf(tomorrow to DayEvents(tomorrow, listOf(lateShow), loadedAt)),
+            eventsByDay = mapOf(tomorrow to DayEvents(tomorrow, listOf(reminder), loadedAt)),
         )
 
         val ui = state.toDayUiState(now, zone)

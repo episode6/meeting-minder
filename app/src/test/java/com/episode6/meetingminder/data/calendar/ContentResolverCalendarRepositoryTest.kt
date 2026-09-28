@@ -359,7 +359,7 @@ class ContentResolverCalendarRepositoryTest {
     }
 
     @Test
-    fun soloBlock_hasNoSelfAttendeeRow() = runTest {
+    fun eventWithNoGuests_hasNoSelfAttendeeRow_andIsStillAMeeting() = runTest {
         provider.addInstance(
             instanceId = 1200, eventId = 120, begin = today.at(9, zone = zone), end = today.at(10, zone = zone), zone = zone,
             title = "Dentist",
@@ -368,7 +368,7 @@ class ContentResolverCalendarRepositoryTest {
         assertThat(repository.eventsOn(today)).single().all {
             prop(CalendarEvent::selfAttendeeId).isNull()
             prop(CalendarEvent::humanAttendees).isEqualTo(0)
-            prop(CalendarEvent::isMeeting).isFalse()
+            prop(CalendarEvent::isMeeting).isTrue()
         }
     }
 

@@ -338,28 +338,27 @@ data class CalendarEvent(
         get() = !allDay &&
             status != EventStatus.CANCELED &&
             selfStatus != SelfStatus.DECLINED &&
-            availability == Availability.BUSY &&
-            if (hasAttendeeData) humanAttendees >= 2 else selfStatus != SelfStatus.NONE
+            availability == Availability.BUSY
 }
 ```
 
 `isMeeting` is the **single canonical rule**; §4.1 and §4.3 refer back to it rather than
 restating it. Reading it: a meeting is a timed, un-cancelled, busy block that you haven't
-declined **and** that involves someone else. "Someone else" is decided by the attendee table when
-the provider has full attendee data (you plus at least one other human), and by "was I invited at
-all" (`SELF_ATTENDEE_STATUS != NONE`) when the calendar only syncs self-only data. Google doesn't
-create a self-attendee row for events with no guests, so a solo block on a Google calendar has
-`NONE` and no attendee rows either way. Examples from render 2: "Daily standup" and "Design
-review" are meetings; "Dentist" (personal calendar, no guests) and "School pickup" (Family
-calendar, no guests) are **solo blocks**: rendered, selectable, alarm-able, listed in the share
-text if selected, but not counted in "3 meetings". Everything that isn't a meeting still renders
-(dimmed / dashed) so the day looks like the calendar.
+declined. **Every such event is a meeting, whoever is or isn't on it**: nothing is inferred from
+the guest list. "Daily standup" and "Design review" are meetings, and so are "Dentist" (personal
+calendar, no guests) and "School pickup" (Family calendar, no guests): all of them are counted
+in the subtitle's "5 meetings", and any of them appearing after a share is surfaced as *new* by
+change detection. What is not a meeting: an all-day event, a cancelled or declined one, and one
+marked "free". Everything still renders so the day looks like the calendar.
 
-NB: change detection's **New** (§4.3) no longer asks for a meeting. It uses
-`CalendarEvent.isBusyTime`, the same rule without the "someone else" clause (timed,
-un-cancelled, busy, not declined), which `isMeeting` is now built on: a block added to your own
-calendar from another device after the share is time the shared schedule doesn't cover, exactly
-as a new invite is.
+NB: the rule used to end with "**and** that involves someone else" (at least one other human
+in the attendee table, or, on a calendar that only syncs self-only data, having been invited at
+all), which made an event with no guests a "solo block" that was left out of the count and never
+reported as new. That was dropped: a block added to your own calendar from a laptop after the
+share showed up in the itinerary and raised no notification. `hasAttendeeData`,
+`humanAttendees` and `selfAttendeeId` stay on `CalendarEvent` for the RSVP write's safety checks
+alone (§4.6), which is the only place "solo block" still means anything (no attendee rows, so
+nothing to answer).
 
 Room (`MeetingMinderDatabase`, `exportSchema = true` this time so migrations are reviewable;
 **pre-1.0 policy**: `fallbackToDestructiveMigration` until the first `v1.0.0` tag, so PR-8b's
@@ -529,8 +528,8 @@ with exceptions and EXDATEs applied, every `Events` + `Calendars` column joined 
   00:00 does not belong to the next day.
 - Attendees: one batched query `Attendees.EVENT_ID IN (…)` per day (not per event) to compute
   `humanAttendees` (excluding `TYPE_RESOURCE` rooms) and whether the user is organizer. Together
-  with `HAS_ATTENDEE_DATA` and `SELF_ATTENDEE_STATUS` that feeds `CalendarEvent.isMeeting`
-  (§3.4), the one place "meeting vs solo block" is decided.
+  with `HAS_ATTENDEE_DATA` and `SELF_ATTENDEE_STATUS` that feeds the RSVP skip table (§4.6).
+  It no longer feeds `CalendarEvent.isMeeting` (§3.4), which ignores the guest list.
 
 **Identity**: `Instances._ID` is regenerated whenever the provider re-expands (timezone change,
 window move, some syncs) and must never be persisted. `Events._ID` is stable on-device. Our
@@ -640,15 +639,15 @@ tagged with the day. For today that window is "the rest of today"; for a future 
 whole day, so a meeting added to tomorrow the evening before is reported right away.
 
 Scope rule, so we never nag about things that don't change what was shared: **New** applies to
-any `isBusyTime` event (§3.4: a meeting or a solo block, never one marked "free"), selected or
+any `isMeeting` event (§3.4: guests or not, never one marked "free"), selected or
 not (you'd want to know about a new invite, and about a block you added from your laptop);
 **Moved / Cancelled / Declined** apply only to keys that were **selected** at share time, whether or not
-they're meetings (a selected solo block that moves changes your busy ranges; an unselected
+they're meetings (a selected "free" event that moves changes your busy ranges; an unselected
 meeting that moves doesn't).
 
 | Case | Rule |
 |---|---|
-| New | key absent from snapshot, begin ≥ now, `isBusyTime` (§3.4); selection irrelevant |
+| New | key absent from snapshot, begin ≥ now, `isMeeting` (§3.4); selection irrelevant |
 | Moved | selected key, begin/end differ from the snapshot, new slot ends after now |
 | Cancelled | selected key gone / `STATUS_CANCELED`, and it hadn't started yet |
 | Declined by me | selected key, now `SELF_ATTENDEE_STATUS = DECLINED` |
@@ -668,8 +667,8 @@ midnight passes. The trigger worker re-arms itself while *any* shared day is sti
 a delayed one-time work scheduled for the last shared day's midnight cancels the unique work and
 any lingering notification. A day's notification is cancelled when that day ends or is
 re-shared. The notification title names the day when it isn't today ("Your Tuesday schedule
-changed since you shared it"). An unselected solo block only ever triggers a change by being **new**
-(see the scope rule above). No `day_plan` row with `shared_at != null` and `date ≥ today` → nothing runs.
+changed since you shared it"). An unselected event that isn't a meeting never triggers a change (see the scope
+rule above). No `day_plan` row with `shared_at != null` and `date ≥ today` → nothing runs.
 
 NB (PR-11), where the build settled things this section leaves open:
 - **Three unique works**, all `CalendarChangeWorker`: `calendar-change-trigger` (the content
@@ -691,8 +690,8 @@ NB (PR-11), where the build settled things this section leaves open:
   occurrence to a new series id; delete + recreate), which by key alone is Cancelled + New for
   a slot that never moved. The differ pairs a key gone from the day one-to-one with a key new
   to the day at exactly the same begin and end and reports neither. Only like pairs with like
-  (both `isMeeting` or both not), so a solo block deleted to make room for a new invite still
-  reports the invite, and a selected row gets first pick of an arrival. `maintainAlarms`
+  (both `isMeeting` or both not), so a "free" event deleted to make room for a new meeting still
+  reports the meeting, and a selected row gets first pick of an arrival. `maintainAlarms`
   already keeps the alarm of a vanished key, so the alarm still rings on time; the selection
   is **not** re-keyed, so the replacement's chip shows unselected until tapped, and with the
   notification now silent nothing prompts that tap: a re-share before it leaves the range out.

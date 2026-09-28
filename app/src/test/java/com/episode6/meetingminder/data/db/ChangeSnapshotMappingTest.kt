@@ -1,6 +1,7 @@
 package com.episode6.meetingminder.data.db
 
 import java.time.LocalDate
+import com.episode6.meetingminder.model.Availability
 import com.episode6.meetingminder.model.SnapshotEvent
 import com.episode6.meetingminder.model.ScheduleChange
 import assertk.assertThat
@@ -16,6 +17,7 @@ class ChangeSnapshotMappingTest {
 
     private val standup = testCalendarEvent(1, Instant.ofEpochMilli(1_000), Instant.ofEpochMilli(2_000), title = "Standup")
     private val dentist = testCalendarEvent(2, Instant.ofEpochMilli(3_000), Instant.ofEpochMilli(4_000), title = "Dentist", meeting = false)
+        .copy(availability = Availability.FREE)
 
     @Test
     fun encodeThenDecode_roundTripsEveryFieldAndSelection() {

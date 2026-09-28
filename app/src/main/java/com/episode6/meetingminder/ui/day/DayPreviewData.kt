@@ -74,7 +74,7 @@ internal object PreviewEvents {
         ),
     )
 
-    // the two meetings got their "Yes, going" tick; the dentist is a solo block, nothing to answer
+    // the two invites got their "Yes, going" tick; the dentist has no guests, so nothing to answer
     val alarmsSetDay = busyDay.copy(
         timedEvents = listOf(
             standup.copy(selected = true, alarmAt = LocalTime.of(8, 55), rsvp = ChipRsvp.Sent),

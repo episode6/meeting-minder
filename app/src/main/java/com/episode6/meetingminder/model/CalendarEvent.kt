@@ -57,26 +57,17 @@ data class CalendarEvent(
     val ownedByApp: Boolean,
 ) {
     /**
-     * Time this event takes out of the day (TODO.md §3.4): timed, un-cancelled, marked busy
-     * and not declined — a meeting or a solo block alike. It is what change detection's
-     * **New** asks of an event that appeared after the share (§4.3): a block you put on
-     * your own calendar makes you as busy as an invite does. An event marked "free" never
-     * counts, nor does an all-day one.
+     * THE definition of "meeting" (TODO.md §3.4): a timed, un-cancelled, busy block that you
+     * haven't declined. Who else is on it is deliberately **not** part of the rule: an
+     * event with no guests ("Dentist", a block added from another device) takes the same
+     * time out of the day as an invite does, so nothing is inferred from the guest list.
+     * [hasAttendeeData], [humanAttendees] and [selfAttendeeId] exist only for the RSVP
+     * write's safety checks (`model/Rsvp.kt`). Every count, share line and
+     * change-detection rule uses this; never restate it.
      */
-    val isBusyTime: Boolean
+    val isMeeting: Boolean
         get() = !allDay &&
             status != EventStatus.CANCELED &&
             selfStatus != SelfStatus.DECLINED &&
             availability == Availability.BUSY
-
-    /**
-     * THE definition of "meeting" (TODO.md §3.4): a timed, un-cancelled, busy block that you
-     * haven't declined ([isBusyTime]) and that involves someone else. "Someone else" is
-     * decided by the attendee table when the provider has full attendee data (you plus at
-     * least one other human), and by "was I invited at all" when the calendar only syncs
-     * self-only data. Every count and share line uses this; never restate it.
-     */
-    val isMeeting: Boolean
-        get() = isBusyTime &&
-            if (hasAttendeeData) humanAttendees >= 2 else selfStatus != SelfStatus.NONE
 }

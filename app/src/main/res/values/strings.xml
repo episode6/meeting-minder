@@ -8,7 +8,7 @@
     <string name="day_refresh">Refresh calendars</string>
     <string name="refresh_started">Refreshing calendars…</string>
     <string name="day_subtitle_no_meetings">No meetings</string>
-    <!-- app bar subtitle: how many meetings (not solo blocks) are on the shown day -->
+    <!-- app bar subtitle: how many meetings (timed busy events, guests or not) are on the shown day -->
     <plurals name="day_subtitle_meetings">
         <item quantity="one">%d meeting</item>
         <item quantity="other">%d meetings</item>
@@ -258,7 +258,7 @@
 
     <!-- schedule-changed notification (render 6, TODO.md §4.3) -->
     <string name="notification_channel_schedule_updates">Schedule updates</string>
-    <string name="notification_channel_schedule_updates_description">When a day you shared changes: a new meeting or event, or one you picked moving, being cancelled or being declined.</string>
+    <string name="notification_channel_schedule_updates_description">When a day you shared changes: a new meeting, or one you picked moving, being cancelled or being declined.</string>
     <string name="schedule_changed_title">Your schedule changed since you shared it</string>
     <!-- %1$s names the shared day when it isn't today, e.g. "Tuesday" -->
     <string name="schedule_changed_title_on_day">Your %1$s schedule changed since you shared it</string>

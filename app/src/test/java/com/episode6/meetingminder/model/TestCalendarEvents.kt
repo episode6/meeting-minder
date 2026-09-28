@@ -3,8 +3,9 @@ package com.episode6.meetingminder.model
 import java.time.Instant
 
 /**
- * A provider event for store / ViewModel tests. [meeting] picks between a meeting (me plus
- * another human, per [CalendarEvent.isMeeting]) and a solo block with no attendees.
+ * A provider event for store / ViewModel tests. [meeting] picks between an event with
+ * guests (me plus another human) and one with no attendees at all, which matters to the
+ * RSVP rules only: both are meetings, per [CalendarEvent.isMeeting].
  */
 internal fun testCalendarEvent(
     id: Long,
