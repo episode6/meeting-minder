@@ -376,8 +376,8 @@ class ChangeMonitorTest {
     fun runCheck_neverReportsTheBusyBlocksTheAppItselfWrote() = runTest {
         // the share that wrote them took its baseline from an already filtered read, so an
         // unfiltered fresh read would report every block as New (TODO.md §4.7)
-        val markedBlock = testCalendarEvent(9, today.at(13), today.at(14), title = "busy", meeting = false, ownedByApp = true)
-        val tabledBlock = testCalendarEvent(10, today.at(15), today.at(16), title = "busy", meeting = false)
+        val markedBlock = testCalendarEvent(9, today.at(13), today.at(14), title = "busy", withGuests = false, ownedByApp = true)
+        val tabledBlock = testCalendarEvent(10, today.at(15), today.at(16), title = "busy", withGuests = false)
         busyBlockDao.upsert(
             BusyBlockEntity(
                 eventId = tabledBlock.eventId, date = today, calendarId = tabledBlock.calendarId,

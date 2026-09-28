@@ -59,7 +59,7 @@ class DayPagerTest {
     fun initialHour_countsAnEventWithNoGuests() {
         val events = listOf(
             testCalendarEvent(1, at(anchor, 14), at(anchor, 15)),
-            testCalendarEvent(2, at(anchor, 7), at(anchor, 8), meeting = false),
+            testCalendarEvent(2, at(anchor, 7), at(anchor, 8), withGuests = false),
         )
 
         assertThat(initialFirstVisibleHour(anchor, events, zone)).isEqualTo(6f)

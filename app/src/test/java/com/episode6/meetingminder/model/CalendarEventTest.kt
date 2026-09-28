@@ -45,7 +45,7 @@ class CalendarEventTest {
     }
 
     @Test
-    fun selfOnlyData_isAMeetingWhateverMyStatus() {
+    fun selfOnlyData_isAMeetingWhetherOrNotIWasInvited() {
         val selfOnly = meeting.copy(hasAttendeeData = false, humanAttendees = 0)
         assertThat(selfOnly.copy(selfStatus = SelfStatus.NEEDS_ACTION).isMeeting).isTrue()
         assertThat(selfOnly.copy(selfStatus = SelfStatus.ACCEPTED).isMeeting).isTrue()

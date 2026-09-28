@@ -16,7 +16,7 @@ import java.time.Instant
 class ChangeSnapshotMappingTest {
 
     private val standup = testCalendarEvent(1, Instant.ofEpochMilli(1_000), Instant.ofEpochMilli(2_000), title = "Standup")
-    private val dentist = testCalendarEvent(2, Instant.ofEpochMilli(3_000), Instant.ofEpochMilli(4_000), title = "Dentist", meeting = false)
+    private val dentist = testCalendarEvent(2, Instant.ofEpochMilli(3_000), Instant.ofEpochMilli(4_000), title = "Dentist", withGuests = false)
         .copy(availability = Availability.FREE)
 
     @Test

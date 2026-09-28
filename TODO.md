@@ -47,7 +47,7 @@ to use `USE_EXACT_ALARM` and full-screen intents without Play policy review.
 | # | Render | Screen | Notes |
 |---|--------|--------|-------|
 | 1 | ![](docs/renders/1-onboarding.png) | **Onboarding / permissions** | Calendar row covers read and RSVP write (one dialog). Checklist of grants; rows flip to "Granted" as they come back. Continue enabled once required ones are granted. Reachable later from overflow → "Permissions". |
-| 2 | ![](docs/renders/2-day-view-selecting.png) | **Day view, selecting** | Top bar: date + subtitle ("3 meetings · 2 selected"), Refresh and Today buttons, overflow. All-day row. Timeline. Outlined chip = not selected, filled chip + check = selected, dashed + strikethrough = declined. Red now-line on today. FAB "Set alarms (N)". Long-press a chip for its sheet: the full title, date, time and location, then "Open in calendar" and a Yes / No / Maybe row for an invite the app can answer (§4.6). |
+| 2 | ![](docs/renders/2-day-view-selecting.png) | **Day view, selecting** | Top bar: date + subtitle ("5 meetings · 2 selected"; the render was drawn under the old rule and still says 3, see §3.4), Refresh and Today buttons, overflow. All-day row. Timeline. Outlined chip = not selected, filled chip + check = selected, dashed + strikethrough = declined. Red now-line on today. FAB "Set alarms (N)". Long-press a chip for its sheet: the full title, date, time and location, then "Open in calendar" and a Yes / No / Maybe row for an invite the app can answer (§4.6). |
 | 3 | ![](docs/renders/3-alarms-set.png) | **Alarms set** | Selected chips show a bell + the alarm time. Subtitle "3 alarms set · not shared yet". Snackbar confirms. FAB becomes primary-filled "Share schedule". |
 | 4 | ![](docs/renders/4-share-schedule.png) | **Share sheet** | System sharesheet; our text is plain, times only. |
 | 5 | ![](docs/renders/5-alarm-ringing.png) | **Alarm ringing** | Full-screen, dark, over lock screen. Big clock, meeting title, time, Dismiss / Snooze. Shows which random sound is playing (debug aid, keep it subtle). |
@@ -433,7 +433,7 @@ whose opinionated chips would fight our selection styling; Kizitonwose is a mont
 - FAB: `ExtendedFloatingActionButton` inside `AnimatedVisibility`, label/icon swapped via
   `AnimatedContent` (`FabState.Hidden / SetAlarms(n) / Share`). Timeline content gets 88dp bottom
   padding so the last events clear the FAB.
-- Subtitle in the app bar is the state summary ("3 meetings · 2 selected" / "3 alarms set · not
+- Subtitle in the app bar is the state summary ("5 meetings · 2 selected" / "3 alarms set · not
   shared yet" / "shared 8:12 AM").
 
 ### 3.6 Testing & previews

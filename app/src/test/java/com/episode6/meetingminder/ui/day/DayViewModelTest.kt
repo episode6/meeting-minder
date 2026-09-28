@@ -74,10 +74,10 @@ class DayViewModelTest {
     private fun at(date: LocalDate, hour: Int, minute: Int = 0) = date.atTime(hour, minute).toInstant(zone)
 
     private val standup = testCalendarEvent(1, at(today, 9, 30), at(today, 10), title = "Standup")
-    private val dentist = testCalendarEvent(2, at(today, 7), at(today, 8), title = "Dentist", meeting = false)
+    private val dentist = testCalendarEvent(2, at(today, 7), at(today, 8), title = "Dentist", withGuests = false)
     private val designReview = testCalendarEvent(3, at(today, 14), at(today, 15), title = "Design review")
-    private val holiday = testCalendarEvent(4, at(today, 0), at(tomorrow, 0), title = "Holiday", meeting = false, allDay = true)
-    private val lateShow = testCalendarEvent(5, at(today, 23), at(tomorrow, 0), title = "Late show", meeting = false)
+    private val holiday = testCalendarEvent(4, at(today, 0), at(tomorrow, 0), title = "Holiday", withGuests = false, allDay = true)
+    private val lateShow = testCalendarEvent(5, at(today, 23), at(tomorrow, 0), title = "Late show", withGuests = false)
     private val reminder = testCalendarEvent(6, at(tomorrow, 10), at(tomorrow, 11), title = "Bins out").copy(availability = Availability.FREE)
 
     private val family = CalendarInfo(

@@ -54,7 +54,7 @@ adb shell content insert --uri "$CAL" --bind account_name:s:me@test.com --bind a
   --bind calendar_access_level:i:700 --bind ownerAccount:s:me@test.com --bind visible:i:1 --bind sync_events:i:1 \
   --bind calendar_timezone:s:America/New_York
 adb shell content query --uri content://com.android.calendar/calendars --projection _id:name   # note the id
-# a solo block (no attendees): rendered, selectable, alarm-able, never RSVP'd
+# an event with no attendees: a meeting like any other (counted, selectable, alarm-able), never RSVP'd
 adb shell content insert --uri content://com.android.calendar/events --bind calendar_id:i:<cal> --bind title:s:"Focus" \
   --bind dtstart:l:<ms> --bind dtend:l:<ms> --bind eventTimezone:s:America/New_York --bind hasAttendeeData:i:1
 ```
@@ -97,8 +97,8 @@ adb shell content query --uri content://com.android.calendar/events --where "ori
   --projection _id:original_id:originalInstanceTime:selfAttendeeStatus:dirty
 ```
 
-The chip shows a small tick after its alarm time once the write went through. A solo
-block, an event you organise, one you already accepted or declined, or one the organizer
+The chip shows a small tick after its alarm time once the write went through. An event
+with no guests, an event you organise, one you already accepted or declined, or one the organizer
 cancelled gets no RSVP and no mark (a declined or cancelled one gets no alarm either: the
 snackbar reads "1 set, 1 skipped (declined or cancelled)"); a
 calendar with `calendar_access_level` below 300, or an invite whose attendee rows don't

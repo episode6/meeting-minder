@@ -48,10 +48,10 @@ class BusyBlockHidingStoreTest {
     private val standup = testCalendarEvent(1, at(9), at(10), title = "Standup")
 
     /** Still carrying its `CUSTOM_APP_PACKAGE` marker. */
-    private val markedBlock = testCalendarEvent(9, at(9), at(10), title = "busy", meeting = false, ownedByApp = true)
+    private val markedBlock = testCalendarEvent(9, at(9), at(10), title = "busy", withGuests = false, ownedByApp = true)
 
     /** Marker lost on the way through the account's sync adapter; only `busy_block` knows it is ours. */
-    private val tabledBlock = testCalendarEvent(10, at(13), at(14), title = "busy", meeting = false)
+    private val tabledBlock = testCalendarEvent(10, at(13), at(14), title = "busy", withGuests = false)
 
     @Test
     fun aBusyBlockTheAppWrote_neverReachesTheDay_soItCanNeverBeSelected() {

@@ -62,7 +62,7 @@ class ShareDaySideEffectsTest {
     private fun at(hour: Int, minute: Int = 0): Instant = Instant.parse("2026-09-14T%02d:%02d:00Z".format(hour, minute))
 
     private val standup = testCalendarEvent(1, at(9), at(9, 30), title = "Standup")
-    private val dentist = testCalendarEvent(2, at(7), at(8), title = "Dentist", meeting = false)
+    private val dentist = testCalendarEvent(2, at(7), at(8), title = "Dentist", withGuests = false)
 
     private val repository = FakeCalendarRepository()
     private val notifier = FakeScheduleChangeNotifier()
@@ -358,8 +358,8 @@ class ShareDaySideEffectsTest {
     fun shareDay_fromANotificationBeforeTheStoreHasLoaded_leavesOurOwnBusyBlocksOutOfTheTextAndTheBaseline() = runTest {
         // one block still carrying the CUSTOM_APP_PACKAGE marker, one whose marker didn't
         // survive the sync round trip and is only known from the busy_block table (§4.7)
-        val markedBlock = testCalendarEvent(9, at(11), at(12), title = "busy", meeting = false, ownedByApp = true)
-        val tabledBlock = testCalendarEvent(10, at(13), at(14), title = "busy", meeting = false)
+        val markedBlock = testCalendarEvent(9, at(11), at(12), title = "busy", withGuests = false, ownedByApp = true)
+        val tabledBlock = testCalendarEvent(10, at(13), at(14), title = "busy", withGuests = false)
         busyBlocks.upsert(
             BusyBlockEntity(
                 eventId = tabledBlock.eventId, date = today, calendarId = tabledBlock.calendarId,
