@@ -2,6 +2,8 @@
 
 ### v1.0.60 - Unreleased
 
+- An event you add to your own calendar after sharing a day now counts as a schedule change. "New" used to be reserved for meetings (an event with at least one other guest), so a block with no guests — "feed dogs" added from a laptop — appeared in the itinerary once it synced but never raised the "Your schedule changed since you shared it" notification, the day view's banner or (with the opt-in on) the loud alert. New now applies to any timed event that takes time out of the day (`CalendarEvent.isBusyTime`: not all-day, not cancelled, not declined, and marked busy), guests or not, on any calendar the itinerary shows. An event marked "free" still never reads as new, and the rules for Moved / Cancelled / Declined are unchanged (only events you picked). The "3 meetings" count still counts meetings only.
+
 ### v1.0.50 - 2026-09-26
 
 - Tapping a sound on Settings → Alarm sounds now plays it, so you can hear what you're checking: the sound at its natural speed and pitch, on the alarm stream at your alarm volume, looped for up to 10 seconds. Tapping it again stops it, tapping another sound switches to that one, and leaving the page (or the app) stops it, as does a phone call or an alarm taking audio focus while the page is open; each tap of "Siren sweep" plays a freshly drawn siren, as each alarm does. The play/stop icon at the start of each row shows which sound is playing, and checking or unchecking a sound is now its checkbox alone. `SoundPreviewer` (`DeviceSoundPreviewer`, over the ringing player's own sources, which moved into the shared `openSoundOutput`) does the playing; `AlarmSoundsViewModel` runs one preview at a time.

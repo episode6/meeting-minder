@@ -14,7 +14,7 @@ sealed interface ScheduleChange {
     val date: LocalDate
     val key: EventKey
 
-    /** A meeting ([CalendarEvent.isMeeting]) that wasn't on the day when it was shared, selected or not. */
+    /** A meeting or solo block ([CalendarEvent.isBusyTime]) that wasn't on the day when it was shared, selected or not. */
     data class New(override val date: LocalDate, override val key: EventKey, val begin: Instant, val end: Instant) : ScheduleChange
 
     /** An event that was selected at share time now has different times. */

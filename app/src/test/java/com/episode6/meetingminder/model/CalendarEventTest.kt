@@ -71,4 +71,21 @@ class CalendarEventTest {
     fun free_isNotAMeeting() {
         assertThat(meeting.copy(availability = Availability.FREE).isMeeting).isFalse()
     }
+
+    // isBusyTime: the same rule without "someone else"
+
+    @Test
+    fun busyTime_aMeetingAndASoloBlockAlike() {
+        assertThat(meeting.isBusyTime).isTrue()
+        assertThat(meeting.copy(humanAttendees = 0, selfAttendeeId = null, selfStatus = SelfStatus.NONE).isBusyTime).isTrue()
+        assertThat(meeting.copy(hasAttendeeData = false, humanAttendees = 0, selfStatus = SelfStatus.NONE).isBusyTime).isTrue()
+    }
+
+    @Test
+    fun busyTime_neverAllDayCancelledDeclinedOrFree() {
+        assertThat(meeting.copy(allDay = true).isBusyTime).isFalse()
+        assertThat(meeting.copy(status = EventStatus.CANCELED).isBusyTime).isFalse()
+        assertThat(meeting.copy(selfStatus = SelfStatus.DECLINED).isBusyTime).isFalse()
+        assertThat(meeting.copy(availability = Availability.FREE).isBusyTime).isFalse()
+    }
 }

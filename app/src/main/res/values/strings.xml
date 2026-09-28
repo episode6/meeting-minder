@@ -258,7 +258,7 @@
 
     <!-- schedule-changed notification (render 6, TODO.md §4.3) -->
     <string name="notification_channel_schedule_updates">Schedule updates</string>
-    <string name="notification_channel_schedule_updates_description">When a day you shared changes: a new meeting, or one you picked moving, being cancelled or being declined.</string>
+    <string name="notification_channel_schedule_updates_description">When a day you shared changes: a new meeting or event, or one you picked moving, being cancelled or being declined.</string>
     <string name="schedule_changed_title">Your schedule changed since you shared it</string>
     <!-- %1$s names the shared day when it isn't today, e.g. "Tuesday" -->
     <string name="schedule_changed_title_on_day">Your %1$s schedule changed since you shared it</string>

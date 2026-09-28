@@ -352,9 +352,14 @@ create a self-attendee row for events with no guests, so a solo block on a Googl
 `NONE` and no attendee rows either way. Examples from render 2: "Daily standup" and "Design
 review" are meetings; "Dentist" (personal calendar, no guests) and "School pickup" (Family
 calendar, no guests) are **solo blocks**: rendered, selectable, alarm-able, listed in the share
-text if selected, but not counted in "3 meetings" and never surfaced as *new* by change
-detection. Everything that isn't a meeting still renders (dimmed / dashed) so the day looks like
-the calendar.
+text if selected, but not counted in "3 meetings". Everything that isn't a meeting still renders
+(dimmed / dashed) so the day looks like the calendar.
+
+NB: change detection's **New** (§4.3) no longer asks for a meeting. It uses
+`CalendarEvent.isBusyTime`, the same rule without the "someone else" clause (timed,
+un-cancelled, busy, not declined), which `isMeeting` is now built on: a block added to your own
+calendar from another device after the share is time the shared schedule doesn't cover, exactly
+as a new invite is.
 
 Room (`MeetingMinderDatabase`, `exportSchema = true` this time so migrations are reviewable;
 **pre-1.0 policy**: `fallbackToDestructiveMigration` until the first `v1.0.0` tag, so PR-8b's
@@ -635,18 +640,19 @@ tagged with the day. For today that window is "the rest of today"; for a future 
 whole day, so a meeting added to tomorrow the evening before is reported right away.
 
 Scope rule, so we never nag about things that don't change what was shared: **New** applies to
-any `isMeeting` event, selected or not (you'd want to know about a new invite); **Moved /
-Cancelled / Declined** apply only to keys that were **selected** at share time, whether or not
+any `isBusyTime` event (§3.4: a meeting or a solo block, never one marked "free"), selected or
+not (you'd want to know about a new invite, and about a block you added from your laptop);
+**Moved / Cancelled / Declined** apply only to keys that were **selected** at share time, whether or not
 they're meetings (a selected solo block that moves changes your busy ranges; an unselected
 meeting that moves doesn't).
 
 | Case | Rule |
 |---|---|
-| New | key absent from snapshot, begin ≥ now, `isMeeting` (§3.4); selection irrelevant |
+| New | key absent from snapshot, begin ≥ now, `isBusyTime` (§3.4); selection irrelevant |
 | Moved | selected key, begin/end differ from the snapshot, new slot ends after now |
 | Cancelled | selected key gone / `STATUS_CANCELED`, and it hadn't started yet |
 | Declined by me | selected key, now `SELF_ATTENDEE_STATUS = DECLINED` |
-| Ignored | title/colour/description/reminder/attendee-list edits, sync rewrites with identical values, an event replaced by another at identical times (see the NB), events already over, all-day events |
+| Ignored | title/colour/description/reminder/attendee-list edits, sync rewrites with identical values, an event replaced by another at identical times (see the NB), events already over, all-day events, new events marked "free" |
 
 **Notification** (channel `schedule_updates`, `IMPORTANCE_DEFAULT`, fixed id, `setOnlyAlertOnce`,
 `InboxStyle` one line per change): title "Your schedule changed since you shared it", text
@@ -662,8 +668,8 @@ midnight passes. The trigger worker re-arms itself while *any* shared day is sti
 a delayed one-time work scheduled for the last shared day's midnight cancels the unique work and
 any lingering notification. A day's notification is cancelled when that day ends or is
 re-shared. The notification title names the day when it isn't today ("Your Tuesday schedule
-changed since you shared it"). Unselected non-meetings never trigger a change (see the scope
-rule above). No `day_plan` row with `shared_at != null` and `date ≥ today` → nothing runs.
+changed since you shared it"). An unselected solo block only ever triggers a change by being **new**
+(see the scope rule above). No `day_plan` row with `shared_at != null` and `date ≥ today` → nothing runs.
 
 NB (PR-11), where the build settled things this section leaves open:
 - **Three unique works**, all `CalendarChangeWorker`: `calendar-change-trigger` (the content

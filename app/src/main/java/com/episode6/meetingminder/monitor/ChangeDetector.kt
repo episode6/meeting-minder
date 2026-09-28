@@ -14,18 +14,19 @@ import java.time.LocalDate
  * shared. Pure, so every row of the §4.3 table is a plain JVM test (`ChangeDetectorTest`).
  *
  * The scope rule, so it never nags about something that doesn't change what was shared:
- * **New** applies to any [CalendarEvent.isMeeting] event, selected or not (a new invite is
- * worth knowing about); **Moved / Cancelled / Declined** apply only to keys that were
- * **selected** at share time, meeting or not (a selected solo block that moves changes the
- * busy ranges; an unselected meeting that moves doesn't).
+ * **New** applies to any [CalendarEvent.isBusyTime] event, selected or not, meeting or solo
+ * block (a new invite is worth knowing about, and so is a block added from another device:
+ * either one is time the shared schedule doesn't cover); **Moved / Cancelled / Declined**
+ * apply only to keys that were **selected** at share time, meeting or not (a selected solo
+ * block that moves changes the busy ranges; an unselected meeting that moves doesn't).
  *
  * | Case | Rule |
  * |---|---|
- * | New | key absent from the baseline, begins at or after now, `isMeeting` |
+ * | New | key absent from the baseline, begins at or after now, `isBusyTime` |
  * | Moved | selected key, begin/end differ from the baseline, the new slot ends after now |
  * | Cancelled | selected key gone from the day (or `CANCELED`), and it hadn't started yet |
  * | Declined | selected key, now declined by me (and wasn't at share time), not over yet |
- * | Ignored | title/colour/attendee edits, rewrites with identical times, an event replaced by another at identical times, events already over, all-day events |
+ * | Ignored | title/colour/attendee edits, rewrites with identical times, an event replaced by another at identical times, events already over, all-day events, new events marked "free" |
  *
  * Only times and the RSVP/cancel flags are compared, which is what makes title, colour,
  * description, reminder and attendee-list edits (and sync rewrites of identical values)
@@ -74,7 +75,7 @@ object ChangeDetector {
         val replacements = replacedBy.values.mapTo(mutableSetOf()) { it.key }
 
         for (event in fresh) {
-            if (event.key !in before && event.key !in replacements && event.isMeeting && event.begin >= now) {
+            if (event.key !in before && event.key !in replacements && event.isBusyTime && event.begin >= now) {
                 changes += ScheduleChange.New(date, event.key, event.begin, event.end)
             }
         }
