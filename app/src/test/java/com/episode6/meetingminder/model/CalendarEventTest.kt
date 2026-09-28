@@ -36,19 +36,21 @@ class CalendarEventTest {
         assertThat(meeting.isMeeting).isTrue()
     }
 
+    // nothing is inferred from the guest list: an event nobody else is on is a meeting too
+
     @Test
-    fun soloBlock_withFullAttendeeData_isNotAMeeting() {
-        assertThat(meeting.copy(humanAttendees = 0, selfAttendeeId = null).isMeeting).isFalse()
-        assertThat(meeting.copy(humanAttendees = 1).isMeeting).isFalse()
+    fun noGuests_isAMeetingToo() {
+        assertThat(meeting.copy(humanAttendees = 0, selfAttendeeId = null, selfStatus = SelfStatus.NONE).isMeeting).isTrue()
+        assertThat(meeting.copy(humanAttendees = 1).isMeeting).isTrue()
     }
 
     @Test
-    fun selfOnlyData_isAMeetingWhenIWasInvited() {
+    fun selfOnlyData_isAMeetingWhetherOrNotIWasInvited() {
         val selfOnly = meeting.copy(hasAttendeeData = false, humanAttendees = 0)
         assertThat(selfOnly.copy(selfStatus = SelfStatus.NEEDS_ACTION).isMeeting).isTrue()
         assertThat(selfOnly.copy(selfStatus = SelfStatus.ACCEPTED).isMeeting).isTrue()
         assertThat(selfOnly.copy(selfStatus = SelfStatus.TENTATIVE).isMeeting).isTrue()
-        assertThat(selfOnly.copy(selfStatus = SelfStatus.NONE).isMeeting).isFalse()
+        assertThat(selfOnly.copy(selfStatus = SelfStatus.NONE).isMeeting).isTrue()
     }
 
     @Test

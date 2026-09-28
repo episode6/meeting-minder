@@ -3,6 +3,7 @@ package com.episode6.meetingminder.monitor
 import assertk.assertThat
 import assertk.assertions.containsExactly
 import assertk.assertions.isEmpty
+import com.episode6.meetingminder.model.Availability
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.EventStatus
 import com.episode6.meetingminder.model.ScheduleChange
@@ -22,7 +23,8 @@ class ChangeDetectorTest {
     private fun at(hour: Int, minute: Int = 0): Instant = Instant.parse("2026-09-14T%02d:%02d:00Z".format(hour, minute))
 
     private val designReview = testCalendarEvent(1, at(13), at(14), title = "Design review")
-    private val dentist = testCalendarEvent(2, at(15), at(16), title = "Dentist", meeting = false)
+    // no guests: a meeting like any other
+    private val dentist = testCalendarEvent(2, at(15), at(16), title = "Dentist", withGuests = false)
     private val oneOnOne = testCalendarEvent(3, at(16), at(16, 30), title = "1:1")
 
     private fun CalendarEvent.snapshot(selected: Boolean) = SnapshotEvent(
@@ -56,8 +58,27 @@ class ChangeDetectorTest {
     }
 
     @Test
-    fun new_aSoloBlock_isIgnored() {
-        assertThat(detect(emptyList(), listOf(dentist))).isEmpty()
+    fun new_anEventWithNoGuests_isNewToo() {
+        assertThat(detect(listOf(designReview.snapshot(selected = true)), listOf(designReview, dentist)))
+            .containsExactly(ScheduleChange.New(date, dentist.key, dentist.begin, dentist.end))
+    }
+
+    @Test
+    fun new_anEventWithNoGuestsThatAlreadyStarted_isIgnored() {
+        assertThat(detect(emptyList(), listOf(testCalendarEvent(9, at(11, 30), at(12, 30), withGuests = false)))).isEmpty()
+    }
+
+    @Test
+    fun new_anEventMarkedFree_isIgnored() {
+        val reminder = dentist.copy(availability = Availability.FREE)
+        val freeInvite = testCalendarEvent(9, at(15), at(15, 30)).copy(availability = Availability.FREE)
+
+        assertThat(detect(emptyList(), listOf(reminder, freeInvite))).isEmpty()
+    }
+
+    @Test
+    fun new_aCancelledEventWithNoGuests_isIgnored() {
+        assertThat(detect(emptyList(), listOf(dentist.copy(status = EventStatus.CANCELED)))).isEmpty()
     }
 
     @Test
@@ -93,7 +114,7 @@ class ChangeDetectorTest {
     }
 
     @Test
-    fun moved_aSelectedSoloBlock_isMovedToo() {
+    fun moved_aSelectedEventWithNoGuests_isMovedToo() {
         val moved = dentist.copy(end = at(16, 30))
 
         assertThat(detect(listOf(dentist.snapshot(selected = true)), listOf(moved)))
@@ -149,7 +170,7 @@ class ChangeDetectorTest {
     }
 
     @Test
-    fun cancelled_aSelectedSoloBlockGone_isCancelled() {
+    fun cancelled_aSelectedEventWithNoGuestsGone_isCancelled() {
         assertThat(detect(listOf(dentist.snapshot(selected = true)), emptyList()))
             .containsExactly(ScheduleChange.Cancelled(date, dentist.key, at(15), at(16)))
     }
@@ -215,7 +236,7 @@ class ChangeDetectorTest {
 
     @Test
     fun ignored_allDayEvents_selectedOrNot() {
-        val holiday = testCalendarEvent(6, at(0), at(0).plusSeconds(86_400), allDay = true, meeting = false)
+        val holiday = testCalendarEvent(6, at(0), at(0).plusSeconds(86_400), allDay = true, withGuests = false)
         val laterAllDay = holiday.copy(key = holiday.key.copy(eventId = 7), eventId = 7)
 
         assertThat(detect(listOf(holiday.snapshot(selected = true)), emptyList())).isEmpty()
@@ -267,17 +288,27 @@ class ChangeDetectorTest {
     }
 
     @Test
-    fun replaced_aSoloBlockGoneWithAnInviteInItsSlot_isStillNew() {
-        val hold = testCalendarEvent(4, at(14), at(15), meeting = false)
+    fun replaced_aFreeEventGoneWithAMeetingInItsSlot_isStillNew() {
+        val reminder = testCalendarEvent(4, at(14), at(15)).copy(availability = Availability.FREE)
         val invite = testCalendarEvent(9, at(14), at(15))
 
-        assertThat(detect(listOf(hold.snapshot(selected = false)), listOf(invite)))
+        assertThat(detect(listOf(reminder.snapshot(selected = false)), listOf(invite)))
             .containsExactly(ScheduleChange.New(date, invite.key, invite.begin, invite.end))
     }
 
     @Test
-    fun ignored_aSelectedSoloBlockRecreatedAtTheSameTimes_isSilent() {
-        val recreated = testCalendarEvent(9, dentist.begin, dentist.end, meeting = false)
+    fun ignored_aHoldReplacedByAnInviteAtTheSameTimes_isSilent() {
+        // guests or not, the slot was busy and still is
+        val hold = testCalendarEvent(4, at(14), at(15), withGuests = false)
+        val invite = testCalendarEvent(9, at(14), at(15))
+
+        assertThat(detect(listOf(hold.snapshot(selected = true)), listOf(invite))).isEmpty()
+        assertThat(detect(listOf(invite.snapshot(selected = true)), listOf(hold))).isEmpty()
+    }
+
+    @Test
+    fun ignored_aSelectedEventWithNoGuestsRecreatedAtTheSameTimes_isSilent() {
+        val recreated = testCalendarEvent(9, dentist.begin, dentist.end, withGuests = false)
 
         assertThat(detect(listOf(dentist.snapshot(selected = true)), listOf(recreated))).isEmpty()
     }

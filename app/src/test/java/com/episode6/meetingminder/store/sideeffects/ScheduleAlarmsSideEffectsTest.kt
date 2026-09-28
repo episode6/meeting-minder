@@ -122,7 +122,7 @@ class ScheduleAlarmsSideEffectsTest {
 
     @Test
     fun setAlarms_recordsTheSkipReason_andSendsNoRsvp_forEventsTheTableSkips() = runTest {
-        val soloBlock = testCalendarEvent(4, at(12), at(13), title = "Dentist", meeting = false)
+        val soloBlock = testCalendarEvent(4, at(12), at(13), title = "Dentist", withGuests = false)
         val readOnlyInvite = testCalendarEvent(5, at(14), at(15), title = "Read-only invite").copy(calendarAccessLevel = 200)
         val alreadyAccepted = testCalendarEvent(6, at(15), at(16), title = "Accepted").copy(selfStatus = SelfStatus.ACCEPTED)
         val state = TestAppState.copy(

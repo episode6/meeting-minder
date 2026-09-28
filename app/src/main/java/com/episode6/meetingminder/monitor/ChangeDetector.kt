@@ -14,10 +14,11 @@ import java.time.LocalDate
  * shared. Pure, so every row of the §4.3 table is a plain JVM test (`ChangeDetectorTest`).
  *
  * The scope rule, so it never nags about something that doesn't change what was shared:
- * **New** applies to any [CalendarEvent.isMeeting] event, selected or not (a new invite is
- * worth knowing about); **Moved / Cancelled / Declined** apply only to keys that were
- * **selected** at share time, meeting or not (a selected solo block that moves changes the
- * busy ranges; an unselected meeting that moves doesn't).
+ * **New** applies to any [CalendarEvent.isMeeting] event, selected or not — guests or not,
+ * so a block added from another device is reported just as a new invite is;
+ * **Moved / Cancelled / Declined** apply only to keys that were **selected** at share time,
+ * meeting or not (a selected event marked "free" that moves changes the busy ranges; an
+ * unselected meeting that moves doesn't).
  *
  * | Case | Rule |
  * |---|---|
@@ -25,7 +26,7 @@ import java.time.LocalDate
  * | Moved | selected key, begin/end differ from the baseline, the new slot ends after now |
  * | Cancelled | selected key gone from the day (or `CANCELED`), and it hadn't started yet |
  * | Declined | selected key, now declined by me (and wasn't at share time), not over yet |
- * | Ignored | title/colour/attendee edits, rewrites with identical times, an event replaced by another at identical times, events already over, all-day events |
+ * | Ignored | title/colour/attendee edits, rewrites with identical times, an event replaced by another at identical times, events already over, all-day events, new events marked "free" |
  *
  * Only times and the RSVP/cancel flags are compared, which is what makes title, colour,
  * description, reminder and attendee-list edits (and sync rewrites of identical values)
@@ -39,8 +40,8 @@ import java.time.LocalDate
  * that reads as Cancelled + New for a slot that never changed, so a key gone from the day is
  * paired one-to-one with a key new to the day at exactly the same begin and end, and the pair
  * is no change at all. Only like pairs with like (both [CalendarEvent.isMeeting] or both
- * not), so a solo block deleted to make room for a new invite still reports the invite, and
- * a selected row gets first pick of an arrival. The alarm agrees: `maintainAlarms` keeps the alarm of a key that
+ * not), so an event marked "free" deleted to make room for a meeting still reports the
+ * meeting, and a selected row gets first pick of an arrival. The alarm agrees: `maintainAlarms` keeps the alarm of a key that
  * vanished, and it is still set for the right time.
  */
 object ChangeDetector {
@@ -66,7 +67,7 @@ object ChangeDetector {
             if (was.allDay || was.cancelled || was.declinedByMe) continue
             val current = after[was.key]
             if (current != null && current.status != EventStatus.CANCELED) continue
-            // like with like: a vanished solo block never swallows a new invite in its slot
+            // like with like: a vanished "free" event never swallows a new meeting in its slot
             val arrival = arrivals.firstOrNull { it.begin == was.begin && it.end == was.end && it.isMeeting == was.isMeeting } ?: continue
             arrivals -= arrival
             replacedBy[was.key] = arrival

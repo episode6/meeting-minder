@@ -30,7 +30,7 @@ fun dateToPage(date: LocalDate, anchorDate: LocalDate): Int =
 
 /**
  * Where the timeline should open (TODO.md §3.5): an hour before the first meeting that
- * starts on [date] (solo blocks don't count, per [CalendarEvent.isMeeting]), else
+ * starts on [date] (per [CalendarEvent.isMeeting]), else
  * [DayViewDefaults.DefaultFirstVisibleHour].
  */
 fun initialFirstVisibleHour(date: LocalDate, events: List<CalendarEvent>, zone: ZoneId): Float {

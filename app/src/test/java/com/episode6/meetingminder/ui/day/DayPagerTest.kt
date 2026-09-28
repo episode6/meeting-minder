@@ -2,6 +2,7 @@ package com.episode6.meetingminder.ui.day
 
 import assertk.assertThat
 import assertk.assertions.isEqualTo
+import com.episode6.meetingminder.model.Availability
 import com.episode6.meetingminder.model.testCalendarEvent
 import org.junit.Test
 import java.time.LocalDate
@@ -45,13 +46,23 @@ class DayPagerTest {
     }
 
     @Test
-    fun initialHour_ignoresSoloBlocksAndMeetingsThatStartedOnAnotherDay() {
+    fun initialHour_ignoresFreeEventsAndMeetingsThatStartedOnAnotherDay() {
         val events = listOf(
-            testCalendarEvent(1, at(anchor, 6), at(anchor, 7), meeting = false),
+            testCalendarEvent(1, at(anchor, 6), at(anchor, 7)).copy(availability = Availability.FREE),
             testCalendarEvent(2, at(anchor.minusDays(1), 23), at(anchor, 1)),
         )
 
         assertThat(initialFirstVisibleHour(anchor, events, zone)).isEqualTo(DayViewDefaults.DefaultFirstVisibleHour.toFloat())
+    }
+
+    @Test
+    fun initialHour_countsAnEventWithNoGuests() {
+        val events = listOf(
+            testCalendarEvent(1, at(anchor, 14), at(anchor, 15)),
+            testCalendarEvent(2, at(anchor, 7), at(anchor, 8), withGuests = false),
+        )
+
+        assertThat(initialFirstVisibleHour(anchor, events, zone)).isEqualTo(6f)
     }
 
     @Test

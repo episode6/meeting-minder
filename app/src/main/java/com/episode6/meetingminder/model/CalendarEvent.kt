@@ -58,15 +58,16 @@ data class CalendarEvent(
 ) {
     /**
      * THE definition of "meeting" (TODO.md §3.4): a timed, un-cancelled, busy block that you
-     * haven't declined and that involves someone else. "Someone else" is decided by the
-     * attendee table when the provider has full attendee data (you plus at least one other
-     * human), and by "was I invited at all" when the calendar only syncs self-only data.
-     * Every count, share line and change-detection rule uses this; never restate it.
+     * haven't declined. Who else is on it is deliberately **not** part of the rule: an
+     * event with no guests ("Dentist", a block added from another device) takes the same
+     * time out of the day as an invite does, so nothing is inferred from the guest list.
+     * [hasAttendeeData], [humanAttendees] and [selfAttendeeId] exist only for the RSVP
+     * write's safety checks (`model/Rsvp.kt`). Every count, share line and
+     * change-detection rule uses this; never restate it.
      */
     val isMeeting: Boolean
         get() = !allDay &&
             status != EventStatus.CANCELED &&
             selfStatus != SelfStatus.DECLINED &&
-            availability == Availability.BUSY &&
-            if (hasAttendeeData) humanAttendees >= 2 else selfStatus != SelfStatus.NONE
+            availability == Availability.BUSY
 }

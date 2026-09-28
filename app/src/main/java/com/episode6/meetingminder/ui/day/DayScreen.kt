@@ -480,37 +480,37 @@ internal fun DayScreenEmptyPreview() {
     )
 }
 
-/** Render 2's day loaded into the pager: "3 meetings" (the dentist and school pickup are solo blocks). */
+/** Render 2's day loaded into the pager: "5 meetings" (every timed event but the declined vendor sync, guests or not). */
 @Preview(showBackground = true)
 @Composable
 internal fun DayScreenBusyPreview() {
     DayScreenPreviewFrame(
-        DayUiState(anchorDate = PreviewDate, meetingCount = 3, days = mapOf(PreviewDate to PreviewEvents.busyDay)),
+        DayUiState(anchorDate = PreviewDate, meetingCount = 5, days = mapOf(PreviewDate to PreviewEvents.busyDay)),
     )
 }
 
-/** Render 2 with two events selected: "3 meetings · 2 selected" and the "Set alarms (2)" FAB. */
+/** Render 2 with two events selected: "5 meetings · 2 selected" and the "Set alarms (2)" FAB. */
 @Preview(showBackground = true)
 @Composable
 internal fun DayScreenSelectingPreview() {
     DayScreenPreviewFrame(
         DayUiState(
             anchorDate = PreviewDate,
-            meetingCount = 3,
+            meetingCount = 5,
             fabState = FabState.SetAlarms(2),
             days = mapOf(PreviewDate to PreviewEvents.selectingDay),
         ),
     )
 }
 
-/** Every selection removed after alarms were set: "3 meetings · 0 selected", chips back to outlined, and the "Clear alarms" FAB. */
+/** Every selection removed after alarms were set: "5 meetings · 0 selected", chips back to outlined, and the "Clear alarms" FAB. */
 @Preview(showBackground = true)
 @Composable
 internal fun DayScreenClearAlarmsPreview() {
     DayScreenPreviewFrame(
         DayUiState(
             anchorDate = PreviewDate,
-            meetingCount = 3,
+            meetingCount = 5,
             fabState = FabState.SetAlarms(0),
             days = mapOf(PreviewDate to PreviewEvents.busyDay),
         ),
@@ -524,7 +524,7 @@ internal fun DayScreenAlarmsSetPreview() {
     DayScreenPreviewFrame(
         DayUiState(
             anchorDate = PreviewDate,
-            meetingCount = 3,
+            meetingCount = 5,
             fabState = FabState.Share(),
             armedCount = 3,
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
@@ -539,7 +539,7 @@ internal fun DayScreenSharedPreview() {
     DayScreenPreviewFrame(
         DayUiState(
             anchorDate = PreviewDate,
-            meetingCount = 3,
+            meetingCount = 5,
             fabState = FabState.Share(),
             armedCount = 3,
             sharedAt = PreviewDate.atTime(8, 12),
@@ -558,7 +558,7 @@ internal fun DayScreenScheduleChangedPreview() {
     DayScreenPreviewFrame(
         DayUiState(
             anchorDate = PreviewDate,
-            meetingCount = 3,
+            meetingCount = 5,
             fabState = FabState.Share(),
             armedCount = 3,
             sharedAt = PreviewDate.atTime(8, 12),
@@ -578,7 +578,7 @@ internal fun DayScreenSyncOnlyChangedPreview() {
     DayScreenPreviewFrame(
         DayUiState(
             anchorDate = PreviewDate,
-            meetingCount = 3,
+            meetingCount = 5,
             fabState = FabState.Synced,
             armedCount = 3,
             sharedAt = PreviewDate.atTime(8, 12),
@@ -596,7 +596,7 @@ internal fun DayScreenDarkPreview() {
     DayScreenPreviewFrame(
         DayUiState(
             anchorDate = PreviewDate,
-            meetingCount = 3,
+            meetingCount = 5,
             fabState = FabState.Share(),
             armedCount = 3,
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),
@@ -612,7 +612,7 @@ internal fun DayScreenLargeFontPreview() {
     DayScreenPreviewFrame(
         DayUiState(
             anchorDate = PreviewDate,
-            meetingCount = 3,
+            meetingCount = 5,
             fabState = FabState.Share(),
             armedCount = 3,
             days = mapOf(PreviewDate to PreviewEvents.alarmsSetDay),

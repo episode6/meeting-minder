@@ -119,8 +119,9 @@ class ContentResolverCalendarRepositoryBusyBlockTest {
         assertThat(block.title).isEqualTo("busy")
         assertThat(block.begin).isEqualTo(range.begin)
         assertThat(block.end).isEqualTo(range.end)
+        // a timed busy event like any other, so the marker (and the table) are all that hide it
         assertThat(block.ownedByApp).isTrue()
-        assertThat(block.isMeeting).isFalse()
+        assertThat(block.isMeeting).isTrue()
     }
 
     @Test

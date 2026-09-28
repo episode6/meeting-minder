@@ -94,7 +94,8 @@ class ContentResolverCalendarRepositoryDeviceTest {
                 prop(CalendarEvent::allDay).isFalse()
                 prop(CalendarEvent::calendarAccessLevel).isEqualTo(Calendars.CAL_ACCESS_OWNER)
             }
-            assertThat(events.single().isMeeting).isFalse()
+            // no guests, and a meeting all the same
+            assertThat(events.single().isMeeting).isTrue()
             assertThat(repository.calendars().any { it.id == calendarId }).isTrue()
         } finally {
             resolver.delete(ContentUris.withAppendedId(Calendars.CONTENT_URI, calendarId).asSyncAdapter(), null, null)

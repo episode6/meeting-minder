@@ -30,7 +30,7 @@ class RespondToEventSideEffectsTest {
 
     private val today = LocalDate.of(2026, 9, 14)
     private val standup = testCalendarEvent(1, Instant.parse("2026-09-14T09:00:00Z"), Instant.parse("2026-09-14T09:30:00Z"))
-    private val soloBlock = testCalendarEvent(2, Instant.parse("2026-09-14T10:00:00Z"), Instant.parse("2026-09-14T11:00:00Z"), meeting = false)
+    private val soloBlock = testCalendarEvent(2, Instant.parse("2026-09-14T10:00:00Z"), Instant.parse("2026-09-14T11:00:00Z"), withGuests = false)
     private val stateWithEvents = TestAppState.copy(
         eventsByDay = mapOf(today to DayEvents(today, listOf(standup, soloBlock), Instant.EPOCH)),
     )
