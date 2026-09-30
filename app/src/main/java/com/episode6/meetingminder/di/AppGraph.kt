@@ -21,6 +21,7 @@ import com.episode6.meetingminder.permissions.PermissionChecker
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.createAppStore
+import com.episode6.meetingminder.ui.navigation.ForegroundLog
 import com.episode6.redux.sideeffects.SideEffect
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.DependencyGraph
@@ -50,6 +51,9 @@ interface AppGraph : ViewModelGraph {
     /** `CalendarChangeWorker`'s change check (TODO.md §4.3). */
     val changeMonitor: ChangeMonitor
     val mainUiVisibility: MainUiVisibility
+
+    /** `MainActivity`'s record of every start, which opens the first one of a day on today. */
+    val foregroundLog: ForegroundLog
 
     /** For `CalendarChangeWorkerTest`, which seeds a shared day's baseline the way a share does. */
     val changeSnapshotDao: ChangeSnapshotDao

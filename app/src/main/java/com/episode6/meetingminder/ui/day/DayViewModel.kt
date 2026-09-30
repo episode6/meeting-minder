@@ -192,6 +192,7 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId, shareMode: 
     anchorDate = anchorDate,
     date = settledDate,
     isToday = settledDate == anchorDate,
+    dayJumps = dayJumps,
     meetingCount = eventsByDay[settledDate]?.events?.count { it.isMeeting },
     fabState = dayPlans[settledDate].toFabState(shareMode),
     armedCount = dayPlans[settledDate]?.selected?.values?.count { it.alarmId != null } ?: 0,

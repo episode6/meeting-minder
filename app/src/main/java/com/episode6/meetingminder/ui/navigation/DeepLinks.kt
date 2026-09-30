@@ -18,6 +18,12 @@ sealed interface DeepLink {
 
     /** `meetingminder://share/{date}`: open [date] and its share sheet (the schedule-changed notification's "Share update"). */
     data class Share(override val date: LocalDate) : DeepLink
+
+    /**
+     * Not a link: `MainActivity` started for the first time on [date] ([ForegroundLog]), so
+     * open the day view on today. Offered through [DeepLinkInbox.offerToday], never parsed.
+     */
+    data class Today(override val date: LocalDate) : DeepLink
 }
 
 /**
@@ -74,17 +80,39 @@ object DeepLinks {
 
 /**
  * [MainActivity]'s deep links waiting for `Navigation.kt`. The activity [offer]s its launch
- * intent (on a fresh start only) and every `onNewIntent`; the navigation takes each from
- * [links] once. Queueing them here instead of listening from the composition matters when
- * the activity is recreated in a task that outlived it: the new intent then arrives before
- * the first composition. Conflated, so only the latest tap waits.
+ * intent (on a fresh start only) and every `onNewIntent`, and [offerToday] on the first start
+ * of a day; the navigation takes each from [links] once. Queueing them here instead of
+ * listening from the composition matters when the activity is recreated in a task that
+ * outlived it: the new intent then arrives before the first composition. Conflated, so only
+ * the latest tap waits. Main thread only, like the activity callbacks that call it.
  */
 class DeepLinkInbox {
     private val channel = Channel<DeepLink>(Channel.CONFLATED)
 
+    /** Whether a link came in since the activity last stopped, i.e. with the current start. */
+    private var linkedSinceStop = false
+
     val links: ReceiveChannel<DeepLink> get() = channel
 
     fun offer(intent: Intent?) {
-        DeepLinks.fromIntent(intent)?.let { channel.trySend(it) }
+        DeepLinks.fromIntent(intent)?.let {
+            linkedSinceStop = true
+            channel.trySend(it)
+        }
+    }
+
+    /**
+     * The first start of [date]: show today, unless this start came with a link (a
+     * notification tapped to open the app), which says where to go instead. The activity
+     * only knows it's the first start after a DataStore round trip, by which time the
+     * start's own link (`onCreate`'s launch intent, or `onNewIntent`) has been offered.
+     */
+    fun offerToday(date: LocalDate) {
+        if (!linkedSinceStop) channel.trySend(DeepLink.Today(date))
+    }
+
+    /** The activity stopped: links offered from now on belong to its next start. */
+    fun onStop() {
+        linkedSinceStop = false
     }
 }

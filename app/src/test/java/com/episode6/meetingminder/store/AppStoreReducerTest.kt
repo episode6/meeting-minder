@@ -48,6 +48,13 @@ class AppStoreReducerTest {
     }
 
     @Test
+    fun showDay_settlesOnTheDay_andCountsAJump() {
+        val result = state.reduce(ShowDay(today.plusDays(2))).reduce(ShowDay(today))
+
+        assertThat(result).isEqualTo(state.copy(settledDate = today, dayJumps = 2))
+    }
+
+    @Test
     fun setPermissions_replacesTheWholePermissionState() {
         val granted = PermissionState(calendarGranted = true)
 

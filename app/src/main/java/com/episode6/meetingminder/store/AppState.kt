@@ -42,6 +42,8 @@ data class AppState(
     val anchorDate: LocalDate,
     /** The day the user is looking at: the pager's settled page. */
     val settledDate: LocalDate = anchorDate,
+    /** How many [ShowDay]s have moved [settledDate]: `DayScreen` scrolls the pager to [settledDate] each time it changes. */
+    val dayJumps: Int = 0,
     /**
      * Which OS permission grants we currently hold. [com.episode6.meetingminder.di.AppGraph]
      * computes the initial value synchronously (so launch routing never flashes the wrong

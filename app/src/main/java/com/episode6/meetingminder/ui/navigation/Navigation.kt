@@ -50,7 +50,6 @@ import com.episode6.meetingminder.ui.settings.SettingsViewModel
 import com.episode6.meetingminder.ui.util.findActivity
 import com.episode6.meetingminder.ui.util.resolve
 import dev.zacsweers.metrox.viewmodel.metroViewModel
-import java.time.LocalDate
 
 /**
  * The wiring layer: the only place ViewModels are obtained and their state collected,
@@ -100,12 +99,12 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
     // Deep links from notifications (TODO.md §4.3): meetingminder://day/{date} shows that day,
     // meetingminder://share/{date} also opens its share sheet. MainActivity queues them in
     // [deepLinks] (its launch intent on a fresh start, and every onNewIntent, since the
-    // notifications launch it single-top) and each is taken here exactly once.
-    var pendingJumpDate by rememberSaveable { mutableStateOf<LocalDate?>(null) }
+    // notifications launch it single-top), along with today on the first start of a day,
+    // and each is taken here exactly once. The view model moves the pager (ShowDay); this
+    // brings the day view to the front.
     LaunchedEffect(deepLinks, navigationViewModel, navController) {
         for (link in deepLinks.links) {
             if (!navigationViewModel.onDeepLink(link)) continue
-            pendingJumpDate = link.date
             if (navController.currentBackStackEntry?.destination?.hasRoute<Route.Day>() != true &&
                 !navController.popBackStack<Route.Day>(inclusive = false)
             ) {
@@ -189,8 +188,6 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                 },
                 onEventRespond = viewModel::onEventRespond,
                 onFabClick = viewModel::onFabClick,
-                jumpToDate = pendingJumpDate,
-                onJumpHandled = { pendingJumpDate = null },
             )
         }
         composable<Route.Onboarding> {

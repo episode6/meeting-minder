@@ -18,6 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.time.Duration
+import java.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -148,6 +149,18 @@ class DataStoreSettingsRepositoryTest {
 
         assertThat(repository.requestedPermissions.first())
             .isEqualTo(setOf("android.permission.READ_CALENDAR", "android.permission.POST_NOTIFICATIONS"))
+        assertThat(repository.current()).isEqualTo(Settings())
+    }
+
+    @Test
+    fun recordForegrounded_returnsTheTimeItReplaces_withoutTouchingTheSettings() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-foreground-test"))
+        val first = Instant.parse("2026-09-14T12:00:00Z")
+        val second = Instant.parse("2026-09-15T07:30:00Z")
+
+        assertThat(repository.recordForegrounded(first)).isNull()
+        assertThat(repository.recordForegrounded(second)).isEqualTo(first)
+        assertThat(repository.recordForegrounded(second)).isEqualTo(second)
         assertThat(repository.current()).isEqualTo(Settings())
     }
 

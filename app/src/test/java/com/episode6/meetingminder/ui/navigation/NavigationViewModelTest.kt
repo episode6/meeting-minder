@@ -27,6 +27,7 @@ import com.episode6.redux.testsupport.runStoreTest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -115,7 +116,38 @@ class NavigationViewModelTest {
     fun onDeepLink_day_onlyAsksForTheDayToBeShown() = runStoreTest(
         { createAppStore(this, AppState(anchorDate = today, permissions = allGranted), emptySet()) },
     ) { store ->
-        assertThat(NavigationViewModel(store).onDeepLink(DeepLink.Day(today))).isEqualTo(true)
+        assertThat(NavigationViewModel(store).onDeepLink(DeepLink.Day(today.plusDays(2)))).isEqualTo(true)
+        advanceUntilIdle()
+
+        assertThat(store.state.settledDate).isEqualTo(today.plusDays(2))
+        assertThat(store.state.dayJumps).isEqualTo(1)
+    }
+
+    @Test
+    fun onDeepLink_today_showsTodayWhereverThePagerWas() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today.minusDays(1), settledDate = today.minusDays(3), permissions = allGranted), emptySet()) },
+    ) { store ->
+        assertThat(NavigationViewModel(store).onDeepLink(DeepLink.Today(today))).isEqualTo(true)
+        advanceUntilIdle()
+
+        assertThat(store.state.settledDate).isEqualTo(today)
+        assertThat(store.state.dayJumps).isEqualTo(1)
+    }
+
+    @Test
+    fun onDeepLink_today_leavesTodaysRingingScheduleChangeAlertRinging() {
+        val dismissals = MutableSharedFlow<Action>(replay = 10)
+        val recordDismissals = SideEffect<AppState> { actions.onEach { if (it is DismissAlarm) dismissals.emit(it) }.filter { false } }
+        val alert = RingingAlarm(
+            alarmId = 7, date = today, key = EventKey(SCHEDULE_CHANGE_ALARM_EVENT_ID, 0), title = "", location = null,
+            begin = Instant.EPOCH, end = Instant.EPOCH, soundIndex = 1, snoozeLength = Duration.ofMinutes(2),
+            scheduleChange = ScheduleChangeAlert(emptyList(), shareMode = ShareMode.TEXT),
+        )
+        runStoreTest({ createAppStore(this, AppState(anchorDate = today, permissions = allGranted, ringing = alert), setOf(recordDismissals)) }) { store ->
+            NavigationViewModel(store).onDeepLink(DeepLink.Today(today))
+
+            assertThat(dismissals.replayCache).isEqualTo(emptyList())
+        }
     }
 
     @Test
@@ -159,5 +191,8 @@ class NavigationViewModelTest {
         { createAppStore(this, AppState(anchorDate = today, permissions = allGranted.copy(calendarGranted = false)), emptySet()) },
     ) { store ->
         assertThat(NavigationViewModel(store).onDeepLink(DeepLink.Share(today))).isEqualTo(false)
+        assertThat(NavigationViewModel(store).onDeepLink(DeepLink.Today(today))).isEqualTo(false)
+        advanceUntilIdle()
+        assertThat(store.state.dayJumps).isEqualTo(0)
     }
 }

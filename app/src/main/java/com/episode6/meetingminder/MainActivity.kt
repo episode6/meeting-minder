@@ -6,10 +6,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.lifecycle.lifecycleScope
 import com.episode6.meetingminder.ui.navigation.DeepLinkInbox
 import com.episode6.meetingminder.ui.navigation.MeetingMinderNavigation
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import dev.zacsweers.metrox.viewmodel.LocalMetroViewModelFactory
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -29,14 +31,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // the loud schedule-change alert never rings over the app itself (MainUiVisibility)
+    // the loud schedule-change alert never rings over the app itself (MainUiVisibility), and
+    // the first start of a day opens on today (ForegroundLog)
     override fun onStart() {
         super.onStart()
         appGraph.mainUiVisibility.visible = true
+        lifecycleScope.launch { appGraph.foregroundLog.record()?.let(deepLinks::offerToday) }
     }
 
     override fun onStop() {
         appGraph.mainUiVisibility.visible = false
+        deepLinks.onStop()
         super.onStop()
     }
 

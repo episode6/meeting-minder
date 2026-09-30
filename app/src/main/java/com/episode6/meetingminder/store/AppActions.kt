@@ -22,6 +22,17 @@ sealed interface UpdateStateAction : Action
 data class SetSettledDate(val date: LocalDate) : UpdateStateAction
 
 /**
+ * Show [date] in the day pager, wherever it was: a notification's deep link, or the first
+ * time `MainActivity` comes to the foreground on a new local day (`ForegroundLog`). Makes
+ * [date] the settled date and counts one more [AppState.dayJumps], which `DayScreen`
+ * scrolls the pager on. The jump lives in the store, beside the settled date, rather than
+ * in the UI so it can't race [SetAnchorDate]: the first foreground of a morning moves the
+ * anchor too, and a jump the UI made on its own was undone when the anchor's rollover
+ * handling put the pager back on the old settled date that hadn't caught up yet.
+ */
+data class ShowDay(val date: LocalDate) : UpdateStateAction
+
+/**
  * The local date is now [date], not [AppState.anchorDate]: midnight passed (or the clock or
  * timezone changed) while the process was alive (`AnchorDateSideEffects`, TODO.md §5
  * PR-13). Moves only the anchor — "today" — and never the settled page: the day pager

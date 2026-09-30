@@ -92,4 +92,37 @@ class DeepLinksTest {
 
         assertThat(inbox.links.tryReceive().getOrNull()).isNull()
     }
+
+    @Test
+    fun inbox_offersTodayOnAStartThatCameWithoutALink() {
+        val inbox = DeepLinkInbox()
+
+        inbox.offerToday(date)
+
+        assertThat(inbox.links.tryReceive().getOrNull()).isEqualTo(DeepLink.Today(date))
+    }
+
+    @Test
+    fun inbox_letsTheLinkAStartCameWith_winOverToday() {
+        val inbox = DeepLinkInbox()
+
+        // cold start: onCreate offers the launch intent before onStart's check comes back
+        inbox.offer(DeepLinks.activityIntent(context, DeepLinks.day(date.plusDays(1))))
+        inbox.offerToday(date)
+
+        assertThat(inbox.links.tryReceive().getOrNull()).isEqualTo(DeepLink.Day(date.plusDays(1)))
+        assertThat(inbox.links.tryReceive().getOrNull()).isNull()
+    }
+
+    @Test
+    fun inbox_forgetsTheLastStartsLink_onceStopped() {
+        val inbox = DeepLinkInbox()
+        inbox.offer(DeepLinks.activityIntent(context, DeepLinks.day(date.minusDays(1))))
+        inbox.links.tryReceive()
+
+        inbox.onStop()
+        inbox.offerToday(date)
+
+        assertThat(inbox.links.tryReceive().getOrNull()).isEqualTo(DeepLink.Today(date))
+    }
 }

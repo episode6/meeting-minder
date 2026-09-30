@@ -66,6 +66,11 @@ Interaction rules:
 - Changing selection after sharing keeps the "Share schedule" affordance available from the
   overflow ("Share again") and shows the "changed since you shared" banner.
 - "Today" jumps the pager back to today. The app bar date is the settled page's date.
+- The first time the app comes to the foreground on a new local day (in the device's current
+  zone), the day view opens on today, wherever the pager was left — unless a notification's
+  link opened it, which wins. `MainActivity` records the wall-clock time of every start
+  (`ForegroundLog`, persisted under `last_foregrounded_at_millis`); the ringing
+  `AlarmActivity` doesn't count as the app coming forward.
 - Swiping to another day shows that day's selection state (persisted per day). Alarms can be set
   for future days too; the share text uses that day's date.
 - Past events on today are dimmed. Tapping a past event is allowed but alarms in the past are
@@ -287,7 +292,8 @@ com.episode6.meetingminder
 ├── permissions/                   PermissionChecker, PermissionRequester (intents), PermissionState
 └── ui/
     ├── navigation/                Routes (@Serializable), Navigation.kt (NavHost, VM wiring, launchers),
-    │                              DeepLinks + DeepLinkInbox (meetingminder://day|share/{date})
+    │                              DeepLinks + DeepLinkInbox (meetingminder://day|share/{date}),
+    │                              ForegroundLog (first start of a day → today)
     ├── theme/                     MeetingMinderTheme, Color, Type
     ├── day/                       DayScreen, DayPager, DayTimeline (Layout), EventChip, NowLine, DayViewModel
     ├── onboarding/                OnboardingScreen, OnboardingViewModel
@@ -709,7 +715,10 @@ NB (PR-11), where the build settled things this section leaves open:
   task gets the new intent before its first composition); `Navigation.kt` takes each once.
   An intent re-delivered from Recents (`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`) is ignored, so a
   "Share update" that cold-started the app doesn't share again when the task is reopened.
-  They are dropped while a required grant is missing.
+  They are dropped while a required grant is missing. The inbox also carries the first-start-
+  of-the-day jump to today (`DeepLink.Today`), unless the start came with a link. Every jump
+  is the store's `ShowDay`, which sets the settled date and bumps `AppState.dayJumps` in one
+  state, so the pager can't be put back on a stale settled date by the anchor moving too.
 - WorkManager's merged `ACCESS_NETWORK_STATE` is removed with `tools:node="remove"`; nothing
   uses a network constraint.
 
