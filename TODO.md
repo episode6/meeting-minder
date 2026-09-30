@@ -296,7 +296,7 @@ com.episode6.meetingminder
 ├── permissions/                   PermissionChecker, PermissionRequester (intents), PermissionState
 └── ui/
     ├── navigation/                Routes (@Serializable), Navigation.kt (NavHost, VM wiring, launchers),
-    │                              DeepLinks + DeepLinkInbox (meetingminder://day|share/{date}),
+    │                              DeepLinks + DeepLinkInbox (meetingminder://day|share/{date})
     ├── theme/                     MeetingMinderTheme, Color, Type
     ├── day/                       DayScreen, DayPager, DayTimeline (Layout), EventChip, NowLine, DayViewModel
     ├── onboarding/                OnboardingScreen, OnboardingViewModel
