@@ -68,7 +68,9 @@ Interaction rules:
 - "Today" jumps the pager back to today. The app bar date is the settled page's date.
 - The first time the app comes to the foreground on a new local day (in the device's current
   zone), the day view opens on today, wherever the pager was left — unless a notification's
-  link opened it, which wins. `MainActivity` records the wall-clock time of every start
+  link opened it, which wins. It is the start that counts, not seeing today: a first start
+  opened by a link (or held on Onboarding) still makes later starts that day ordinary ones,
+  which keep whatever page was left. `MainActivity` records the wall-clock time of every start
   (`ForegroundLog`, persisted under `last_foregrounded_at_millis`); the ringing
   `AlarmActivity` doesn't count as the app coming forward.
 - Swiping to another day shows that day's selection state (persisted per day). Alarms can be set
