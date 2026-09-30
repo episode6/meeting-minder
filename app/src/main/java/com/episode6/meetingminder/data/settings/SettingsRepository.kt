@@ -145,12 +145,14 @@ interface SettingsRepository {
     suspend fun markPermissionRequested(permission: String)
 
     /**
-     * Records [at] as the last time `MainActivity` came to the foreground and returns the
-     * time it replaces, or null the first time ever. Like [requestedPermissions] it isn't a
-     * preference, but the first foreground of a day is usually a fresh process. One edit, so
-     * two starts in quick succession can't both read the same previous time.
+     * When the day view last showed today's page (see [TodayShownLog]), or null if it never
+     * has. Like [requestedPermissions] it isn't a preference, but it has to outlive the
+     * process: the first start of a day is usually a fresh one.
      */
-    suspend fun recordForegrounded(at: Instant): Instant?
+    suspend fun todayLastShownAt(): Instant?
+
+    /** Sets [todayLastShownAt]. */
+    suspend fun recordTodayShown(at: Instant)
 }
 
 /** [SettingsRepository] over the app's preferences DataStore (bound in `di/SettingsModule.kt`). */
@@ -236,13 +238,11 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         dataStore.edit { it[Keys.RequestedPermissions] = it[Keys.RequestedPermissions].orEmpty() + permission }
     }
 
-    override suspend fun recordForegrounded(at: Instant): Instant? {
-        var previous: Long? = null
-        dataStore.edit { prefs ->
-            previous = prefs[Keys.LastForegroundedAtMillis]
-            prefs[Keys.LastForegroundedAtMillis] = at.toEpochMilli()
-        }
-        return previous?.let(Instant::ofEpochMilli)
+    override suspend fun todayLastShownAt(): Instant? =
+        dataStore.data.first()[Keys.TodayLastShownAtMillis]?.let(Instant::ofEpochMilli)
+
+    override suspend fun recordTodayShown(at: Instant) {
+        dataStore.edit { it[Keys.TodayLastShownAtMillis] = at.toEpochMilli() }
     }
 
     private fun Preferences.toSettings() = Settings(
@@ -288,6 +288,6 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         val BusySyncFirstName = stringPreferencesKey("busy_sync_first_name")
         val BusySyncSendText = booleanPreferencesKey("busy_sync_send_text")
         val LoudChangeAlerts = booleanPreferencesKey("loud_change_alerts")
-        val LastForegroundedAtMillis = longPreferencesKey("last_foregrounded_at_millis")
+        val TodayLastShownAtMillis = longPreferencesKey("today_last_shown_at_millis")
     }
 }

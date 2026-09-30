@@ -17,11 +17,11 @@ import com.episode6.meetingminder.data.db.ScheduledAlarmDao
 import com.episode6.meetingminder.monitor.ChangeMonitor
 import com.episode6.meetingminder.monitor.MainUiVisibility
 import com.episode6.meetingminder.data.settings.SettingsRepository
+import com.episode6.meetingminder.data.settings.TodayShownLog
 import com.episode6.meetingminder.permissions.PermissionChecker
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.createAppStore
-import com.episode6.meetingminder.ui.navigation.ForegroundLog
 import com.episode6.redux.sideeffects.SideEffect
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.DependencyGraph
@@ -52,8 +52,8 @@ interface AppGraph : ViewModelGraph {
     val changeMonitor: ChangeMonitor
     val mainUiVisibility: MainUiVisibility
 
-    /** `MainActivity`'s record of every start, which opens the first one of a day on today. */
-    val foregroundLog: ForegroundLog
+    /** Whether today's page has been shown yet today; `MainActivity` opens on today until it has. */
+    val todayShownLog: TodayShownLog
 
     /** For `CalendarChangeWorkerTest`, which seeds a shared day's baseline the way a share does. */
     val changeSnapshotDao: ChangeSnapshotDao

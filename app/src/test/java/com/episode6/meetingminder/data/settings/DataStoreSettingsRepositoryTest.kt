@@ -153,14 +153,16 @@ class DataStoreSettingsRepositoryTest {
     }
 
     @Test
-    fun recordForegrounded_returnsTheTimeItReplaces_withoutTouchingTheSettings() = runTest {
-        val repository = DataStoreSettingsRepository(dataStore("settings-foreground-test"))
+    fun recordTodayShown_persistsTheLatestTime_withoutTouchingTheSettings() = runTest {
+        val repository = DataStoreSettingsRepository(dataStore("settings-today-shown-test"))
         val first = Instant.parse("2026-09-14T12:00:00Z")
         val second = Instant.parse("2026-09-15T07:30:00Z")
 
-        assertThat(repository.recordForegrounded(first)).isNull()
-        assertThat(repository.recordForegrounded(second)).isEqualTo(first)
-        assertThat(repository.recordForegrounded(second)).isEqualTo(second)
+        assertThat(repository.todayLastShownAt()).isNull()
+        repository.recordTodayShown(first)
+        assertThat(repository.todayLastShownAt()).isEqualTo(first)
+        repository.recordTodayShown(second)
+        assertThat(repository.todayLastShownAt()).isEqualTo(second)
         assertThat(repository.current()).isEqualTo(Settings())
     }
 

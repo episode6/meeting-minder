@@ -51,8 +51,8 @@ class NavigationViewModel(private val store: AppStore) : ViewModel() {
     }
 
     /**
-     * A notification opened [link] (TODO.md §4.3), or the app came to the foreground for the
-     * first time today ([DeepLink.Today]). Returns whether the wiring layer should show the
+     * A notification opened [link] (TODO.md §4.3), or the app came to the foreground before
+     * today's page had been shown today ([DeepLink.Today]). Returns whether the wiring layer should show the
      * day view: not while a required grant is missing (Onboarding comes first, and the link
      * is dropped). Otherwise the pager is sent to the link's day ([ShowDay]). "Share update"
      * ([DeepLink.Share]) dispatches the share right away: `ShareDaySideEffects` reads what it

@@ -60,7 +60,13 @@ internal class FakeSettingsRepository(initial: Settings = Settings()) : Settings
         requestedPermissions.value += permission
     }
 
-    var lastForegroundedAt: Instant? = null
+    var todayShownAt: Instant? = null
+    var todayShownWrites = 0
 
-    override suspend fun recordForegrounded(at: Instant): Instant? = lastForegroundedAt.also { lastForegroundedAt = at }
+    override suspend fun todayLastShownAt(): Instant? = todayShownAt
+
+    override suspend fun recordTodayShown(at: Instant) {
+        todayShownAt = at
+        todayShownWrites++
+    }
 }
