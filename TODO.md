@@ -719,9 +719,12 @@ NB (PR-11), where the build settled things this section leaves open:
   An intent re-delivered from Recents (`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`) is ignored, so a
   "Share update" that cold-started the app doesn't share again when the task is reopened.
   They are dropped while a required grant is missing. The inbox also carries the jump to
-  today while today hasn't been shown yet (`DeepLink.Today`), unless the start came with a link. Every jump
-  is the store's `ShowDay`, which sets the settled date and bumps `AppState.dayJumps` in one
-  state, so the pager can't be put back on a stale settled date by the anchor moving too.
+  today while today hasn't been shown yet (`DeepLink.Today`), unless the start came with a
+  link. Every jump is the store's `ShowDay`: it sets the settled date and a pending
+  `AppState.dayJump` in one state, which `DayScreen` scrolls to and reports with
+  `DayJumpLanded`, clearing it. Pending apart from the settled date, it survives both the
+  anchor moving in the same breath and the stale first frame of a day view coming back from
+  Settings, whose settle report would otherwise put the pager back on the old page.
 - WorkManager's merged `ACCESS_NETWORK_STATE` is removed with `tools:node="remove"`; nothing
   uses a network constraint.
 

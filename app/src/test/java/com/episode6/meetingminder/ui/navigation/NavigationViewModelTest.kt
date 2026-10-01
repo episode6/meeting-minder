@@ -8,6 +8,7 @@ import com.episode6.meetingminder.model.ScheduleChangeAlert
 import com.episode6.meetingminder.model.SCHEDULE_CHANGE_ALARM_EVENT_ID
 import com.episode6.meetingminder.model.RingingAlarm
 import com.episode6.meetingminder.model.EventKey
+import com.episode6.meetingminder.model.DayJump
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filter
@@ -120,7 +121,7 @@ class NavigationViewModelTest {
         advanceUntilIdle()
 
         assertThat(store.state.settledDate).isEqualTo(today.plusDays(2))
-        assertThat(store.state.dayJumps).isEqualTo(1)
+        assertThat(store.state.dayJump).isEqualTo(DayJump(today.plusDays(2), id = 1))
     }
 
     @Test
@@ -131,7 +132,7 @@ class NavigationViewModelTest {
         advanceUntilIdle()
 
         assertThat(store.state.settledDate).isEqualTo(today)
-        assertThat(store.state.dayJumps).isEqualTo(1)
+        assertThat(store.state.dayJump).isEqualTo(DayJump(today, id = 1))
     }
 
     @Test
@@ -193,6 +194,6 @@ class NavigationViewModelTest {
         assertThat(NavigationViewModel(store).onDeepLink(DeepLink.Share(today))).isEqualTo(false)
         assertThat(NavigationViewModel(store).onDeepLink(DeepLink.Today(today))).isEqualTo(false)
         advanceUntilIdle()
-        assertThat(store.state.dayJumps).isEqualTo(0)
+        assertThat(store.state.dayJump).isEqualTo(null)
     }
 }

@@ -7,6 +7,7 @@ import com.episode6.meetingminder.model.DayEvents
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.RingingAlarm
 import com.episode6.meetingminder.model.ScheduleChange
+import com.episode6.meetingminder.model.DayJump
 import com.episode6.meetingminder.permissions.PermissionState
 import java.time.LocalDate
 
@@ -42,7 +43,9 @@ data class AppState(
     val anchorDate: LocalDate,
     /** The day the user is looking at: the pager's settled page. */
     val settledDate: LocalDate = anchorDate,
-    /** How many [ShowDay]s have moved [settledDate]: `DayScreen` scrolls the pager to [settledDate] each time it changes. */
+    /** The [ShowDay] the pager hasn't landed on yet ([DayJumpLanded]); null once it has. */
+    val dayJump: DayJump? = null,
+    /** How many [ShowDay]s there have been: the next one's [DayJump.id]. */
     val dayJumps: Int = 0,
     /**
      * Which OS permission grants we currently hold. [com.episode6.meetingminder.di.AppGraph]

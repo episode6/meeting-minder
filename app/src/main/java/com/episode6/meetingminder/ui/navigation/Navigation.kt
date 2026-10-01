@@ -188,6 +188,7 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                 },
                 onEventRespond = viewModel::onEventRespond,
                 onFabClick = viewModel::onFabClick,
+                onDayJumpLanded = viewModel::onDayJumpLanded,
             )
         }
         composable<Route.Onboarding> {

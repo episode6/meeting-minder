@@ -1,6 +1,7 @@
 package com.episode6.meetingminder.store
 
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.DayJump
 import com.episode6.redux.Action
 
 internal fun AppState.reduce(action: Action): AppState = when (action) {
@@ -10,7 +11,8 @@ internal fun AppState.reduce(action: Action): AppState = when (action) {
 
 private fun AppState.reduceUpdateStateAction(action: UpdateStateAction): AppState = when (action) {
     is SetSettledDate -> copy(settledDate = action.date)
-    is ShowDay -> copy(settledDate = action.date, dayJumps = dayJumps + 1)
+    is ShowDay -> copy(settledDate = action.date, dayJump = DayJump(action.date, dayJumps + 1), dayJumps = dayJumps + 1)
+    is DayJumpLanded -> dayJump?.takeIf { it.id == action.id }?.let { copy(settledDate = it.date, dayJump = null) } ?: this
     is SetAnchorDate -> copy(anchorDate = action.date)
     is SetPermissions -> copy(permissions = action.permissions)
     is SetCalendars -> copy(calendars = action.calendars)
