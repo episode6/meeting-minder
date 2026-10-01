@@ -17,6 +17,7 @@ import com.episode6.meetingminder.data.db.ScheduledAlarmDao
 import com.episode6.meetingminder.monitor.ChangeMonitor
 import com.episode6.meetingminder.monitor.MainUiVisibility
 import com.episode6.meetingminder.data.settings.SettingsRepository
+import com.episode6.meetingminder.data.settings.TodayShownLog
 import com.episode6.meetingminder.permissions.PermissionChecker
 import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
@@ -50,6 +51,9 @@ interface AppGraph : ViewModelGraph {
     /** `CalendarChangeWorker`'s change check (TODO.md §4.3). */
     val changeMonitor: ChangeMonitor
     val mainUiVisibility: MainUiVisibility
+
+    /** Whether today's page has been shown yet today; `MainActivity` opens on today until it has. */
+    val todayShownLog: TodayShownLog
 
     /** For `CalendarChangeWorkerTest`, which seeds a shared day's baseline the way a share does. */
     val changeSnapshotDao: ChangeSnapshotDao

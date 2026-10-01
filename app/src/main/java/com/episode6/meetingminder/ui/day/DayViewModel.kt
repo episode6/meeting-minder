@@ -11,6 +11,7 @@ import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.DayJump
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.EventResponse
@@ -21,6 +22,7 @@ import com.episode6.meetingminder.store.AppState
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.ClearMessage
 import com.episode6.meetingminder.store.ClearPendingShare
+import com.episode6.meetingminder.store.DayJumpLanded
 import com.episode6.meetingminder.store.LoadDay
 import com.episode6.meetingminder.store.MarkNotShared
 import com.episode6.meetingminder.store.PendingShare
@@ -113,6 +115,11 @@ class DayViewModel(private val store: AppStore, private val clock: Clock, privat
         store.dispatch(LoadDay(date))
     }
 
+    /** The pager has scrolled to [jump] (a deep link, or the app coming forward before today was shown). */
+    fun onDayJumpLanded(jump: DayJump) {
+        store.dispatch(DayJumpLanded(jump.id))
+    }
+
     /** A chip on [date]'s page was tapped: flip its selection. */
     fun onEventToggle(date: LocalDate, event: TimelineEvent) {
         store.dispatch(ToggleEvent(date, event.key))
@@ -192,6 +199,7 @@ internal fun AppState.toDayUiState(now: LocalDateTime, zone: ZoneId, shareMode: 
     anchorDate = anchorDate,
     date = settledDate,
     isToday = settledDate == anchorDate,
+    dayJump = dayJump,
     meetingCount = eventsByDay[settledDate]?.events?.count { it.isMeeting },
     fabState = dayPlans[settledDate].toFabState(shareMode),
     armedCount = dayPlans[settledDate]?.selected?.values?.count { it.alarmId != null } ?: 0,

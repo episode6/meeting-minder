@@ -56,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import com.episode6.meetingminder.R
 import com.episode6.meetingminder.data.calendar.ShareMode
+import com.episode6.meetingminder.model.DayJump
 import com.episode6.meetingminder.model.EventResponse
 import com.episode6.meetingminder.ui.theme.MeetingMinderTheme
 import kotlinx.coroutines.launch
@@ -74,6 +75,8 @@ data class DayUiState(
     /** The settled page's date: what the app bar and FAB show. */
     val date: LocalDate = anchorDate,
     val isToday: Boolean = date == anchorDate,
+    /** A `ShowDay` (a deep link, the app coming forward before today was shown) the pager hasn't landed on yet. */
+    val dayJump: DayJump? = null,
     /** [com.episode6.meetingminder.model.CalendarEvent.isMeeting] count on [date]; null until it has loaded. */
     val meetingCount: Int? = null,
     /** The FAB for [date]: hidden, "Set alarms (N)", or "Share schedule". */
@@ -119,9 +122,9 @@ private val SharedDateFormatter = DateTimeFormatter.ofPattern("MMM d")
  * page's date, like a tap does. All pages share [scrollState], which jumps once to
  * [DayUiState.initialFirstVisibleHour] when it arrives, unless the user has already scrolled.
  * A shared day that has changed since shows the [ScheduleChangeBanner] above the pager, whose
- * "Re-share" is [onShareAgainClick]. [jumpToDate] (a notification's deep link) scrolls the
- * pager straight to that day, which then settles like any other page; [onJumpHandled]
- * reports it done.
+ * "Re-share" is [onShareAgainClick]. A pending [DayUiState.dayJump] (a notification's deep
+ * link, or the app coming forward before today was shown) scrolls the pager straight to its
+ * date, which then settles like any other page, and is reported through [onDayJumpLanded].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -143,8 +146,7 @@ fun DayScreen(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     pagerState: PagerState = rememberDayPagerState(state.anchorDate, state.date),
     scrollState: ScrollState = rememberTimelineScrollState(),
-    jumpToDate: LocalDate? = null,
-    onJumpHandled: () -> Unit = {},
+    onDayJumpLanded: (DayJump) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val currentOnPageSettled by rememberUpdatedState(onPageSettled)
@@ -153,15 +155,20 @@ fun DayScreen(
         // showing the date the user was on rather than sliding every page a day forward.
         // The pager's epoch-day keys usually carry the position over already; this covers
         // the case where they didn't.
-        val shownPage = dateToPage(state.date, state.anchorDate)
+        // A pending jump wins over the settled date, which a stale frame can have reported
+        // over it (see ShowDay).
+        val shownPage = dateToPage(state.dayJump?.date ?: state.date, state.anchorDate)
         if (pagerState.settledPage != shownPage && !pagerState.isScrollInProgress) pagerState.scrollToPage(shownPage)
         snapshotFlow { pagerState.settledPage }.collect { currentOnPageSettled(pageToDate(it, state.anchorDate)) }
     }
-    val currentOnJumpHandled by rememberUpdatedState(onJumpHandled)
-    LaunchedEffect(pagerState, jumpToDate) {
-        if (jumpToDate == null) return@LaunchedEffect
-        pagerState.scrollToPage(dateToPage(jumpToDate, state.anchorDate))
-        currentOnJumpHandled()
+    val currentOnDayJumpLanded by rememberUpdatedState(onDayJumpLanded)
+    LaunchedEffect(pagerState, state.dayJump) {
+        val jump = state.dayJump ?: return@LaunchedEffect
+        // Unconditional: scrollToPage also drops the epoch-day key the pager would otherwise
+        // follow when this state moved the anchor too. Reported even when the pager was
+        // already there, since no settle follows a scroll that didn't move it.
+        pagerState.scrollToPage(dateToPage(jump.date, state.anchorDate))
+        currentOnDayJumpLanded(jump)
     }
     InitialScroll(state.initialFirstVisibleHour, scrollState)
 

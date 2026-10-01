@@ -66,6 +66,15 @@ Interaction rules:
 - Changing selection after sharing keeps the "Share schedule" affordance available from the
   overflow ("Share again") and shows the "changed since you shared" banner.
 - "Today" jumps the pager back to today. The app bar date is the settled page's date.
+- Until today's page has been shown on a given local day (in the device's current zone), every
+  time the app comes to the foreground the day view opens on today, wherever the pager was
+  left — unless a notification's link opened it, which wins for that start. What counts is
+  the pager settling on today (after that jump, a swipe or the Today action), recorded with
+  its wall-clock time (`TodayShownLog`, persisted under `today_last_shown_at_millis` by
+  `TodayShownSideEffects`); after that, starts keep whatever page was left. A start opened by
+  a link to another day, or held on Onboarding, leaves the jump for the next start. Only
+  `MainActivity` starts count (not the ringing `AlarmActivity`), and not one that merely
+  rebuilt it for a configuration change, which would yank away the day a link just opened.
 - Swiping to another day shows that day's selection state (persisted per day). Alarms can be set
   for future days too; the share text uses that day's date.
 - Past events on today are dimmed. Tapping a past event is allowed but alarms in the past are
@@ -709,7 +718,13 @@ NB (PR-11), where the build settled things this section leaves open:
   task gets the new intent before its first composition); `Navigation.kt` takes each once.
   An intent re-delivered from Recents (`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`) is ignored, so a
   "Share update" that cold-started the app doesn't share again when the task is reopened.
-  They are dropped while a required grant is missing.
+  They are dropped while a required grant is missing. The inbox also carries the jump to
+  today while today hasn't been shown yet (`DeepLink.Today`), unless the start came with a
+  link. Every jump is the store's `ShowDay`: it sets the settled date and a pending
+  `AppState.dayJump` in one state, which `DayScreen` scrolls to and reports with
+  `DayJumpLanded`, clearing it. Pending apart from the settled date, it survives both the
+  anchor moving in the same breath and the stale first frame of a day view coming back from
+  Settings, whose settle report would otherwise put the pager back on the old page.
 - WorkManager's merged `ACCESS_NETWORK_STATE` is removed with `tools:node="remove"`; nothing
   uses a network constraint.
 

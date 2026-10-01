@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.time.Duration
+import java.time.Instant
 
 /** The most [BusySync.firstName] holds: it ends up in a calendar event's title. */
 const val BUSY_FIRST_NAME_MAX_LENGTH = 30
@@ -142,6 +143,16 @@ interface SettingsRepository {
 
     /** Records that [permission] has been requested; see [requestedPermissions]. */
     suspend fun markPermissionRequested(permission: String)
+
+    /**
+     * When the day view last showed today's page (see [TodayShownLog]), or null if it never
+     * has. Like [requestedPermissions] it isn't a preference, but it has to outlive the
+     * process: the first start of a day is usually a fresh one.
+     */
+    suspend fun todayLastShownAt(): Instant?
+
+    /** Sets [todayLastShownAt]. */
+    suspend fun recordTodayShown(at: Instant)
 }
 
 /** [SettingsRepository] over the app's preferences DataStore (bound in `di/SettingsModule.kt`). */
@@ -227,6 +238,13 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         dataStore.edit { it[Keys.RequestedPermissions] = it[Keys.RequestedPermissions].orEmpty() + permission }
     }
 
+    override suspend fun todayLastShownAt(): Instant? =
+        dataStore.data.first()[Keys.TodayLastShownAtMillis]?.let(Instant::ofEpochMilli)
+
+    override suspend fun recordTodayShown(at: Instant) {
+        dataStore.edit { it[Keys.TodayLastShownAtMillis] = at.toEpochMilli() }
+    }
+
     private fun Preferences.toSettings() = Settings(
         leadTime = minutes(Keys.LeadTimeMinutes) ?: SettingsDefaults.LeadTime,
         snoozeLength = minutes(Keys.SnoozeMinutes) ?: SettingsDefaults.SnoozeLength,
@@ -270,5 +288,6 @@ class DataStoreSettingsRepository(private val dataStore: DataStore<Preferences>)
         val BusySyncFirstName = stringPreferencesKey("busy_sync_first_name")
         val BusySyncSendText = booleanPreferencesKey("busy_sync_send_text")
         val LoudChangeAlerts = booleanPreferencesKey("loud_change_alerts")
+        val TodayLastShownAtMillis = longPreferencesKey("today_last_shown_at_millis")
     }
 }

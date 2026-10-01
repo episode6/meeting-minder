@@ -7,6 +7,7 @@ import assertk.assertions.isNull
 import assertk.assertions.isSameInstanceAs
 import com.episode6.meetingminder.model.CalendarInfo
 import com.episode6.meetingminder.model.DayEvents
+import com.episode6.meetingminder.model.DayJump
 import com.episode6.meetingminder.model.DayPlan
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.RingingAlarm
@@ -45,6 +46,31 @@ class AppStoreReducerTest {
 
         assertThat(result).isEqualTo(viewing.copy(anchorDate = today.plusDays(1)))
         assertThat(result.settledDate).isEqualTo(today.plusDays(3))
+    }
+
+    @Test
+    fun showDay_settlesOnTheDay_andCountsAJump() {
+        val result = state.reduce(ShowDay(today.plusDays(2))).reduce(ShowDay(today))
+
+        assertThat(result).isEqualTo(state.copy(settledDate = today, dayJump = DayJump(today, id = 2), dayJumps = 2))
+    }
+
+    @Test
+    fun aStaleSettle_afterShowDay_leavesTheJumpPending_untilItLands() {
+        // a day view re-entering composition reports its old page from its first, stale frame
+        val stale = state.reduce(ShowDay(today)).reduce(SetSettledDate(today.minusDays(3)))
+        assertThat(stale.dayJump).isEqualTo(DayJump(today, id = 1))
+
+        val landed = stale.reduce(DayJumpLanded(id = 1))
+
+        assertThat(landed).isEqualTo(state.copy(settledDate = today, dayJumps = 1))
+    }
+
+    @Test
+    fun dayJumpLanded_forAnEarlierJump_isIgnored() {
+        val twoJumps = state.reduce(ShowDay(today.plusDays(1))).reduce(ShowDay(today.plusDays(4)))
+
+        assertThat(twoJumps.reduce(DayJumpLanded(id = 1))).isSameInstanceAs(twoJumps)
     }
 
     @Test

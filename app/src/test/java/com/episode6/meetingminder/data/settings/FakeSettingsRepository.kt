@@ -2,6 +2,7 @@ package com.episode6.meetingminder.data.settings
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.time.Duration
+import java.time.Instant
 
 internal class FakeSettingsRepository(initial: Settings = Settings()) : SettingsRepository {
     override val settings = MutableStateFlow(initial)
@@ -57,5 +58,15 @@ internal class FakeSettingsRepository(initial: Settings = Settings()) : Settings
 
     override suspend fun markPermissionRequested(permission: String) {
         requestedPermissions.value += permission
+    }
+
+    var todayShownAt: Instant? = null
+    var todayShownWrites = 0
+
+    override suspend fun todayLastShownAt(): Instant? = todayShownAt
+
+    override suspend fun recordTodayShown(at: Instant) {
+        todayShownAt = at
+        todayShownWrites++
     }
 }
