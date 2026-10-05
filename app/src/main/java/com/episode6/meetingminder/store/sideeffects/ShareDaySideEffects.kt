@@ -145,7 +145,7 @@ interface ShareDaySideEffects {
                         emit(ShareFinished)
                         emit(SyncBusyCalendar(date, busyRanges, syncOnlySharedAt = now))
                     } else {
-                        emit(SetPendingShare(PendingShare.next(date, text)))
+                        emit(SetPendingShare(PendingShare.next(date, text, ScheduleTextFormatter.subject(date))))
                         // the chooser is on its way; the provider writes happen alongside it
                         // (TODO.md §4.7), never before it, and never when the feature is off
                         if (prefs.busySync.enabled) emit(SyncBusyCalendar(date, busyRanges))

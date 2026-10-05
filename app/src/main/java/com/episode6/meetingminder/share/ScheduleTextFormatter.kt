@@ -21,6 +21,7 @@ import java.util.Locale
 object ScheduleTextFormatter {
 
     private val HeaderDateFormatter = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US)
+    private val SubjectWeekdayMonthFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM", Locale.US)
     private val TimeFormatter = DateTimeFormatter.ofPattern("h:mm", Locale.US)
 
     /**
@@ -81,6 +82,25 @@ object ScheduleTextFormatter {
                 }
             }
         }
+    }
+
+    /**
+     * The subject line that goes out beside the message ("My schedule for Monday, October
+     * 5th, 2026"), which an email app uses and a messaging app ignores. [date] is the day
+     * being shared, never "today": the two differ whenever another day's page is shared.
+     * Like the message it carries no titles. An update re-share gets the same subject on
+     * purpose: its body has no date line, so the subject is what says which day changed,
+     * and an email app that threads by subject files it with the first share.
+     */
+    fun subject(date: LocalDate): String =
+        "My schedule for ${date.format(SubjectWeekdayMonthFormatter)} ${date.dayOfMonth}${ordinalSuffix(date.dayOfMonth)}, ${date.year}"
+
+    private fun ordinalSuffix(day: Int): String = when {
+        day in 11..13 -> "th"
+        day % 10 == 1 -> "st"
+        day % 10 == 2 -> "nd"
+        day % 10 == 3 -> "rd"
+        else -> "th"
     }
 
     /** One range as the share text writes it ("9:00 – 9:30 AM"); the schedule-changed notification and banner use it too. */

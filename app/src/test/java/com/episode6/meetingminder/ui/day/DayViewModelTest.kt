@@ -294,7 +294,7 @@ class DayViewModelTest {
         { createAppStore(this, AppState(anchorDate = today), emptySet()) },
     ) { store ->
         val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
-        val share = PendingShare.next(today, "text")
+        val share = PendingShare.next(today, "text", "subject")
         viewModel.pendingShare.test {
             store.dispatch(SetPendingShare(share))
             assertThat(awaitItem()).isEqualTo(share)
@@ -304,7 +304,7 @@ class DayViewModelTest {
             expectNoEvents()
             assertThat(store.state.pendingShare).isNull()
 
-            val next = PendingShare.next(today, "again")
+            val next = PendingShare.next(today, "again", "subject")
             store.dispatch(SetPendingShare(next))
             assertThat(awaitItem()).isEqualTo(next)
         }
@@ -449,7 +449,7 @@ class DayViewModelTest {
 
     @Test
     fun onShareLaunched_clearsThePendingShare() = runStoreTest(
-        { createAppStore(this, AppState(anchorDate = today, pendingShare = PendingShare.next(today, "text")), emptySet()) },
+        { createAppStore(this, AppState(anchorDate = today, pendingShare = PendingShare.next(today, "text", "subject")), emptySet()) },
     ) { store ->
         val viewModel = DayViewModel(store, clock, FakeSettingsRepository())
         val share = store.state.pendingShare!!

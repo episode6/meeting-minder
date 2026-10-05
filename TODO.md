@@ -597,8 +597,14 @@ Rules: only **selected** events (the ones you're attending), titles never includ
 overlapping ranges **merged** (9:00–9:30 + 9:30–10:00 → 9:00–10:00 AM), all-day events excluded,
 times in the device zone, 12-hour clock with AM/PM only where it changes, "No meetings today" when
 empty. A "changed since you shared" re-share prefixes `Update:` and lists only the ranges. Launched
-with `ShareCompat.IntentBuilder(context).setType("text/plain").setText(text).startChooser()` from
-`Navigation.kt` (never from a receiver: Android 12+ bans notification trampolines). On share we
+with `ShareCompat.IntentBuilder(context).setType("text/plain").setSubject(subject).setText(text).createChooserIntent()`,
+launched for a result from `Navigation.kt` so the wiring layer hears the sheet close (never from a
+receiver: Android 12+ bans notification trampolines). The
+subject is `ScheduleTextFormatter.subject(date)`, "My schedule for Monday, September 14th, 2026":
+the **shared day's** date in full (never "today's" when another day is shared), no titles, the
+same for an update. It is `Intent.EXTRA_SUBJECT`, which an email app uses as the subject line and
+messaging apps ignore (a few other targets read it: a notes app as the note's title, some prepend
+it to the text); it doesn't change which apps the sheet offers. On share we
 record `sharedAt` and `sharedSnapshot` (the busy ranges) in `day_plan` and start monitoring.
 
 We can't know whether the user actually sent anything from the chooser (Android 14's
