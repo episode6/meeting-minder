@@ -40,6 +40,21 @@ class ScheduleTextFormatterTest {
     }
 
     @Test
+    fun subject_namesTheSharedDayInFull() {
+        assertThat(ScheduleTextFormatter.subject(LocalDate.of(2026, 10, 5))).isEqualTo("My schedule for Monday, October 5th, 2026")
+        assertThat(ScheduleTextFormatter.subject(date)).isEqualTo("My schedule for Monday, September 14th, 2026")
+    }
+
+    @Test
+    fun subject_usesTheRightOrdinalSuffix() {
+        fun dayOf(day: Int) = ScheduleTextFormatter.subject(LocalDate.of(2026, 10, day)).substringAfter("October ").substringBefore(",")
+
+        assertThat(listOf(1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 24, 30, 31).map(::dayOf)).containsExactly(
+            "1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "24th", "30th", "31st",
+        )
+    }
+
+    @Test
     fun format_listsMergedRangesWithAmPmElision() {
         val text = ScheduleTextFormatter.format(date, listOf(range(9, 0, 9, 30), range(9, 30, 10, 0), range(12, 0, 13, 0)), zone)
 

@@ -114,6 +114,18 @@ class ShareDaySideEffectsTest {
         val share = (output.single() as SetPendingShare).share
         assertThat(share.date).isEqualTo(today)
         assertThat(share.text).isEqualTo("Mon Sep 14 — I'm in meetings:\n• 9:00 – 9:30 AM\nFree the rest of the day.")
+        assertThat(share.subject).isEqualTo("My schedule for Monday, September 14th, 2026")
+    }
+
+    @Test
+    fun shareDay_ofAnotherDay_namesThatDayInTheSubject_notToday() = runTest {
+        val tomorrow = today.plusDays(1)
+
+        val output = shareDay(FakeDayPlanDao(), FakeChangeSnapshotDao()).output(ShareDay(tomorrow), state = loaded()).toList()
+
+        val share = output.filterIsInstance<SetPendingShare>().single().share
+        assertThat(share.date).isEqualTo(tomorrow)
+        assertThat(share.subject).isEqualTo("My schedule for Tuesday, September 15th, 2026")
     }
 
     @Test

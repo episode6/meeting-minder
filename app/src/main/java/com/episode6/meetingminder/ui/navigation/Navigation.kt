@@ -153,7 +153,7 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
                     viewModel.pendingShare.collect { share ->
                         viewModel.onShareLaunched(share)
                         try {
-                            shareSheet.launch(dayContext.shareScheduleIntent(share.text))
+                            shareSheet.launch(dayContext.shareScheduleIntent(share.text, share.subject))
                         } catch (_: ActivityNotFoundException) {
                             viewModel.onShareSheetClosed()
                         }

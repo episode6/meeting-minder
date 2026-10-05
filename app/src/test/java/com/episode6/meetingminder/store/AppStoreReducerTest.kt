@@ -166,8 +166,8 @@ class AppStoreReducerTest {
 
     @Test
     fun setPendingShare_replacesAnyPendingShare() {
-        val first = PendingShare.next(today, "first")
-        val second = PendingShare.next(today, "second")
+        val first = PendingShare.next(today, "first", "subject")
+        val second = PendingShare.next(today, "second", "subject")
 
         val result = state.reduce(SetPendingShare(first)).reduce(SetPendingShare(second))
 
@@ -184,7 +184,7 @@ class AppStoreReducerTest {
 
     @Test
     fun clearPendingShare_clearsTheMatchingShare_butKeepsANewerOne() {
-        val share = PendingShare.next(today, "text")
+        val share = PendingShare.next(today, "text", "subject")
         val showing = state.copy(pendingShare = share)
 
         assertThat(showing.reduce(ClearPendingShare(share.id)).pendingShare).isNull()

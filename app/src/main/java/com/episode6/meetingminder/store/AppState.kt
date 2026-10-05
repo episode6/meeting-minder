@@ -12,17 +12,19 @@ import com.episode6.meetingminder.permissions.PermissionState
 import java.time.LocalDate
 
 /**
- * [AppState.pendingShare]'s payload: [text] is what `Navigation.kt` hands to
- * [com.episode6.meetingminder.share.shareSchedule] for [date]. [id] is chosen the same way
+ * [AppState.pendingShare]'s payload: [text] and [subject] (an email's subject line, which
+ * names [date]) are what `Navigation.kt` hands to
+ * [com.episode6.meetingminder.share.shareScheduleIntent] for [date]. [id] is chosen the same way
  * as [UiMessage.next], for the same reason: [ClearPendingShare] must clear exactly the
  * share that was launched and never a newer one dispatched in the meantime.
  */
-data class PendingShare(val id: Long, val date: LocalDate, val text: String) {
+data class PendingShare(val id: Long, val date: LocalDate, val text: String, val subject: String) {
     companion object {
         private var lastId = 0L
 
         @Synchronized
-        fun next(date: LocalDate, text: String): PendingShare = PendingShare(id = ++lastId, date = date, text = text)
+        fun next(date: LocalDate, text: String, subject: String): PendingShare =
+            PendingShare(id = ++lastId, date = date, text = text, subject = subject)
     }
 }
 
