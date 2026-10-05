@@ -2,10 +2,10 @@ package com.episode6.meetingminder.share
 
 import android.content.Context
 import android.content.Intent
+import androidx.core.content.IntentCompat
 import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
 import assertk.assertions.isEqualTo
-import assertk.assertions.isNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -15,8 +15,7 @@ class ShareLauncherTest {
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
-    @Suppress("DEPRECATION")
-    private fun Intent.target(): Intent = getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+    private fun Intent.target(): Intent = IntentCompat.getParcelableExtra(this, Intent.EXTRA_INTENT, Intent::class.java)!!
 
     @Test
     fun shareScheduleIntent_isAPlainTextSend_withTheSubjectBesideTheText() {
@@ -24,7 +23,6 @@ class ShareLauncherTest {
 
         assertThat(chooser.action).isEqualTo(Intent.ACTION_CHOOSER)
         val send = chooser.target()
-        assertThat(send).isNotNull()
         // the action and type decide which apps are offered; the subject never narrows them
         assertThat(send.action).isEqualTo(Intent.ACTION_SEND)
         assertThat(send.type).isEqualTo("text/plain")
