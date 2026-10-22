@@ -81,10 +81,13 @@ data class AppState(
     /**
      * A share is under way: from the tap ([ShareStarted], dispatched together with
      * [ShareDay] by [startShare]) until the chooser it opened has closed ([ShareFinished],
-     * from `Navigation.kt`'s activity result) or the share failed before it could open.
-     * No second share starts while this is set, which is what keeps a fast double tap on
-     * "Share schedule" from opening two choosers: the second tap lands long after
-     * [pendingShare] was taken and cleared, so a guard there would not see it.
+     * from `Navigation.kt`'s activity result or from the activity resuming) or the share
+     * failed before it could open. No second share starts while this is set, which is what
+     * keeps a fast double tap on "Share schedule" from opening two choosers: the second tap
+     * lands long after [pendingShare] was taken and cleared, so a guard there would not see
+     * it. It must never depend on the activity result alone: the store outlives the
+     * activity, and a result lost with a torn-down activity would leave this set for the
+     * life of the process (every later tap silently refused).
      */
     val shareInFlight: Boolean = false,
     /**

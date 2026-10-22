@@ -1,5 +1,6 @@
 package com.episode6.meetingminder.store
 
+import android.util.Log
 import com.episode6.redux.Action
 import com.episode6.redux.StoreFlow
 import com.episode6.redux.sideeffects.SideEffect
@@ -16,6 +17,8 @@ import kotlinx.coroutines.flow.shareIn
 import java.time.LocalDate
 
 typealias AppStore = StoreFlow<AppState>
+
+private const val TAG = "MeetingMinderStore"
 
 /**
  * Builds the app store exactly as the graph provides it, so store tests exercise the
@@ -72,7 +75,10 @@ fun createAppStore(
  * with [ShareFinished] once the chooser has closed.
  */
 fun AppStore.startShare(date: LocalDate): Boolean {
-    if (state.shareInFlight) return false
+    if (state.shareInFlight) {
+        Log.i(TAG, "share of $date not started: one is already in flight")
+        return false
+    }
     dispatch(ShareStarted)
     dispatch(ShareDay(date))
     return true

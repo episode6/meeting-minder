@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import com.episode6.redux.sideeffects.SideEffect
 import com.episode6.redux.Action
 import com.episode6.meetingminder.store.ShareDay
+import com.episode6.meetingminder.store.ShareStarted
 import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.isEqualTo
@@ -98,6 +99,24 @@ class NavigationViewModelTest {
 
             assertThat(awaitItem()).isEqualTo(true)
         }
+    }
+
+    // The store outlives the activity, and the share sheet's result (which normally ends the
+    // share) is lost with an activity torn down behind the sheet: a share left in flight
+    // refused every later tap for the life of the process. Resuming means nothing is above
+    // the activity, so it ends the share.
+    @Test
+    fun onResumed_endsAShareStillInFlight() = runStoreTest(
+        { createAppStore(this, AppState(anchorDate = today), emptySet()) },
+    ) { store ->
+        store.dispatch(ShareStarted)
+        advanceUntilIdle()
+        assertThat(store.state.shareInFlight).isEqualTo(true)
+
+        NavigationViewModel(store).onResumed()
+        advanceUntilIdle()
+
+        assertThat(store.state.shareInFlight).isEqualTo(false)
     }
 
     @Test
