@@ -18,6 +18,9 @@ class ScheduleTextFormatterTest {
 
     private fun at(hour: Int, minute: Int = 0, day: LocalDate = date) = day.atTime(hour, minute).toInstant(zone)
 
+    // before every range in these tests, so an update leaves nothing out
+    private val dayStart = at(0)
+
     private fun range(beginHour: Int, beginMinute: Int, endHour: Int, endMinute: Int) =
         BusyRange(at(beginHour, beginMinute), at(endHour, endMinute))
 
@@ -56,7 +59,7 @@ class ScheduleTextFormatterTest {
 
     @Test
     fun format_listsMergedRangesWithAmPmElision() {
-        val text = ScheduleTextFormatter.format(date, listOf(range(9, 0, 9, 30), range(9, 30, 10, 0), range(12, 0, 13, 0)), zone)
+        val text = ScheduleTextFormatter.format(date, listOf(range(9, 0, 9, 30), range(9, 30, 10, 0), range(12, 0, 13, 0)), zone, now = dayStart)
 
         assertThat(text).isEqualTo(
             "Mon Sep 14 — I'm in meetings:\n" +
@@ -68,33 +71,56 @@ class ScheduleTextFormatterTest {
 
     @Test
     fun format_showsBothPeriodsWhenARangeCrossesNoonOrMidnight() {
-        val crossesNoon = ScheduleTextFormatter.format(date, listOf(range(11, 30, 12, 30)), zone)
+        val crossesNoon = ScheduleTextFormatter.format(date, listOf(range(11, 30, 12, 30)), zone, now = dayStart)
         assertThat(crossesNoon).contains("• 11:30 AM – 12:30 PM")
 
         val overnight = BusyRange(at(23, 0), at(1, 0, date.plusDays(1)))
-        val crossesMidnight = ScheduleTextFormatter.format(date, listOf(overnight), zone)
+        val crossesMidnight = ScheduleTextFormatter.format(date, listOf(overnight), zone, now = dayStart)
         assertThat(crossesMidnight).contains("• 11:00 PM – 1:00 AM")
     }
 
     @Test
     fun format_emptyDay_saysNoMeetingsToday() {
-        val text = ScheduleTextFormatter.format(date, emptyList(), zone)
+        val text = ScheduleTextFormatter.format(date, emptyList(), zone, now = dayStart)
 
         assertThat(text).isEqualTo("Mon Sep 14 — I'm in meetings:\nNo meetings today.")
     }
 
     @Test
     fun format_update_prefixesUpdateAndListsOnlyTheRanges() {
-        val text = ScheduleTextFormatter.format(date, listOf(range(9, 0, 9, 30)), zone, isUpdate = true)
+        val text = ScheduleTextFormatter.format(date, listOf(range(9, 0, 9, 30)), zone, now = dayStart, isUpdate = true)
 
         assertThat(text).isEqualTo("Update:\n• 9:00 – 9:30 AM")
+    }
+
+    @Test
+    fun format_update_leavesOutRangesThatHaveEnded_butKeepsOneUnderWay() {
+        val ranges = listOf(range(8, 0, 9, 0), range(9, 30, 10, 30), range(14, 0, 15, 0))
+
+        val text = ScheduleTextFormatter.format(date, ranges, zone, now = at(10), isUpdate = true)
+
+        assertThat(text).isEqualTo("Update:\n• 9:30 – 10:30 AM\n• 2:00 – 3:00 PM")
+    }
+
+    @Test
+    fun format_update_withEveryRangeEnded_evenOneEndingRightNow_saysNoMoreMeetings() {
+        val text = ScheduleTextFormatter.format(date, listOf(range(8, 0, 9, 0)), zone, now = at(9), isUpdate = true)
+
+        assertThat(text).isEqualTo("Update:\nNo more meetings.")
+    }
+
+    @Test
+    fun format_firstShare_keepsRangesThatHaveEnded() {
+        val text = ScheduleTextFormatter.format(date, listOf(range(8, 0, 9, 0)), zone, now = at(10))
+
+        assertThat(text).isEqualTo("Mon Sep 14 — I'm in meetings:\n• 8:00 – 9:00 AM\nFree the rest of the day.")
     }
 
     @Test
     fun format_convertsTimesIntoTheGivenZone() {
         val range = BusyRange(Instant.parse("2026-09-14T13:00:00Z"), Instant.parse("2026-09-14T14:00:00Z"))
 
-        val eastern = ScheduleTextFormatter.format(date, listOf(range), ZoneOffset.ofHours(-4))
+        val eastern = ScheduleTextFormatter.format(date, listOf(range), ZoneOffset.ofHours(-4), now = dayStart)
 
         assertThat(eastern).contains("• 9:00 – 10:00 AM")
     }

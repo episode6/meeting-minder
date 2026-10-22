@@ -80,7 +80,9 @@ private const val TAG = "MeetingMinderShare"
  * §5 PR-12 — so a cold-process "Share update" writes the same baseline a warm one would),
  * because "Share update" can arrive from a notification into a cold process whose store
  * hasn't loaded anything yet. A day that was already shared and has changed since (recorded
- * changes, or busy ranges that no longer match the last share) gets the `Update:` text. If
+ * changes, or busy ranges that no longer match the last share) gets the `Update:` text,
+ * minus the meetings that have already ended (the baseline, `shared_snapshot` and the busy
+ * blocks still get every range). If
  * the day can't be read at all, the share still goes out but no baseline is kept, rather
  * than one that would report every meeting as new.
  *
@@ -125,8 +127,9 @@ interface ShareDaySideEffects {
                         changeSnapshotDao.forDate(date)?.let { decodeScheduleChanges(date, it.changesJson) }.orEmpty().isNotEmpty() ||
                             plan.sharedSnapshot?.let(::decodeBusyRanges) != busyRanges
                         )
-                    val text = ScheduleTextFormatter.format(date, busyRanges, clock.zone, isUpdate = isUpdate)
-                    val now = clock.instant().toEpochMilli()
+                    val shareTime = clock.instant()
+                    val text = ScheduleTextFormatter.format(date, busyRanges, clock.zone, now = shareTime, isUpdate = isUpdate)
+                    val now = shareTime.toEpochMilli()
 
                     dayPlanDao.markShared(date, now, encodeBusyRanges(busyRanges))
                     if (events != null) {

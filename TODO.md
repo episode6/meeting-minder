@@ -596,7 +596,9 @@ Free the rest of the day.
 Rules: only **selected** events (the ones you're attending), titles never included, adjacent or
 overlapping ranges **merged** (9:00–9:30 + 9:30–10:00 → 9:00–10:00 AM), all-day events excluded,
 times in the device zone, 12-hour clock with AM/PM only where it changes, "No meetings today" when
-empty. A "changed since you shared" re-share prefixes `Update:` and lists only the ranges. Launched
+empty. A "changed since you shared" re-share prefixes `Update:` and lists only the ranges,
+leaving out those that have already ended ("No more meetings." when none are left;
+`shared_snapshot` and the busy blocks keep them all). Launched
 with `ShareCompat.IntentBuilder(context).setType("text/plain").setSubject(subject).setText(text).createChooserIntent()`,
 launched for a result from `Navigation.kt` so the wiring layer hears the sheet close (never from a
 receiver: Android 12+ bans notification trampolines). The

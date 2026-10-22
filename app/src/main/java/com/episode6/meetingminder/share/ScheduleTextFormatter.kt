@@ -1,6 +1,7 @@
 package com.episode6.meetingminder.share
 
 import com.episode6.meetingminder.model.BusyRange
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -59,19 +60,26 @@ object ScheduleTextFormatter {
      * Update:
      * • 9:00 – 9:30 AM
      * ```
-     * with no header date or closing line. Times are in [zone], 12-hour with AM/PM shown
-     * only where it changes within a range (an overnight range shows both). Ranges are
-     * **not** clipped to [date]: a midnight-spanning event can be selected on either of its
-     * days, and whichever page it was picked on shares its whole span ("11:00 PM – 1:00 AM"
-     * under Tuesday's header when it was picked on Tuesday). Readers of `shared_snapshot`
-     * (the change banner, `monitor/ChangeDetector`) compare the same unclipped ranges.
+     * with no header date or closing line, and without the ranges that ended by [now]: the
+     * partner already has the first message, so an update lists only what is still ahead
+     * (a range under way stays), with "No more meetings." when nothing is left. Only the
+     * text drops them — the caller's `shared_snapshot` and busy blocks keep every range, so
+     * a finished meeting neither reads as a change nor leaves the busy calendar. Times are
+     * in [zone], 12-hour with AM/PM shown only where it changes within a range (an
+     * overnight range shows both). Ranges are **not** clipped to [date]: a
+     * midnight-spanning event can be selected on either of its days, and whichever page it
+     * was picked on shares its whole span ("11:00 PM – 1:00 AM" under Tuesday's header when
+     * it was picked on Tuesday). Readers of `shared_snapshot` (the change banner,
+     * `monitor/ChangeDetector`) compare the same unclipped ranges.
      */
-    fun format(date: LocalDate, busyRanges: List<BusyRange>, zone: ZoneId, isUpdate: Boolean = false): String {
+    fun format(date: LocalDate, busyRanges: List<BusyRange>, zone: ZoneId, now: Instant, isUpdate: Boolean = false): String {
         val merged = merge(busyRanges)
         return buildString {
             if (isUpdate) {
                 append("Update:")
-                for (range in merged) append("\n• ").append(formatRange(range, zone))
+                val remaining = merged.filter { it.end > now }
+                if (remaining.isEmpty()) append("\nNo more meetings.")
+                for (range in remaining) append("\n• ").append(formatRange(range, zone))
             } else {
                 append(date.format(HeaderDateFormatter)).append(" — I'm in meetings:")
                 if (merged.isEmpty()) {
