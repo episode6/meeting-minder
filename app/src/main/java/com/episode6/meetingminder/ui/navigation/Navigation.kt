@@ -67,7 +67,8 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
     val startDestination = remember { if (requiredPermissionsGranted) Route.Day else Route.Onboarding }
 
     // Auto-revoke/hibernation and a trip to system Settings can change grants without any
-    // action of ours, so re-check on every resume, app-wide (not just while Onboarding is shown).
+    // action of ours, so re-check on every resume, app-wide (not just while Onboarding is
+    // shown); the same resume ends any share still in flight (see NavigationViewModel.onResumed).
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, navigationViewModel) {
         val observer = LifecycleEventObserver { _, event ->
@@ -144,7 +145,9 @@ fun MeetingMinderNavigation(deepLinks: DeepLinkInbox) {
             // side effect that formats the text and records the share. It is launched for
             // a result only to hear the sheet close: that ends the share in flight
             // (AppState.shareInFlight), which is what keeps a second tap from opening a
-            // second chooser while the first is still coming up.
+            // second chooser while the first is still coming up. The result is not the
+            // only thing that ends it — NavigationViewModel.onResumed does too, since a
+            // result can be lost with an activity torn down behind the sheet.
             val shareSheet = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
                 viewModel.onShareSheetClosed()
             }

@@ -79,7 +79,12 @@ data class ClearPendingShare(val id: Long) : UpdateStateAction
 /** A share has started ([AppState.shareInFlight]); dispatched with [ShareDay] by [startShare], never on its own. */
 data object ShareStarted : UpdateStateAction
 
-/** The share sheet has closed, or the share failed before it could open: the next share may start. */
+/**
+ * The next share may start: the share sheet has closed, the share failed before it could
+ * open, or the activity resumed (`NavigationViewModel.onResumed`: nothing can be above it,
+ * which is what recovers from a sheet result the activity never received). A no-op when
+ * nothing is in flight.
+ */
 data object ShareFinished : UpdateStateAction
 
 /**

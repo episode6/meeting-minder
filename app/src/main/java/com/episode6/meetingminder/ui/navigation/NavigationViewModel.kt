@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.episode6.meetingminder.store.AppStore
 import com.episode6.meetingminder.store.DismissAlarm
 import com.episode6.meetingminder.store.PermissionsMaybeChanged
+import com.episode6.meetingminder.store.ShareFinished
 import com.episode6.meetingminder.store.ShowDay
 import com.episode6.meetingminder.store.startShare
 import com.episode6.redux.mapStore
@@ -45,8 +46,17 @@ class NavigationViewModel(private val store: AppStore) : ViewModel() {
      * Auto-revoke/hibernation and a trip to system Settings can change grants without any
      * action of ours, so the wiring layer calls this on every `ON_RESUME`, app-wide (not
      * just while Onboarding is shown).
+     *
+     * It also ends any share still in flight ([ShareFinished]): the share sheet is an
+     * activity above ours, so our activity resuming means no sheet is up any more. The
+     * result that normally ends the share (`Navigation.kt`'s launcher) can be lost when
+     * the activity is torn down behind the sheet, and the store outlives the activity, so
+     * without this a lost result left `AppState.shareInFlight` set for the life of the
+     * process and every later "Share schedule" tap silently did nothing. A fast double tap
+     * is still caught: nothing resumes between the two taps.
      */
     fun onResumed() {
+        store.dispatch(ShareFinished)
         store.dispatch(PermissionsMaybeChanged)
     }
 
