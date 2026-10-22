@@ -53,7 +53,11 @@ class NavigationViewModel(private val store: AppStore) : ViewModel() {
      * the activity is torn down behind the sheet, and the store outlives the activity, so
      * without this a lost result left `AppState.shareInFlight` set for the life of the
      * process and every later "Share schedule" tap silently did nothing. A fast double tap
-     * is still caught: nothing resumes between the two taps.
+     * is still caught: nothing resumes between the two taps. The one exception is a cold
+     * start from a notification's "Share update" ([DeepLink.Share]): its [onDeepLink] can
+     * run before the activity's first `ON_RESUME`, so that resume ends the share while
+     * `ShareDaySideEffects` is still formatting the text, and the guard is down until the
+     * chooser opens. Accepted: no tap lands during a cold start.
      */
     fun onResumed() {
         store.dispatch(ShareFinished)
