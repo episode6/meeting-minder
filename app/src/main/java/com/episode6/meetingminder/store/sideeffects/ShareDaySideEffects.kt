@@ -128,7 +128,7 @@ interface ShareDaySideEffects {
                             plan.sharedSnapshot?.let(::decodeBusyRanges) != busyRanges
                         )
                     val shareTime = clock.instant()
-                    val text = ScheduleTextFormatter.format(date, busyRanges, clock.zone, isUpdate = isUpdate, now = shareTime)
+                    val text = ScheduleTextFormatter.format(date, busyRanges, clock.zone, now = shareTime, isUpdate = isUpdate)
                     val now = shareTime.toEpochMilli()
 
                     dayPlanDao.markShared(date, now, encodeBusyRanges(busyRanges))

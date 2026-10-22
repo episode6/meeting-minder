@@ -253,6 +253,20 @@ class ShareDaySideEffectsTest {
     }
 
     @Test
+    fun reShare_update_withBusySyncOn_stillSyncsTheMeetingsThatHaveEnded() = runTest {
+        val dayPlanDao = FakeDayPlanDao(
+            plans = listOf(DayPlanEntity(today, sharedAt = 1_000, sharedSnapshot = encodeBusyRanges(listOf(BusyRange(dentist.begin, dentist.end))))),
+            selections = listOf(selection(dentist), selection(standup)),
+        )
+
+        val output = shareDay(dayPlanDao, FakeChangeSnapshotDao(), busySyncOn()).output(ShareDay(today), state = loaded(dentist, standup)).toList()
+
+        assertThat((output.first() as SetPendingShare).share.text).isEqualTo("Update:\n• 9:00 – 9:30 AM")
+        assertThat(output.filterIsInstance<SyncBusyCalendar>())
+            .containsExactly(SyncBusyCalendar(today, listOf(BusyRange(dentist.begin, dentist.end), BusyRange(standup.begin, standup.end))))
+    }
+
+    @Test
     fun reShare_withRecordedChanges_sendsAnUpdate_evenIfTheBusyRangesMatch() = runTest {
         val dayPlanDao = FakeDayPlanDao(
             plans = listOf(DayPlanEntity(today, sharedAt = 1_000, sharedSnapshot = encodeBusyRanges(listOf(BusyRange(standup.begin, standup.end))))),
