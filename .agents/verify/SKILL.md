@@ -273,7 +273,8 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   notification within about a minute, and the banner on the day view.
   `adb shell dumpsys jobscheduler | grep -A30 $PKG` shows the content trigger (a job with a
   `content://com.android.calendar` trigger); `adb shell cmd jobscheduler run -f $PKG <jobId>`
-  forces a check. Tapping "Share update" should open the chooser with `Update:` text.
+  forces a check. Tapping "Share update" should open the chooser with `Update:` text, listing
+  only the selected ranges that haven't ended yet ("No more meetings." when none are left).
 - The loud schedule-change alert: turn on Settings → Schedule changes → "Loud schedule-change
   alerts" (opt-in, off by default; with it off the same steps must only post the ordinary,
   audible `schedule_updates` notification), share today, press Home (nothing rings while `MainActivity`

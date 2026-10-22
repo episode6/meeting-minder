@@ -91,6 +91,29 @@ class ScheduleTextFormatterTest {
     }
 
     @Test
+    fun format_update_leavesOutRangesThatHaveEnded_butKeepsOneUnderWay() {
+        val ranges = listOf(range(8, 0, 9, 0), range(9, 30, 10, 30), range(14, 0, 15, 0))
+
+        val text = ScheduleTextFormatter.format(date, ranges, zone, isUpdate = true, now = at(10))
+
+        assertThat(text).isEqualTo("Update:\n• 9:30 – 10:30 AM\n• 2:00 – 3:00 PM")
+    }
+
+    @Test
+    fun format_update_withEveryRangeEnded_saysNoMoreMeetings() {
+        val text = ScheduleTextFormatter.format(date, listOf(range(8, 0, 9, 0)), zone, isUpdate = true, now = at(9))
+
+        assertThat(text).isEqualTo("Update:\nNo more meetings.")
+    }
+
+    @Test
+    fun format_firstShare_keepsRangesThatHaveEnded() {
+        val text = ScheduleTextFormatter.format(date, listOf(range(8, 0, 9, 0)), zone, now = at(10))
+
+        assertThat(text).isEqualTo("Mon Sep 14 — I'm in meetings:\n• 8:00 – 9:00 AM\nFree the rest of the day.")
+    }
+
+    @Test
     fun format_convertsTimesIntoTheGivenZone() {
         val range = BusyRange(Instant.parse("2026-09-14T13:00:00Z"), Instant.parse("2026-09-14T14:00:00Z"))
 
