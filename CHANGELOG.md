@@ -1,6 +1,8 @@
 # Meeting Minder Changelog
 
-### v1.0.60 - Unreleased
+### v1.0.70 - Unreleased
+
+### v1.0.60 - 2026-10-23
 
 - An "Update:" re-share (the text sent when a day changed since you shared it) no longer lists meetings that have already ended: your partner already has those from the first message, so the update lists only what's still ahead, including a meeting under way, and says "No more meetings." when nothing is left. A first share (and "Share again" with nothing changed) still lists the whole day. Only the text changes: the recorded share (`shared_snapshot`, which the change banner compares against) and the busy-calendar blocks keep every range, so a meeting ending is never read as a change and its block stays on the calendar.
 
