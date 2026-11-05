@@ -44,7 +44,9 @@ fun rsvpDecision(event: CalendarEvent): RsvpState = when {
     event.isOrganizer -> RsvpState.NOT_APPLICABLE
     event.selfStatus == SelfStatus.ACCEPTED -> RsvpState.NOT_APPLICABLE
     // a decline is the user's answer, given in Google Calendar; we never un-respond on their
-    // behalf (§4.6), so a selection they declined after selecting it keeps its alarm and nothing else
+    // behalf (§4.6). A selection declined after it was picked is dropped, alarm and all, by the
+    // automatic `MaintainAlarms` (alarm/AlarmMaintainer); this row only covers a "Set alarms"
+    // tap that gets there first
     event.selfStatus == SelfStatus.DECLINED -> RsvpState.NOT_APPLICABLE
     // the repository filters cancelled occurrences out, but a cancelled one must never be
     // answered (the exception insert would also write STATUS = CONFIRMED for it)

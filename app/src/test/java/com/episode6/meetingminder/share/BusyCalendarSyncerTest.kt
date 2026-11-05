@@ -314,4 +314,57 @@ class BusyCalendarSyncerTest {
         assertThat(repository.deletedEventIds).containsExactly(1L)
         assertThat(dao.entries).containsExactly(row(100, ten, eleven).copy(title = "Geoff busy"))
     }
+
+    // --- trim: a declined meeting's time taken back out ---
+
+    @Test
+    fun trim_cutsTheRemovedTime_keepingWhatAnotherSelectionStillCovers_andLeavesOtherBlocksAlone() = runTest {
+        val tenThirty = ten.plusSeconds(30 * 60)
+        // 10–11 is the standup (10–10:30) merged with the declined review (10:15–11); 12–1 is untouched
+        seed(row(1, ten, eleven), row(2, noon, one))
+        repository.nextBusyBlockId = 100
+
+        val result = syncer.trim(today, remove = listOf(BusyRange(ten.plusSeconds(15 * 60), eleven)), keep = listOf(BusyRange(ten, tenThirty)))
+
+        assertThat(result).isEqualTo(BusySyncResult.Synced("Family", inserted = 1, deleted = 1))
+        assertThat(repository.deletedEventIds).containsExactly(1L)
+        assertThat(repository.busyBlockInserts.map { it.range }).containsExactly(BusyRange(ten, tenThirty))
+        assertThat(dao.entries).containsExactly(row(2, noon, one), row(100, ten, tenThirty))
+    }
+
+    @Test
+    fun trim_aBlockCoveredWhole_isDeleted_andNothingIsInserted() = runTest {
+        seed(row(1, ten, eleven))
+
+        val result = syncer.trim(today, remove = listOf(BusyRange(ten, eleven)), keep = emptyList())
+
+        assertThat(result).isEqualTo(BusySyncResult.Synced("Family", inserted = 0, deleted = 1))
+        assertThat(repository.busyBlockInserts).isEmpty()
+        assertThat(dao.entries).isEmpty()
+    }
+
+    @Test
+    fun trim_withNothingToCut_writesNothing() = runTest {
+        seed(row(1, ten, eleven))
+
+        // the removed time is elsewhere, or still covered by a kept selection
+        assertThat(syncer.trim(today, remove = listOf(BusyRange(noon, one)), keep = emptyList())).isEqualTo(BusySyncResult.Skipped)
+        assertThat(syncer.trim(today, remove = listOf(BusyRange(ten, eleven)), keep = listOf(BusyRange(ten, eleven)))).isEqualTo(BusySyncResult.Skipped)
+
+        assertThat(repository.deletedEventIds).isEmpty()
+        assertThat(repository.busyBlockInserts).isEmpty()
+        assertThat(dao.entries).containsExactly(row(1, ten, eleven))
+    }
+
+    @Test
+    fun trim_skipped_whenTheDayIsNoLongerShared_orTheFeatureIsOff() = runTest {
+        seed(row(1, ten, eleven), row(2, ten, eleven, date = tomorrow))
+        dayPlanDao.setShared(today, sharedAt = null, sharedSnapshot = null)
+        assertThat(syncer.trim(today, remove = listOf(BusyRange(ten, eleven)), keep = emptyList())).isEqualTo(BusySyncResult.Skipped)
+
+        settings.settings.value = Settings(busySync = BusySync(enabled = false, calendarId = family.id))
+        assertThat(syncer.trim(tomorrow, remove = listOf(BusyRange(ten, eleven)), keep = emptyList())).isEqualTo(BusySyncResult.Skipped)
+
+        assertThat(repository.deletedEventIds).isEmpty()
+    }
 }

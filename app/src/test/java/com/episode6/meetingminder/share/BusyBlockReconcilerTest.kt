@@ -152,4 +152,34 @@ class BusyBlockReconcilerTest {
 
         assertThat(plan).isEqualTo(BusyBlockPlan(keep = listOf(named), delete = emptyList(), insert = emptyList()))
     }
+
+    // --- minusRanges ---
+
+    @Test
+    fun minusRanges_leavesAnUntouchedRangeExactlyAsItWas() {
+        assertThat(listOf(BusyRange(ten, eleven)).minusRanges(listOf(BusyRange(noon, one)))).containsExactly(BusyRange(ten, eleven))
+        // touching end to end is not overlapping
+        assertThat(listOf(BusyRange(ten, eleven)).minusRanges(listOf(BusyRange(eleven, noon)))).containsExactly(BusyRange(ten, eleven))
+    }
+
+    @Test
+    fun minusRanges_aCutInside_leavesThePartsEitherSide_andACutOverTheWhole_dropsIt() {
+        val tenThirty = ten.plusSeconds(30 * 60)
+        val tenFortyFive = ten.plusSeconds(45 * 60)
+
+        assertThat(listOf(BusyRange(ten, eleven)).minusRanges(listOf(BusyRange(tenThirty, tenFortyFive))))
+            .containsExactly(BusyRange(ten, tenThirty), BusyRange(tenFortyFive, eleven))
+        assertThat(listOf(BusyRange(ten, eleven), BusyRange(noon, one)).minusRanges(listOf(BusyRange(ten, noon))))
+            .containsExactly(BusyRange(noon, one))
+    }
+
+    @Test
+    fun minusRanges_overlappingCuts_andAnEmptyCutList() {
+        val tenThirty = ten.plusSeconds(30 * 60)
+
+        assertThat(listOf(BusyRange(ten, one)).minusRanges(listOf(BusyRange(tenThirty, noon), BusyRange(eleven, noon))))
+            .containsExactly(BusyRange(ten, tenThirty), BusyRange(noon, one))
+        assertThat(listOf(BusyRange(ten, eleven)).minusRanges(emptyList())).containsExactly(BusyRange(ten, eleven))
+        assertThat(emptyList<BusyRange>().minusRanges(listOf(BusyRange(ten, eleven)))).isEmpty()
+    }
 }

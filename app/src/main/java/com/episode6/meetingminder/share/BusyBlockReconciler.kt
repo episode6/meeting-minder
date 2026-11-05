@@ -81,3 +81,30 @@ fun List<BusyRange>.clipToDay(date: LocalDate, zone: ZoneId): List<BusyRange> {
 /** The row's times as the [BusyRange] a share computes, for exact-instant comparison. */
 val BusyBlockEntity.range: BusyRange
     get() = BusyRange(Instant.ofEpochMilli(beginMillis), Instant.ofEpochMilli(endMillis))
+
+/**
+ * [this] with every instant covered by [cuts] taken out, each range on its own and in
+ * order: a range no cut touches comes back exactly as it was (so a reconcile keeps its
+ * row), one a cut lands inside comes back as the part before and the part after it, and
+ * one a cut covers whole is dropped. Used by [BusyCalendarSyncer.trim] to take a declined
+ * meeting's time out of a day's blocks without re-sharing it.
+ */
+fun List<BusyRange>.minusRanges(cuts: List<BusyRange>): List<BusyRange> {
+    val sortedCuts = ScheduleTextFormatter.merge(cuts)
+    return flatMap { range ->
+        var pieces = listOf(range)
+        for (cut in sortedCuts) {
+            pieces = pieces.flatMap { piece ->
+                if (cut.end <= piece.begin || cut.begin >= piece.end) {
+                    listOf(piece)
+                } else {
+                    listOfNotNull(
+                        BusyRange(piece.begin, cut.begin).takeIf { cut.begin > piece.begin },
+                        BusyRange(cut.end, piece.end).takeIf { cut.end < piece.end },
+                    )
+                }
+            }
+        }
+        pieces
+    }
+}

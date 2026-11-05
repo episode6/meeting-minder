@@ -169,4 +169,15 @@ class DayPlanDaoTest {
         assertThat(dao.clearSharedIfAt(today, sharedAt = 9_000)).isEqualTo(1)
         assertThat(dao.observeDayPlans().first()).containsExactly(DayPlanEntity(today, alarmsSetAt = 5_000))
     }
+
+    @Test
+    fun selectedEventsEndingAfter_findsEveryDaysSelectionsStillRunning_andNoEndedOne() = runTest {
+        val ended = standup.copy(eventId = 2, endMillis = 1_500)
+        val tomorrows = standup.copy(date = today.plusDays(1), beginMillis = 90_000, endMillis = 91_000)
+        dao.upsertSelectedEvent(standup)
+        dao.upsertSelectedEvent(ended)
+        dao.upsertSelectedEvent(tomorrows)
+
+        assertThat(dao.selectedEventsEndingAfter(1_500).sortedBy { it.date }).containsExactly(standup, tomorrows)
+    }
 }
