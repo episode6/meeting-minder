@@ -292,7 +292,8 @@ class AlarmMaintainerTest {
 
         assertThat(plan.drop).containsExactly(selectionFor(standup))
         assertThat(plans.selectionsFlow.value).isEmpty()
-        assertThat(repository.eventQueries.map { it.first }).containsExactly(today.minusDays(1), today, today.plusDays(1))
+        // no armed row on the day, so no neighbours: the decline check only needs the pick's own day
+        assertThat(repository.eventQueries.map { it.first }).containsExactly(today)
     }
 
     // --- the busy calendar of a shared day ---
@@ -307,7 +308,7 @@ class AlarmMaintainerTest {
         BusyBlockEntity(eventId = eventId, date = today, calendarId = family.id, beginMillis = begin.toEpochMilli(), endMillis = end.toEpochMilli())
 
     /** Standup 10–10:30, review 10:15–11 and lunch 12–1, all shared: the calendar holds 10–11 and 12–1. */
-    private inner class SharedDay(reviewSelectedAtShare: Boolean = true) {
+    private inner class SharedDay(reviewSelectedAtShare: Boolean = true, reviewInBaseline: Boolean = true) {
         val standup = event(1, at(10), at(10, 30))
         val review = event(2, at(10, 15), at(11))
         val lunch = event(3, at(12), at(13))
@@ -326,7 +327,7 @@ class AlarmMaintainerTest {
                     date = today,
                     takenAt = 1,
                     eventsJson = encodeChangeSnapshotEvents(
-                        listOf(standup, review, lunch),
+                        listOfNotNull(standup, review.takeIf { reviewInBaseline }, lunch),
                         setOfNotNull(standup.key, review.key.takeIf { reviewSelectedAtShare }, lunch.key),
                     ),
                 ),
@@ -349,6 +350,18 @@ class AlarmMaintainerTest {
         assertThat(day.repository.deletedEventIds).containsExactly(901L)
         assertThat(day.repository.busyBlockInserts.map { it.range }).containsExactly(BusyRange(at(10), at(10, 30)))
         assertThat(day.blocks.entries).containsExactly(block(100, at(10), at(10, 30)), block(902, at(12), at(13)))
+        assertThat(day.plans.selectionsFlow.value).containsExactly(selectionFor(day.standup), selectionFor(day.lunch))
+    }
+
+    @Test
+    fun maintain_aDeclinedMeetingThatAppearedAfterTheShare_leavesTheBusyCalendarAlone() = runTest {
+        // not in the baseline at all: added to the calendar after the share, then picked
+        val day = SharedDay(reviewInBaseline = false)
+
+        day.maintain()
+
+        assertThat(day.repository.deletedEventIds).isEmpty()
+        assertThat(day.repository.busyBlockInserts).isEmpty()
         assertThat(day.plans.selectionsFlow.value).containsExactly(selectionFor(day.standup), selectionFor(day.lunch))
     }
 

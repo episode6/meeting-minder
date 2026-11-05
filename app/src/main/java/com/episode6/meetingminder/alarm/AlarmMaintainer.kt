@@ -44,8 +44,10 @@ data class AlarmMaintenance(
     /** Rows that only need their denormalised copy refreshed, without touching the alarm. */
     val refresh: List<ScheduledAlarmEntity> = emptyList(),
     /**
-     * Selections whose meeting is now cancelled or declined by me: deleted, with their
-     * time taken out of the day's busy blocks first (`BusyCalendarSyncer.trim`).
+     * Selections whose meeting is now declined by me: deleted, with their time taken out of
+     * the day's busy blocks first (`BusyCalendarSyncer.trim`). (A `CANCELED` event counts
+     * too, but the repository filters those out, so an organizer's cancellation reads as
+     * absent and keeps its selection, like its alarm.)
      */
     val drop: List<SelectedEventEntity> = emptyList(),
 ) {
@@ -75,12 +77,13 @@ data class AlarmMaintenance(
  *    copy is refreshed), as the "Set alarms" reconcile does.
  *
  * And for each of [selections] (armed or not) whose meeting hasn't ended, by the same
- * [fresh] read: one now cancelled or declined by me is [dropped][AlarmMaintenance.drop].
- * A declined chip can't be tapped, so without this nothing could deselect it, and its
- * stored time would keep going out in the share text and the busy-calendar sync. An
- * absent event keeps its selection, as it keeps its alarm. The change banner still
- * reports the decline: the differ reads "selected" from the share's baseline, not from
- * the selection.
+ * [fresh] read: one now declined by me is [dropped][AlarmMaintenance.drop]. A declined
+ * chip can't be tapped, so without this nothing could deselect it, and its stored time
+ * would keep going out in the share text and the busy-calendar sync. An absent event —
+ * which is how an organizer's cancellation arrives, the repository filtering `CANCELED`
+ * occurrences out — keeps its selection, as it keeps its alarm, until the "Set alarms"
+ * reconcile drops it as vanished. The change banner still reports the decline: the
+ * differ reads "selected" from the share's baseline, not from the selection.
  *
  * Settings' test alarm and a schedule-change alert ([isSyntheticAlarmEvent]) are never touched.
  */
@@ -140,19 +143,23 @@ private val CalendarEvent.notAttending: Boolean get() = status == EventStatus.CA
  * Each armed row's day is read with the day either side of it — a zone change can move an
  * occurrence across midnight — from every calendar, whatever the Settings filter says: the
  * alarm was armed on purpose, and hiding its calendar later mustn't read as the event
- * vanishing. Without calendar access nothing is read or changed. The reads can be
+ * vanishing. A day with selections but no armed row is read on its own: the decline check
+ * doesn't need the neighbours (a pick whose meeting moved off its day just reads as absent
+ * and is kept). Without calendar access nothing is read or changed. The reads can be
  * cancelled; the writes can't, so a cancelled run never leaves a row re-timed in Room but
- * not in `AlarmManager`. A cancelled row whose selection wasn't dropped and a re-timed row
- * the OS refuses to arm (marked `CANCELLED`) both clear their day's `alarms_set_at`, so it goes back to "Set alarms", as
- * the reconcile does whenever the armed set stops matching the selection.
+ * not in `AlarmManager` — and that includes the busy-block trim's provider reads and writes,
+ * which run with the writes: a half-applied trim is worse than a late one, so once the
+ * writes start a newer `CalendarContentChanged` waits for them. A cancelled row whose
+ * selection wasn't dropped and a re-timed row the OS refuses to arm (marked `CANCELLED`)
+ * both clear their day's `alarms_set_at`, so it goes back to "Set alarms", as the reconcile
+ * does whenever the armed set stops matching the selection.
  *
- * A selection whose meeting was declined or cancelled ([AlarmMaintenance.drop]) has its time
- * taken out of the day's busy blocks ([BusyCalendarSyncer.trim]) before it is deleted, so
- * the partner's calendar loses the meeting without the day being re-shared; the time cut
- * is what the share wrote for it (the baseline's time, or the stored one when the baseline
- * doesn't have it), minus whatever the day's other selections still cover. A trim that
- * fails keeps the selection for the next pass to try again. A day left with nothing
- * selected goes back to "nothing picked", as the "Set alarms" reconcile's does.
+ * A selection whose meeting was declined ([AlarmMaintenance.drop]) has its time taken out of
+ * the day's busy blocks ([BusyCalendarSyncer.trim]) before it is deleted, so the partner's
+ * calendar loses the meeting without the day being re-shared; the time cut is what the share
+ * wrote for it, minus whatever the day's other selections still cover (see [trimBusyBlocks]).
+ * A trim that fails keeps the selection for the next pass to try again. A day left with
+ * nothing selected goes back to "nothing picked", as the "Set alarms" reconcile's does.
  */
 @Inject
 @SingleIn(AppScope::class)
@@ -173,15 +180,15 @@ class AlarmMaintainer(
     suspend fun maintain(): AlarmMaintenance = mutex.withLock {
         if (!permissionChecker.currentState().calendarGranted) return@withLock AlarmMaintenance()
         val now = clock.instant()
-        val armed = alarmDao.allScheduled().filter { !isSyntheticAlarmEvent(it.eventId) && it.endMillis > now.toEpochMilli() }
-        val selections = dayPlanDao.selectedEventsEndingAfter(now.toEpochMilli())
+        val nowMillis = now.toEpochMilli()
+        val armed = alarmDao.allScheduled().filter { !isSyntheticAlarmEvent(it.eventId) && it.endMillis > nowMillis }
+        val selections = dayPlanDao.selectedEventsEndingAfter(nowMillis)
         if (armed.isEmpty() && selections.isEmpty()) return@withLock AlarmMaintenance()
         val fresh = try {
             val everyCalendar = CalendarFilter.Only(repository.calendars().mapTo(mutableSetOf()) { it.id })
-            (armed.map { it.date } + selections.map { it.date })
-                .flatMapTo(sortedSetOf()) { listOf(it.minusDays(1), it, it.plusDays(1)) }
-                .flatMap { day -> repository.eventsOn(day, everyCalendar) }
-                .associateBy { it.key }
+            val days = armed.flatMapTo(sortedSetOf()) { listOf(it.date.minusDays(1), it.date, it.date.plusDays(1)) } +
+                selections.map { it.date }
+            days.sorted().flatMap { day -> repository.eventsOn(day, everyCalendar) }.associateBy { it.key }
         } catch (e: SecurityException) {
             Log.w(TAG, "calendar access lost; alarms left as they are", e)
             return@withLock AlarmMaintenance()
@@ -224,16 +231,23 @@ class AlarmMaintainer(
 
     /**
      * Takes [dropping]'s time out of [date]'s busy blocks; false when that failed, so the
-     * selections stay for the next pass. A selection the share didn't include (picked after
-     * it: in the baseline, but not selected there) has nothing on the calendar to take out.
+     * selections stay for the next pass. The time cut is the baseline's time for a key
+     * selected there. A key the baseline has unselected was picked after the share, and one
+     * it doesn't have at all is a meeting that appeared after the share (the baseline holds
+     * every event the share read): neither is on the calendar, so neither cuts anything.
+     * Only a day shared without a baseline (the share couldn't read the day) falls back to
+     * the stored time. Known gap: a pick on a calendar hidden before the share went out at
+     * its stored time but is absent from the filtered baseline, so its block stays until
+     * the next share.
      */
     private suspend fun trimBusyBlocks(date: LocalDate, dropping: List<SelectedEventEntity>, fresh: Map<EventKey, CalendarEvent>): Boolean {
-        val baseline = changeSnapshotDao.forDate(date)?.baseline().orEmpty().associateBy { it.key }
+        val snapshot = changeSnapshotDao.forDate(date)
+        val baseline = snapshot?.baseline().orEmpty().associateBy { it.key }
         val remove = dropping.mapNotNull { selection ->
             val was = baseline[selection.key]
             when {
-                was == null -> selection.storedRange
-                was.selected -> BusyRange(was.begin, was.end)
+                snapshot == null -> selection.storedRange
+                was?.selected == true -> BusyRange(was.begin, was.end)
                 else -> null
             }
         }

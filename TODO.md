@@ -57,8 +57,8 @@ Interaction rules:
 - Tapping a chip toggles selection with a haptic tick. Declined/cancelled chips are not selectable
   (tap does nothing; long-press still opens the sheet, so a declined invite can be re-accepted
   from here). Since a declined chip can't be deselected, a selection whose meeting is declined
-  or cancelled after it was picked is dropped automatically, alarm and busy block with it
-  (§4.4's `MaintainAlarms` NB on declined picks).
+  after it was picked is dropped automatically, alarm and busy block with it (§4.4's
+  `MaintainAlarms` NB on declined picks).
 - "Refresh calendars" in the app bar asks the sync framework to sync every account's calendars
   (`ContentResolver.requestSync`, so the app itself still never uses the network) and reloads the
   shown days at once; the snackbar says "Refreshing calendars…".
@@ -894,15 +894,18 @@ temporary allowlist that permits starting a foreground service from the backgrou
   "show declined" off can make a since-declined selection look like a live meeting. Before
   this (PR-8b), "Set alarms" still armed such a selection, which the next maintenance then
   cancelled again, with the day bouncing between the two.
-  NB (declined picks): a selection whose meeting is now cancelled or declined by me — armed or
-  not, and not yet ended — is **dropped** by `MaintainAlarms` (`AlarmMaintenance.drop`), so
-  its alarm is cancelled, its time no longer reaches a share, and a picked-then-declined chip
-  (which a tap can't deselect) doesn't sit on the day for good. To find them it reads the days
-  of every running selection as well as every armed row (`DayPlanDao.selectedEventsEndingAfter`).
-  Before the delete, a shared day's busy blocks lose the meeting's time
-  (`BusyCalendarSyncer.trim`, §4.7) without the day being re-shared: only the share's own time
-  for it is cut (none if it was picked after the share), never what the day's other picks still
-  cover, and nothing is added; a failed trim keeps the selection for the next pass. The rest of
+  NB (declined picks): a selection whose meeting is now declined by me — armed or not, and not
+  yet ended — is **dropped** by `MaintainAlarms` (`AlarmMaintenance.drop`), so its alarm is
+  cancelled, its time no longer reaches a share, and a picked-then-declined chip (which a tap
+  can't deselect) doesn't sit on the day for good. To find them it also reads the day of every
+  running selection (`DayPlanDao.selectedEventsEndingAfter`) — alone, without the neighbours
+  an armed row's day gets. An organizer's cancellation reads as absent (the repository filters
+  `STATUS_CANCELED` out), so it keeps its pick and block, as it keeps its alarm, until the
+  "Set alarms" reconcile drops it as vanished. Before the delete, a shared day's busy blocks
+  lose the meeting's time (`BusyCalendarSyncer.trim`, §4.7) without the day being re-shared:
+  only the share's own time for it is cut (the baseline's; none if it was picked after the
+  share or appeared after it), never what the day's other picks still cover, and nothing is
+  added; a failed trim keeps the selection for the next pass. The rest of
   the day keeps its "alarms set" (its armed set still matches what is left); a day whose only
   pick was dropped goes back to "nothing picked". The change banner and notification still
   report the decline — the differ's "selected" comes from the share's baseline — and the

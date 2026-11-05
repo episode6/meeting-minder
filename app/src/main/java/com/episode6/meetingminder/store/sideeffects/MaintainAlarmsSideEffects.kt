@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.transformLatest
  * every [CalendarContentChanged] — the debounced foreground `ContentObserver`, and each time
  * the UI becomes visible — [AlarmMaintainer.maintain] re-times armed alarms whose meetings
  * moved and cancels those now declined, dropping every selection whose meeting was declined
- * or cancelled (with its time trimmed out of a shared day's busy blocks). `BootReceiver` runs the same thing after boot and
+ * (with its time trimmed out of a shared day's busy blocks). `BootReceiver` runs the same thing after boot and
  * clock/timezone changes, and `monitor/CalendarChangeWorker` from every background check. Nothing is emitted: the rows stream back through
  * `ObserveDayPlansSideEffects`. A newer change cancels a run still reading the provider.
  */

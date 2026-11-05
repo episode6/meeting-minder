@@ -58,7 +58,7 @@ sealed interface BusySyncResult {
  * wrote: every provider delete here is of an id read from that table, and nothing else
  * ever reaches [CalendarRepository.deleteOwnEvent]. PR-15c wires this into `ShareDay`
  * (`sync`), "Mark as not shared" (`clear`) and the setting's cleanup (`clearFrom`);
- * `AlarmMaintainer` takes a declined or cancelled selection's time back out (`trim`).
+ * `AlarmMaintainer` takes a declined selection's time back out (`trim`).
  *
  * Ordering inside [sync]: deletes first, then inserts, and each row is recorded the moment
  * its provider write returns, so a crash between two writes leaves the table describing
@@ -119,7 +119,7 @@ class BusyCalendarSyncer(
 
     /**
      * Takes [remove]'s time out of [date]'s blocks, except where [keep] still covers it — a
-     * selection dropped because its meeting was declined or cancelled (`AlarmMaintainer`),
+     * selection dropped because its meeting was declined (`AlarmMaintainer`),
      * whose time must leave the partner's calendar without the day being re-shared. Only
      * subtracts: a row no cut reaches is left exactly as it is (so is one on another
      * calendar or under an older title, which the next share replaces as usual), nothing
@@ -143,6 +143,9 @@ class BusyCalendarSyncer(
         val busySync = settings.current().busySync
         val calendar = effectiveBusyCalendar(busySync, repository.calendars()) ?: return@withLock BusySyncResult.Skipped
         val pieces = touched.map { it.range }.minusRanges(cuts)
+        // a row whose times equal a piece is one a half-failed trim already wrote: reconciling
+        // it keeps it, unless it sits on another calendar or under an old title (a calendar
+        // switch or a rename in between), when it is replaced like any row the trim touches
         write(date, rows.filter { it in touched || it.range in pieces }, pieces, calendar, busySync, insertsFirst = true)
     }
 
