@@ -72,6 +72,13 @@ interface DayPlanDao {
     suspend fun selectedEventsOn(date: LocalDate): List<SelectedEventEntity>
 
     /**
+     * Every selection, on any day, whose stored end is after [afterMillis]: the ones
+     * `AlarmMaintainer` checks for a meeting declined or cancelled since it was picked.
+     */
+    @Query("SELECT * FROM selected_event WHERE end_millis > :afterMillis")
+    suspend fun selectedEventsEndingAfter(afterMillis: Long): List<SelectedEventEntity>
+
+    /**
      * `REPLACE` deletes and re-inserts the row, so calling this on an existing key resets
      * every column to [entity]'s values — including [SelectedEventEntity.alarmId]/`alarmAt`/
      * `rsvpState`. Safe today only because [toggleSelectedEvent] never calls it on a key

@@ -195,9 +195,10 @@ class ScheduleAlarmsSideEffectsTest {
 
     @Test
     fun setAlarms_afterMaintenanceCancelledADeclinedMeeting_leavesItUnarmed_andTheDayRests() = runTest {
-        // MaintainAlarms cancelled the review's alarm (declined since), kept its selection and
-        // put the day back to "Set alarms"; the re-tap must not arm it again, or the next
-        // maintenance would cancel it again, for ever
+        // MaintainAlarms cancelled the review's alarm (declined since) but kept its selection
+        // (its busy trim failed, so the drop waits for the next pass) and put the day back to
+        // "Set alarms"; the re-tap must not arm it again, or the next maintenance would cancel
+        // it again, for ever
         val declinedReview = designReview.copy(selfStatus = SelfStatus.DECLINED)
         val armedStandup = ScheduledAlarmEntity(
             alarmId = 1, date = today, eventId = standup.eventId, instanceTime = 0, fireAt = at(8, 55).toEpochMilli(),

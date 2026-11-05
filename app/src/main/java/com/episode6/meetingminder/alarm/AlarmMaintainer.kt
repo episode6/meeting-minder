@@ -4,19 +4,26 @@ import android.util.Log
 import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.db.AlarmState
+import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.DayPlanDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmEntity
+import com.episode6.meetingminder.data.db.SelectedEventEntity
+import com.episode6.meetingminder.data.db.baseline
 import com.episode6.meetingminder.data.settings.SettingsRepository
+import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.EventStatus
 import com.episode6.meetingminder.model.SelfStatus
 import com.episode6.meetingminder.model.isSyntheticAlarmEvent
 import com.episode6.meetingminder.permissions.PermissionChecker
+import com.episode6.meetingminder.share.BusyCalendarSyncer
+import com.episode6.meetingminder.share.BusySyncResult
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -24,6 +31,7 @@ import kotlinx.coroutines.withContext
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 
 private const val TAG = "MeetingMinderAlarms"
 
@@ -35,8 +43,13 @@ data class AlarmMaintenance(
     val cancel: List<ScheduledAlarmEntity> = emptyList(),
     /** Rows that only need their denormalised copy refreshed, without touching the alarm. */
     val refresh: List<ScheduledAlarmEntity> = emptyList(),
+    /**
+     * Selections whose meeting is now cancelled or declined by me: deleted, with their
+     * time taken out of the day's busy blocks first (`BusyCalendarSyncer.trim`).
+     */
+    val drop: List<SelectedEventEntity> = emptyList(),
 ) {
-    val isEmpty: Boolean get() = retime.isEmpty() && cancel.isEmpty() && refresh.isEmpty()
+    val isEmpty: Boolean get() = retime.isEmpty() && cancel.isEmpty() && refresh.isEmpty() && drop.isEmpty()
 }
 
 /**
@@ -48,9 +61,10 @@ data class AlarmMaintenance(
  *    ends — a stale alarm after a sync hiccup is cheaper than a missed meeting, and the
  *    change banner still reports it. The explicit "Set alarms" tap is what cancels it
  *    (`reconcileAlarms`' `providerRead`);
- *  - cancelled or declined by me: cancel the alarm (the selection is kept, so the banner can
- *    explain), and put the day back to "Set alarms": its armed set no longer matches its
- *    selection, so a later re-accept in Google Calendar can be re-armed from the FAB;
+ *  - cancelled or declined by me: cancel the alarm. Its selection is dropped too (below),
+ *    so the rest of the day still matches its armed set; only a row whose selection wasn't
+ *    dropped (deselected already, or its busy blocks couldn't be trimmed) puts the day
+ *    back to "Set alarms";
  *  - over already: nothing;
  *  - same times: refresh a changed title or location only;
  *  - moved: re-time it to the new begin − [leadTime], as a fresh `SCHEDULED` alarm. A new
@@ -60,6 +74,14 @@ data class AlarmMaintenance(
  *    here. A `SNOOZED` row keeps its snooze while its new alarm time has passed (only its
  *    copy is refreshed), as the "Set alarms" reconcile does.
  *
+ * And for each of [selections] (armed or not) whose meeting hasn't ended, by the same
+ * [fresh] read: one now cancelled or declined by me is [dropped][AlarmMaintenance.drop].
+ * A declined chip can't be tapped, so without this nothing could deselect it, and its
+ * stored time would keep going out in the share text and the busy-calendar sync. An
+ * absent event keeps its selection, as it keeps its alarm. The change banner still
+ * reports the decline: the differ reads "selected" from the share's baseline, not from
+ * the selection.
+ *
  * Settings' test alarm and a schedule-change alert ([isSyntheticAlarmEvent]) are never touched.
  */
 fun maintainAlarms(
@@ -67,6 +89,7 @@ fun maintainAlarms(
     fresh: Map<EventKey, CalendarEvent>,
     leadTime: Duration,
     now: Instant,
+    selections: List<SelectedEventEntity> = emptyList(),
 ): AlarmMaintenance {
     val nowMillis = now.toEpochMilli()
     val retime = mutableListOf<ScheduledAlarmEntity>()
@@ -78,7 +101,7 @@ fun maintainAlarms(
         val begin = event.begin.toEpochMilli()
         val end = event.end.toEpochMilli()
         when {
-            event.status == EventStatus.CANCELED || event.selfStatus == SelfStatus.DECLINED -> cancel += row
+            event.notAttending -> cancel += row
             end <= nowMillis -> Unit
             begin == row.beginMillis && end == row.endMillis -> {
                 if (event.title != row.title || event.location != row.location) {
@@ -96,8 +119,13 @@ fun maintainAlarms(
             }
         }
     }
-    return AlarmMaintenance(retime = retime, cancel = cancel, refresh = refresh)
+    val drop = selections.filter { selection ->
+        selection.endMillis > nowMillis && fresh[selection.key]?.notAttending == true
+    }
+    return AlarmMaintenance(retime = retime, cancel = cancel, refresh = refresh, drop = drop)
 }
+
+private val CalendarEvent.notAttending: Boolean get() = status == EventStatus.CANCELED || selfStatus == SelfStatus.DECLINED
 
 /**
  * Applies [maintainAlarms] to every armed row whose event hasn't ended (TODO.md §4.4): on
@@ -114,9 +142,17 @@ fun maintainAlarms(
  * alarm was armed on purpose, and hiding its calendar later mustn't read as the event
  * vanishing. Without calendar access nothing is read or changed. The reads can be
  * cancelled; the writes can't, so a cancelled run never leaves a row re-timed in Room but
- * not in `AlarmManager`. A cancelled row and a re-timed row the OS refuses to arm (marked
- * `CANCELLED`) both clear their day's `alarms_set_at`, so it goes back to "Set alarms", as
+ * not in `AlarmManager`. A cancelled row whose selection wasn't dropped and a re-timed row
+ * the OS refuses to arm (marked `CANCELLED`) both clear their day's `alarms_set_at`, so it goes back to "Set alarms", as
  * the reconcile does whenever the armed set stops matching the selection.
+ *
+ * A selection whose meeting was declined or cancelled ([AlarmMaintenance.drop]) has its time
+ * taken out of the day's busy blocks ([BusyCalendarSyncer.trim]) before it is deleted, so
+ * the partner's calendar loses the meeting without the day being re-shared; the time cut
+ * is what the share wrote for it (the baseline's time, or the stored one when the baseline
+ * doesn't have it), minus whatever the day's other selections still cover. A trim that
+ * fails keeps the selection for the next pass to try again. A day left with nothing
+ * selected goes back to "nothing picked", as the "Set alarms" reconcile's does.
  */
 @Inject
 @SingleIn(AppScope::class)
@@ -128,6 +164,8 @@ class AlarmMaintainer(
     private val settings: SettingsRepository,
     private val permissionChecker: PermissionChecker,
     private val clock: Clock,
+    private val changeSnapshotDao: ChangeSnapshotDao,
+    private val busyCalendarSyncer: BusyCalendarSyncer,
 ) {
     private val mutex = Mutex()
 
@@ -136,25 +174,38 @@ class AlarmMaintainer(
         if (!permissionChecker.currentState().calendarGranted) return@withLock AlarmMaintenance()
         val now = clock.instant()
         val armed = alarmDao.allScheduled().filter { !isSyntheticAlarmEvent(it.eventId) && it.endMillis > now.toEpochMilli() }
-        if (armed.isEmpty()) return@withLock AlarmMaintenance()
+        val selections = dayPlanDao.selectedEventsEndingAfter(now.toEpochMilli())
+        if (armed.isEmpty() && selections.isEmpty()) return@withLock AlarmMaintenance()
         val fresh = try {
             val everyCalendar = CalendarFilter.Only(repository.calendars().mapTo(mutableSetOf()) { it.id })
-            armed.flatMapTo(sortedSetOf()) { listOf(it.date.minusDays(1), it.date, it.date.plusDays(1)) }
+            (armed.map { it.date } + selections.map { it.date })
+                .flatMapTo(sortedSetOf()) { listOf(it.minusDays(1), it, it.plusDays(1)) }
                 .flatMap { day -> repository.eventsOn(day, everyCalendar) }
                 .associateBy { it.key }
         } catch (e: SecurityException) {
             Log.w(TAG, "calendar access lost; alarms left as they are", e)
             return@withLock AlarmMaintenance()
         }
-        val plan = maintainAlarms(armed, fresh, settings.current().leadTime, now)
-        if (!plan.isEmpty) withContext(NonCancellable) { apply(plan) }
+        val plan = maintainAlarms(armed, fresh, settings.current().leadTime, now, selections)
+        if (!plan.isEmpty) withContext(NonCancellable) { apply(plan, fresh) }
         plan
     }
 
-    private suspend fun apply(plan: AlarmMaintenance) {
+    private suspend fun apply(plan: AlarmMaintenance, fresh: Map<EventKey, CalendarEvent>) {
+        val dropped = mutableSetOf<Pair<LocalDate, EventKey>>()
+        for ((date, rows) in plan.drop.groupBy { it.date }) {
+            if (!trimBusyBlocks(date, rows, fresh)) continue
+            for (row in rows) {
+                dayPlanDao.deleteSelectedEvent(row.date, row.eventId, row.instanceTime)
+                dropped += row.date to row.key
+            }
+            if (dayPlanDao.selectedEventsOn(date).isEmpty()) dayPlanDao.setAlarmsSetAt(date, null)
+        }
         for (row in plan.cancel) {
             scheduler.cancel(row.alarmId)
             alarmDao.setState(row.alarmId, AlarmState.CANCELLED)
+            // its selection went with it, and what is left of the day still matches its armed set
+            if (row.date to row.key in dropped) continue
             pointSelectionAt(row, armed = false)
             dayPlanDao.setAlarmsSetAt(row.date, null)
         }
@@ -171,6 +222,41 @@ class AlarmMaintainer(
         }
     }
 
+    /**
+     * Takes [dropping]'s time out of [date]'s busy blocks; false when that failed, so the
+     * selections stay for the next pass. A selection the share didn't include (picked after
+     * it: in the baseline, but not selected there) has nothing on the calendar to take out.
+     */
+    private suspend fun trimBusyBlocks(date: LocalDate, dropping: List<SelectedEventEntity>, fresh: Map<EventKey, CalendarEvent>): Boolean {
+        val baseline = changeSnapshotDao.forDate(date)?.baseline().orEmpty().associateBy { it.key }
+        val remove = dropping.mapNotNull { selection ->
+            val was = baseline[selection.key]
+            when {
+                was == null -> selection.storedRange
+                was.selected -> BusyRange(was.begin, was.end)
+                else -> null
+            }
+        }
+        if (remove.isEmpty()) return true
+        val droppingKeys = dropping.mapTo(mutableSetOf()) { it.key }
+        // every time a remaining selection could have been shared at stays busy
+        val keep = dayPlanDao.selectedEventsOn(date).filter { it.key !in droppingKeys }.flatMap { selection ->
+            listOfNotNull(
+                selection.storedRange,
+                baseline[selection.key]?.let { BusyRange(it.begin, it.end) },
+                fresh[selection.key]?.let { BusyRange(it.begin, it.end) },
+            )
+        }
+        return try {
+            busyCalendarSyncer.trim(date, remove, keep) !is BusySyncResult.Failed
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "could not take $date's declined meetings out of the busy calendar; selections kept", e)
+            false
+        }
+    }
+
     private suspend fun pointSelectionAt(row: ScheduledAlarmEntity, armed: Boolean) {
         dayPlanDao.armSelectedEvent(
             row.date, row.eventId, row.instanceTime,
@@ -179,3 +265,6 @@ class AlarmMaintainer(
         )
     }
 }
+
+private val SelectedEventEntity.storedRange: BusyRange
+    get() = BusyRange(Instant.ofEpochMilli(beginMillis), Instant.ofEpochMilli(endMillis))

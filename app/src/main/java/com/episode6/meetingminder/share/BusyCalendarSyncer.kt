@@ -7,8 +7,10 @@ import com.episode6.meetingminder.data.calendar.effectiveBusyCalendar
 import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.BusyBlockEntity
 import com.episode6.meetingminder.data.db.DayPlanDao
+import com.episode6.meetingminder.data.settings.BusySync
 import com.episode6.meetingminder.data.settings.SettingsRepository
 import com.episode6.meetingminder.model.BusyRange
+import com.episode6.meetingminder.model.CalendarInfo
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -55,7 +57,8 @@ sealed interface BusySyncResult {
  * again (TODO.md §4.7). The `busy_block` table is the source of truth for what the app
  * wrote: every provider delete here is of an id read from that table, and nothing else
  * ever reaches [CalendarRepository.deleteOwnEvent]. PR-15c wires this into `ShareDay`
- * (`sync`), "Mark as not shared" (`clear`) and the setting's cleanup (`clearFrom`).
+ * (`sync`), "Mark as not shared" (`clear`) and the setting's cleanup (`clearFrom`);
+ * `AlarmMaintainer` takes a declined or cancelled selection's time back out (`trim`).
  *
  * Ordering inside [sync]: deletes first, then inserts, and each row is recorded the moment
  * its provider write returns, so a crash between two writes leaves the table describing
@@ -111,15 +114,62 @@ class BusyCalendarSyncer(
         }
         val busySync = settings.current().busySync
         val calendar = effectiveBusyCalendar(busySync, repository.calendars()) ?: return@withLock BusySyncResult.Skipped
+        write(date, dao.blocksOn(date), ranges.clipToDay(date, clock.zone), calendar, busySync)
+    }
+
+    /**
+     * Takes [remove]'s time out of [date]'s blocks, except where [keep] still covers it — a
+     * selection dropped because its meeting was declined or cancelled (`AlarmMaintainer`),
+     * whose time must leave the partner's calendar without the day being re-shared. Only
+     * subtracts: a row no cut reaches is left exactly as it is (so is one on another
+     * calendar or under an older title, which the next share replaces as usual), nothing
+     * the day's last share didn't write is ever added, and with nothing to cut no write is
+     * made at all ([BusySyncResult.Skipped]). Skipped too when the day is no longer shared
+     * or the sync isn't effective; otherwise the same results and exceptions as [sync].
+     *
+     * Unlike [sync] it inserts the pieces left over before deleting the block they came
+     * from: a failure half way then leaves the calendar busier than it should be, never
+     * missing a meeting the user still goes to, and the caller's retry finds the pieces
+     * already written (a row whose times equal a leftover piece is reconciled with it, so
+     * nothing is written twice).
+     */
+    suspend fun trim(date: LocalDate, remove: List<BusyRange>, keep: List<BusyRange>): BusySyncResult = mutex.withLock {
+        if (dayPlanDao.dayPlanOn(date)?.sharedAt == null) return@withLock BusySyncResult.Skipped
+        val cuts = remove.minusRanges(keep)
+        val rows = dao.blocksOn(date)
+        // rows the cuts miss stay as they are: re-homing or re-titling them is the next share's job
+        val touched = rows.filter { row -> cuts.any { it.begin < row.range.end && it.end > row.range.begin } }
+        if (touched.isEmpty()) return@withLock BusySyncResult.Skipped
+        val busySync = settings.current().busySync
+        val calendar = effectiveBusyCalendar(busySync, repository.calendars()) ?: return@withLock BusySyncResult.Skipped
+        val pieces = touched.map { it.range }.minusRanges(cuts)
+        write(date, rows.filter { it in touched || it.range in pieces }, pieces, calendar, busySync, insertsFirst = true)
+    }
+
+    /**
+     * Reconciles [existing] rows of [date] to [desired] on [calendar] and applies it, each
+     * write recorded as it returns: deletes first, then inserts — or the other way round
+     * with [insertsFirst].
+     */
+    private suspend fun write(
+        date: LocalDate,
+        existing: List<BusyBlockEntity>,
+        desired: List<BusyRange>,
+        calendar: CalendarInfo,
+        busySync: BusySync,
+        insertsFirst: Boolean = false,
+    ): BusySyncResult {
         val title = busyBlockTitle(busySync.firstName)
-        val plan = reconcileBusyBlocks(dao.blocksOn(date), ranges.clipToDay(date, clock.zone), calendar.id, title)
+        val plan = reconcileBusyBlocks(existing, desired, calendar.id, title)
         var deleted = 0
         var inserted = 0
-        try {
+        suspend fun deletes() {
             for (row in plan.delete) {
                 deleteBlock(row)
                 deleted++
             }
+        }
+        suspend fun inserts() {
             for (range in plan.insert) {
                 val eventId = repository.insertBusyBlock(calendar.id, range, busySync.firstName)
                 dao.upsert(
@@ -134,16 +184,25 @@ class BusyCalendarSyncer(
                 )
                 inserted++
             }
+        }
+        try {
+            if (insertsFirst) {
+                inserts()
+                deletes()
+            } else {
+                deletes()
+                inserts()
+            }
         } catch (e: SecurityException) {
             throw e
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "busy sync of $date to ${calendar.displayName} failed after $deleted deletes and $inserted inserts", e)
-            return@withLock BusySyncResult.Failed(calendar.displayName, e)
+            return BusySyncResult.Failed(calendar.displayName, e)
         }
         Log.d(TAG, "busy sync of $date to ${calendar.displayName}: kept ${plan.keep.size}, deleted $deleted, inserted $inserted")
-        BusySyncResult.Synced(calendar.displayName, inserted = inserted, deleted = deleted)
+        return BusySyncResult.Synced(calendar.displayName, inserted = inserted, deleted = deleted)
     }
 
     /**

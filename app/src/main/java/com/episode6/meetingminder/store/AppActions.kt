@@ -177,9 +177,10 @@ data class RsvpAccepted(val date: LocalDate, val key: EventKey, val result: Rsvp
  * The user picked "Yes / No / Maybe" from [key]'s long-press sheet on [date]: write
  * [response] for that one occurrence (`RespondToEventSideEffects` →
  * `CalendarRepository.respondToInstance`), confirm with a snackbar and reload the day
- * ([CalendarContentChanged]). The selection itself is left alone; a "No" leaves the chip
- * declined and unselectable, and that same reload's `MaintainAlarms` cancels its alarm at
- * once, exactly as a decline made in Google Calendar would. A successful "Yes" also
+ * ([CalendarContentChanged]). The selection itself is left alone here; a "No" leaves the
+ * chip declined and unselectable, and that same reload's `MaintainAlarms` drops the
+ * selection with its alarm (and its busy blocks), exactly as a decline made in Google
+ * Calendar would. A successful "Yes" also
  * reports [RsvpAccepted] so an armed selection gets its "sent" tick; a "No" or "Maybe"
  * resets the row's `rsvp_state` so an earlier automatic Yes's tick doesn't outlive it.
  * Picking the answer the calendar already holds is confirmed without a write.

@@ -40,7 +40,8 @@ private const val TAG = "MeetingMinderRespond"
  * pointless dirty flag for the sync adapter. The write changes `SELF_ATTENDEE_STATUS` at
  * once, so the day is reloaded straight away ([CalendarContentChanged]) rather than
  * waiting on the debounced `ContentObserver` — which also runs `MaintainAlarms`, so a
- * "No" on an armed selection cancels its alarm in the same reload.
+ * "No" on a selection drops it in the same reload, cancelling its alarm and taking its time
+ * out of a shared day's busy blocks.
  *
  * The selection row's RSVP bookkeeping follows the answer: a "Yes" is reported as
  * [RsvpAccepted], so an armed selection gets its "sent" tick and the `DIRTY` promotion to

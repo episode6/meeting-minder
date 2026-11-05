@@ -20,6 +20,9 @@ internal class FakeDayPlanDao(
     override suspend fun selectedEventsOn(date: LocalDate): List<SelectedEventEntity> =
         selectionsFlow.value.filter { it.date == date }
 
+    override suspend fun selectedEventsEndingAfter(afterMillis: Long): List<SelectedEventEntity> =
+        selectionsFlow.value.filter { it.endMillis > afterMillis }
+
     override suspend fun upsertDayPlan(entity: DayPlanEntity) {
         plansFlow.value = plansFlow.value.filterNot { it.date == entity.date } + entity
     }

@@ -41,8 +41,9 @@ data class AlarmReconciliation(
      * Selections whose event the provider now reports as cancelled, or declined by me:
      * never armed (the automatic `MaintainAlarms` cancels exactly these, so arming them
      * here would only bounce), and any row they still had is in [cancel]. Counted in the
-     * snackbar; kept as selections (their chip is still drawn) so the change banner can
-     * explain.
+     * snackbar and left as selections here: the automatic `MaintainAlarms` drops them,
+     * trimming their time out of a shared day's busy blocks first, which deleting them here
+     * would skip.
      */
     val notAttending: List<SelectedEventEntity> = emptyList(),
     /**
