@@ -75,6 +75,16 @@ internal class FakeDayPlanDao(
         }
     }
 
+    override suspend fun backfillCalendarId(date: LocalDate, eventId: Long, instanceTime: Long, calendarId: Long) {
+        selectionsFlow.value = selectionsFlow.value.map {
+            if (it.date == date && it.eventId == eventId && it.instanceTime == instanceTime && it.calendarId == null) {
+                it.copy(calendarId = calendarId)
+            } else {
+                it
+            }
+        }
+    }
+
     override suspend fun setRsvp(date: LocalDate, eventId: Long, instanceTime: Long, state: RsvpState, rsvpEventId: Long?) {
         selectionsFlow.value = selectionsFlow.value.map {
             if (it.date == date && it.eventId == eventId && it.instanceTime == instanceTime) {

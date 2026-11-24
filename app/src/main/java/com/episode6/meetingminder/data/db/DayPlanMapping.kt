@@ -77,4 +77,5 @@ internal fun CalendarEvent.toSelectedEventEntity(date: LocalDate): SelectedEvent
     title = title,
     beginMillis = begin.toEpochMilli(),
     endMillis = end.toEpochMilli(),
+    calendarId = calendarId,
 )

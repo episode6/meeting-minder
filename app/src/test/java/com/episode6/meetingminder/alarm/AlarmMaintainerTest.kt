@@ -67,7 +67,10 @@ class AlarmMaintainerTest {
     )
 
     private fun selectionFor(event: CalendarEvent) =
-        SelectedEventEntity(today, event.key.eventId, event.key.instanceTime, event.title, event.begin.toEpochMilli(), event.end.toEpochMilli())
+        SelectedEventEntity(
+            today, event.key.eventId, event.key.instanceTime, event.title, event.begin.toEpochMilli(), event.end.toEpochMilli(),
+            calendarId = event.calendarId,
+        )
 
     private fun armedSelection(event: CalendarEvent) = selectionFor(event).copy(alarmId = event.eventId, alarmAt = rowFor(event).fireAt)
 
@@ -190,6 +193,45 @@ class AlarmMaintainerTest {
         assertThat(plan.cancel).containsExactly(rowFor(standup))
         assertThat(plan.drop).containsExactly(armedSelection(standup))
         assertThat(plan.retime).isEmpty()
+    }
+
+    @Test
+    fun aVanishedEvent_whoseCalendarIsNoLongerListedOrSynced_keepsItsAlarm_andItsSelection() {
+        // an account removed, re-added (new calendar ids) or mid-resync: its picks say nothing about their meetings
+        val onRemoved = event(1, at(10))
+        val onListed = event(2, at(11))
+        val legacy = event(3, at(12))
+        val selections = listOf(
+            armedSelection(onRemoved).copy(calendarId = 4),
+            armedSelection(onListed).copy(calendarId = 1),
+            armedSelection(legacy).copy(calendarId = null),
+        )
+
+        val plan = maintainAlarms(
+            listOf(rowFor(onRemoved), rowFor(onListed), rowFor(legacy)), emptyMap(), lead, now,
+            selections = selections, syncedCalendars = setOf(1L),
+        )
+
+        // the pick on a calendar still listed is gone, and so is the one whose calendar was never recorded
+        assertThat(plan.cancel).containsExactly(rowFor(onListed), rowFor(legacy))
+        assertThat(plan.drop).containsExactly(selections[1], selections[2])
+    }
+
+    @Test
+    fun aDeclinedEvent_isDroppedWhateverItsCalendar_andADeselectedRowsVanishedEventLosesItsAlarm() {
+        val declined = event(1, at(10))
+        val deselected = event(2, at(11))
+        val selection = armedSelection(declined).copy(calendarId = 4)
+
+        val plan = maintainAlarms(
+            listOf(rowFor(declined), rowFor(deselected)),
+            mapOf(declined.key to declined.copy(selfStatus = SelfStatus.DECLINED)),
+            lead, now,
+            selections = listOf(selection), syncedCalendars = setOf(1L),
+        )
+
+        assertThat(plan.cancel).containsExactly(rowFor(declined), rowFor(deselected))
+        assertThat(plan.drop).containsExactly(selection)
     }
 
     @Test
@@ -371,6 +413,61 @@ class AlarmMaintainerTest {
         assertThat(plan.cancel).isEmpty()
         assertThat(alarms.rows.getValue(1).fireAt).isEqualTo(at(9, 55, date = tomorrow).toEpochMilli())
         assertThat(plans.selectionsFlow.value.map { it.key }).containsExactly(standup.key)
+    }
+
+    @Test
+    fun maintain_aPickWhoseAccountWasReAdded_keepsItsAlarm_whileAnotherCalendarsDeletedMeetingIsDropped() = runTest {
+        val standup = event(1, at(10))
+        val review = event(2, at(11))
+        // the old calendar (id 4) is gone; the re-added account's calendar came back as id 9, its events not yet synced
+        val readded = calendar.copy(id = 9)
+        val repository = FakeCalendarRepository(calendars = listOf(calendar, readded))
+        val alarms = FakeScheduledAlarmDao(listOf(rowFor(standup), rowFor(review)))
+        val scheduler = FakeAlarmScheduler().apply { schedule(rowFor(standup)); schedule(rowFor(review)) }
+        val onOldCalendar = armedSelection(standup).copy(calendarId = 4)
+        val plans = FakeDayPlanDao(
+            listOf(DayPlanEntity(today, alarmsSetAt = 1)),
+            listOf(onOldCalendar, armedSelection(review).copy(calendarId = calendar.id)),
+        )
+
+        AlarmMaintainer(repository, alarms, plans, scheduler, FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao()).maintain()
+
+        assertThat(alarms.rows.getValue(1).state).isEqualTo(AlarmState.SCHEDULED)
+        assertThat(alarms.rows.getValue(2).state).isEqualTo(AlarmState.CANCELLED)
+        assertThat(plans.selectionsFlow.value).containsExactly(onOldCalendar)
+    }
+
+    @Test
+    fun maintain_aPickOnACalendarWithSyncTurnedOff_keepsItsAlarm() = runTest {
+        val standup = event(1, at(10))
+        val repository = FakeCalendarRepository(calendars = listOf(calendar.copy(syncEvents = false), calendar.copy(id = 2)))
+        val alarms = FakeScheduledAlarmDao(listOf(rowFor(standup)))
+        val selection = armedSelection(standup).copy(calendarId = calendar.id)
+        val plans = FakeDayPlanDao(listOf(DayPlanEntity(today, alarmsSetAt = 1)), listOf(selection))
+
+        val plan = AlarmMaintainer(repository, alarms, plans, FakeAlarmScheduler(), FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao()).maintain()
+
+        assertThat(plan.isEmpty).isTrue()
+        assertThat(plans.selectionsFlow.value).containsExactly(selection)
+    }
+
+    @Test
+    fun maintain_fillsInTheCalendarOfAPickFromBeforeItWasRecorded_andNeverMovesOneThatHasIt() = runTest {
+        val standup = event(1, at(10))
+        val review = event(2, at(11))
+        val repository = FakeCalendarRepository(calendars = listOf(calendar, calendar.copy(id = 2)))
+        repository.events[today] = listOf(standup, review)
+        val plans = FakeDayPlanDao(
+            listOf(DayPlanEntity(today)),
+            listOf(selectionFor(standup).copy(calendarId = null), selectionFor(review).copy(calendarId = 2)),
+        )
+
+        AlarmMaintainer(
+            repository, FakeScheduledAlarmDao(), plans, FakeAlarmScheduler(), FakeSettingsRepository(),
+            FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao(),
+        ).maintain()
+
+        assertThat(plans.selectionsFlow.value.map { it.eventId to it.calendarId }).containsExactly(1L to 1L, 2L to 2L)
     }
 
     @Test

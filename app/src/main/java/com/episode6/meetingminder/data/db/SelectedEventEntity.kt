@@ -12,7 +12,11 @@ import java.time.LocalDate
  * time (see [com.episode6.meetingminder.model.SelectedEvent]); [alarmId]/[alarmAt] stay
  * null until "Set alarms" schedules an alarm, and [rsvpState]/[rsvpEventId] stay
  * [RsvpState.NOT_APPLICABLE]/null until the same tap decides and writes the RSVP
- * (TODO.md §4.6). [rsvpState] is stored as its name (`TEXT`).
+ * (TODO.md §4.6). [rsvpState] is stored as its name (`TEXT`). [calendarId] is the
+ * `Calendars._ID` the event was read from, which is what lets `alarm/AlarmMaintainer` tell a
+ * deleted meeting from a calendar that has left the provider (an account removed, re-added
+ * or re-syncing — a re-added calendar gets a new id). Null on a row picked before version 8
+ * until a maintenance pass sees its event and fills it in ([DayPlanDao.backfillCalendarId]).
  */
 @Entity(
     tableName = "selected_event",
@@ -29,6 +33,7 @@ data class SelectedEventEntity(
     @ColumnInfo(name = "alarm_at") val alarmAt: Long? = null,
     @ColumnInfo(name = "rsvp_state") val rsvpState: RsvpState = RsvpState.NOT_APPLICABLE,
     @ColumnInfo(name = "rsvp_event_id") val rsvpEventId: Long? = null,
+    @ColumnInfo(name = "calendar_id") val calendarId: Long? = null,
 ) {
     val key: EventKey get() = EventKey(eventId, instanceTime)
 }

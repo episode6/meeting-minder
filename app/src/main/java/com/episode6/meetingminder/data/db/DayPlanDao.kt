@@ -135,6 +135,17 @@ interface DayPlanDao {
     )
 
     /**
+     * Fills in the calendar of a selection picked before `calendar_id` existed (version 8),
+     * once `AlarmMaintainer` has seen its event. Only ever a null: a row that has its calendar
+     * keeps it, so a pick is never re-homed to another calendar's copy of the meeting.
+     */
+    @Query(
+        "UPDATE selected_event SET calendar_id = :calendarId " +
+            "WHERE date = :date AND event_id = :eventId AND instance_time = :instanceTime AND calendar_id IS NULL",
+    )
+    suspend fun backfillCalendarId(date: LocalDate, eventId: Long, instanceTime: Long, calendarId: Long)
+
+    /**
      * Records where a selection's RSVP stands (TODO.md §4.6): `ACCEPTED_LOCALLY`/`FAILED`
      * (with the id the write went to) once the provider write returns, and `SYNCED` when a
      * reload sees that row clean. The initial decision goes through [recordRsvpDecision].
