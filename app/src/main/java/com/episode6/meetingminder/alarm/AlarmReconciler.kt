@@ -80,11 +80,10 @@ data class AlarmReconciliation(
  *    armed, its row cancelled, and the selection dropped ([AlarmReconciliation.vanished]).
  *    An organizer's cancellation, a deleted meeting, or a series moved to new times (which
  *    gives every occurrence a new [com.episode6.meetingminder.model.EventKey]) all read as
- *    vanished, and the chip is no longer drawn, so this tap is the only way its alarm ever
- *    gets cancelled — the automatic `MaintainAlarms` deliberately keeps a vanished key's
- *    alarm as a hedge against a sync hiccup, but the user tapping "Set alarms" on the day
- *    they are looking at is the commitment moment, and an alarm for a meeting that is not
- *    on the calendar rings for nothing. With the provider unreadable ([freshEvents] is the
+ *    vanished, and the chip is no longer drawn, so nothing could deselect it. The
+ *    automatic `MaintainAlarms` drops such a pick too (usually first); the one it keeps,
+ *    a key replaced at identical times, is dropped here, since this tap arms whatever is
+ *    selected now. With the provider unreadable ([freshEvents] is the
  *    loaded window) an absent event is armed from the stored selection instead;
  *  - no armed row for the key: schedule one, unless the alarm time is already past
  *    (`≤ now`) — those are skipped and counted, never silently dropped;

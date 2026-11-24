@@ -77,12 +77,13 @@ class AlarmMaintainerTest {
     // --- the pure rule ---
 
     @Test
-    fun aDeclinedOrCancelledSelection_isDropped_armedOrNot_butNeverAVanishedOrEndedOne() {
+    fun aDeclinedCancelledOrVanishedSelection_isDropped_armedOrNot_butNeverAnEndedOne() {
         val declined = event(1, at(10))
         val cancelled = event(2, at(11))
         val vanished = event(3, at(12))
         val over = event(4, at(7), at(8))
         val going = event(5, at(13))
+        val overAndGone = event(6, at(6), at(7))
 
         val plan = maintainAlarms(
             armed = emptyList(),
@@ -94,10 +95,10 @@ class AlarmMaintainerTest {
             ),
             leadTime = lead,
             now = now,
-            selections = listOf(declined, cancelled, vanished, over, going).map { selectionFor(it) },
+            selections = listOf(declined, cancelled, vanished, over, going, overAndGone).map { selectionFor(it) },
         )
 
-        assertThat(plan.drop).containsExactly(selectionFor(declined), selectionFor(cancelled))
+        assertThat(plan.drop).containsExactly(selectionFor(declined), selectionFor(cancelled), selectionFor(vanished))
         assertThat(plan.isEmpty).isFalse()
     }
 
@@ -177,12 +178,50 @@ class AlarmMaintainerTest {
     }
 
     @Test
-    fun anEventThatVanished_keepsItsAlarm() {
+    fun anEventThatVanished_losesItsAlarm_andItsSelection() {
         val standup = event(1, at(10))
+        val review = event(2, at(11))
 
-        val plan = maintainAlarms(listOf(rowFor(standup)), emptyMap(), lead, now)
+        val plan = maintainAlarms(
+            listOf(rowFor(standup), rowFor(review)), mapOf(review.key to review), lead, now,
+            selections = listOf(armedSelection(standup), armedSelection(review)),
+        )
+
+        assertThat(plan.cancel).containsExactly(rowFor(standup))
+        assertThat(plan.drop).containsExactly(armedSelection(standup))
+        assertThat(plan.retime).isEmpty()
+    }
+
+    @Test
+    fun anEventReplacedAtIdenticalTimes_keepsItsAlarm_andItsSelection() {
+        // "this and following events" gives the occurrence a new key without moving it
+        val standup = event(1, at(10))
+        val recreated = event(7, at(10))
+
+        val plan = maintainAlarms(
+            listOf(rowFor(standup)), mapOf(recreated.key to recreated), lead, now,
+            selections = listOf(armedSelection(standup)),
+        )
 
         assertThat(plan.isEmpty).isTrue()
+    }
+
+    @Test
+    fun aVanishedEvent_isNotKeptByAnotherPickInItsSlot_norByADeclinedOrDifferentlyTimedNewcomer() {
+        val standup = event(1, at(10))
+        val picked = event(2, at(10))
+        val declined = event(3, at(10)).copy(selfStatus = SelfStatus.DECLINED)
+        val longer = event(4, at(10), at(11))
+
+        val plan = maintainAlarms(
+            listOf(rowFor(standup), rowFor(picked)),
+            listOf(picked, declined, longer).associateBy { it.key },
+            lead, now,
+            selections = listOf(armedSelection(standup), armedSelection(picked)),
+        )
+
+        assertThat(plan.cancel).containsExactly(rowFor(standup))
+        assertThat(plan.drop).containsExactly(armedSelection(standup))
     }
 
     @Test
@@ -228,7 +267,7 @@ class AlarmMaintainerTest {
         val selection = SelectedEventEntity(today, 1, 0, standup.title, row.beginMillis, row.endMillis, alarmId = 1, alarmAt = row.fireAt)
         val plans = FakeDayPlanDao(listOf(DayPlanEntity(today, alarmsSetAt = 1)), listOf(selection))
 
-        AlarmMaintainer(repository, alarms, plans, scheduler, FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync()).maintain()
+        AlarmMaintainer(repository, alarms, plans, scheduler, FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao()).maintain()
 
         val retimed = alarms.rows.getValue(1)
         assertThat(retimed.fireAt).isEqualTo(at(10, 55).toEpochMilli())
@@ -253,7 +292,7 @@ class AlarmMaintainerTest {
         val scheduler = FakeAlarmScheduler().apply { schedule(rowFor(standup)); schedule(rowFor(review)) }
         val plans = FakeDayPlanDao(listOf(DayPlanEntity(today, alarmsSetAt = 1)), listOf(armedSelection(standup), armedSelection(review)))
 
-        AlarmMaintainer(repository, alarms, plans, scheduler, FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync()).maintain()
+        AlarmMaintainer(repository, alarms, plans, scheduler, FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao()).maintain()
 
         assertThat(alarms.rows.getValue(2).state).isEqualTo(AlarmState.CANCELLED)
         assertThat(scheduler.cancelled).containsExactly(2L)
@@ -271,7 +310,7 @@ class AlarmMaintainerTest {
         val alarms = FakeScheduledAlarmDao(listOf(row))
         val plans = FakeDayPlanDao(listOf(DayPlanEntity(today, alarmsSetAt = 1)), listOf(armedSelection(standup)))
 
-        AlarmMaintainer(repository, alarms, plans, FakeAlarmScheduler(), FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync()).maintain()
+        AlarmMaintainer(repository, alarms, plans, FakeAlarmScheduler(), FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao()).maintain()
 
         assertThat(alarms.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
         assertThat(plans.selectionsFlow.value).isEmpty()
@@ -287,13 +326,65 @@ class AlarmMaintainerTest {
 
         val plan = AlarmMaintainer(
             repository, FakeScheduledAlarmDao(), plans, FakeAlarmScheduler(), FakeSettingsRepository(),
-            FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(),
+            FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao(),
         ).maintain()
 
         assertThat(plan.drop).containsExactly(selectionFor(standup))
         assertThat(plans.selectionsFlow.value).isEmpty()
-        // no armed row on the day, so no neighbours: the decline check only needs the pick's own day
-        assertThat(repository.eventQueries.map { it.first }).containsExactly(today)
+        // with the day either side, armed or not: a meeting moved across midnight mustn't read as gone
+        assertThat(repository.eventQueries.map { it.first }).containsExactly(today.minusDays(1), today, today.plusDays(1))
+    }
+
+    @Test
+    fun maintain_aDeletedMeeting_losesItsAlarmAndItsSelection_andTheRestOfTheDayStaysAlarmsSet() = runTest {
+        val standup = event(1, at(10))
+        val review = event(2, at(11))
+        val repository = FakeCalendarRepository(calendars = listOf(calendar))
+        repository.events[today] = listOf(standup)
+        val alarms = FakeScheduledAlarmDao(listOf(rowFor(standup), rowFor(review)))
+        val scheduler = FakeAlarmScheduler().apply { schedule(rowFor(standup)); schedule(rowFor(review)) }
+        val plans = FakeDayPlanDao(listOf(DayPlanEntity(today, alarmsSetAt = 1)), listOf(armedSelection(standup), armedSelection(review)))
+
+        AlarmMaintainer(repository, alarms, plans, scheduler, FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao()).maintain()
+
+        assertThat(alarms.rows.getValue(2).state).isEqualTo(AlarmState.CANCELLED)
+        assertThat(scheduler.cancelled).containsExactly(2L)
+        assertThat(alarms.rows.getValue(1).state).isEqualTo(AlarmState.SCHEDULED)
+        assertThat(plans.selectionsFlow.value).containsExactly(armedSelection(standup))
+        assertThat(plans.plansFlow.value.single().alarmsSetAt).isEqualTo(1L)
+    }
+
+    @Test
+    fun maintain_aMeetingMovedToTheNextDay_isRetimed_notDropped() = runTest {
+        val standup = event(1, at(10))
+        val repository = FakeCalendarRepository(calendars = listOf(calendar))
+        val tomorrow = today.plusDays(1)
+        repository.events[tomorrow] = listOf(standup.copy(begin = at(10, date = tomorrow), end = at(10, 30, date = tomorrow)))
+        val alarms = FakeScheduledAlarmDao(listOf(rowFor(standup)))
+        val plans = FakeDayPlanDao(listOf(DayPlanEntity(today, alarmsSetAt = 1)), listOf(armedSelection(standup)))
+
+        val plan = AlarmMaintainer(repository, alarms, plans, FakeAlarmScheduler(), FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao()).maintain()
+
+        assertThat(plan.drop).isEmpty()
+        assertThat(plan.cancel).isEmpty()
+        assertThat(alarms.rows.getValue(1).fireAt).isEqualTo(at(9, 55, date = tomorrow).toEpochMilli())
+        assertThat(plans.selectionsFlow.value.map { it.key }).containsExactly(standup.key)
+    }
+
+    @Test
+    fun maintain_whileTheProviderListsNoCalendars_dropsNothing() = runTest {
+        // an account mid-removal or mid-resync: every pick would read as gone
+        val standup = event(1, at(10))
+        val repository = FakeCalendarRepository(calendars = emptyList())
+        val alarms = FakeScheduledAlarmDao(listOf(rowFor(standup)))
+        val plans = FakeDayPlanDao(listOf(DayPlanEntity(today, alarmsSetAt = 1)), listOf(armedSelection(standup)))
+
+        val plan = AlarmMaintainer(repository, alarms, plans, FakeAlarmScheduler(), FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao()).maintain()
+
+        assertThat(plan.isEmpty).isTrue()
+        assertThat(alarms.rows.getValue(1).state).isEqualTo(AlarmState.SCHEDULED)
+        assertThat(plans.selectionsFlow.value).containsExactly(armedSelection(standup))
+        assertThat(repository.eventQueries).isEmpty()
     }
 
     // --- the busy calendar of a shared day ---
@@ -337,7 +428,7 @@ class AlarmMaintainerTest {
 
         suspend fun maintain() = AlarmMaintainer(
             repository, FakeScheduledAlarmDao(), plans, FakeAlarmScheduler(), busySettings, FakeCalendarPermissionChecker(), clock,
-            snapshots, BusyCalendarSyncer(repository, blocks, plans, busySettings, clock),
+            snapshots, BusyCalendarSyncer(repository, blocks, plans, busySettings, clock), blocks,
         ).maintain()
     }
 
@@ -351,6 +442,25 @@ class AlarmMaintainerTest {
         assertThat(day.repository.busyBlockInserts.map { it.range }).containsExactly(BusyRange(at(10), at(10, 30)))
         assertThat(day.blocks.entries).containsExactly(block(100, at(10), at(10, 30)), block(902, at(12), at(13)))
         assertThat(day.plans.selectionsFlow.value).containsExactly(selectionFor(day.standup), selectionFor(day.lunch))
+    }
+
+    @Test
+    fun maintain_takesADeletedMeetingsTimeOutOfTheBusyCalendar_withoutAReshare() = runTest {
+        val day = SharedDay()
+        // the Family calendar's blocks come back from the every-calendar read, as on a device:
+        // lunch's own block has exactly lunch's times and must not pass for its replacement
+        val lunchBlock = testCalendarEvent(902, at(12), at(13), title = "busy").copy(calendarId = family.id)
+        val morningBlock = testCalendarEvent(901, at(10), at(11), title = "busy").copy(calendarId = family.id)
+        day.repository.events[today] = listOf(day.standup, day.review, morningBlock, lunchBlock)
+
+        day.maintain()
+
+        // lunch (12–1) is gone from the calendar: its block goes, 10–11 is untouched
+        assertThat(day.plans.selectionsFlow.value.map { it.key }).containsExactly(day.standup.key, day.review.key)
+        assertThat(day.blocks.entries).containsExactly(block(901, at(10), at(11)))
+        assertThat(day.repository.deletedEventIds).containsExactly(902L)
+        assertThat(day.repository.busyBlockInserts).isEmpty()
+        assertThat(day.plans.plansFlow.value.single().sharedAt).isEqualTo(1L)
     }
 
     @Test
@@ -402,7 +512,7 @@ class AlarmMaintainerTest {
         val alarms = FakeScheduledAlarmDao(listOf(rowFor(standup)))
         val plans = FakeDayPlanDao(listOf(DayPlanEntity(today, alarmsSetAt = 1)))
 
-        AlarmMaintainer(repository, alarms, plans, FakeAlarmScheduler(refuse = true), FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync())
+        AlarmMaintainer(repository, alarms, plans, FakeAlarmScheduler(refuse = true), FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao())
             .maintain()
 
         assertThat(alarms.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
@@ -417,7 +527,7 @@ class AlarmMaintainerTest {
 
         AlarmMaintainer(
             repository, alarms, FakeDayPlanDao(), FakeAlarmScheduler(), FakeSettingsRepository(),
-            FakeCalendarPermissionChecker(calendarGranted = false), clock, FakeChangeSnapshotDao(), noBusySync(),
+            FakeCalendarPermissionChecker(calendarGranted = false), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao(),
         ).maintain()
 
         assertThat(repository.eventQueries).isEmpty()
@@ -431,7 +541,7 @@ class AlarmMaintainerTest {
 
         AlarmMaintainer(
             repository, FakeScheduledAlarmDao(listOf(rowFor(over))), FakeDayPlanDao(), FakeAlarmScheduler(), FakeSettingsRepository(),
-            FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(),
+            FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao(),
         ).maintain()
 
         assertThat(repository.eventQueries).isEmpty()
@@ -443,7 +553,7 @@ class AlarmMaintainerTest {
         val repository = FakeCalendarRepository(calendars = listOf(calendar)).apply { error = SecurityException("revoked") }
         val alarms = FakeScheduledAlarmDao(listOf(row))
 
-        val plan = AlarmMaintainer(repository, alarms, FakeDayPlanDao(), FakeAlarmScheduler(), FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync())
+        val plan = AlarmMaintainer(repository, alarms, FakeDayPlanDao(), FakeAlarmScheduler(), FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao())
             .maintain()
 
         assertThat(plan.isEmpty).isTrue()

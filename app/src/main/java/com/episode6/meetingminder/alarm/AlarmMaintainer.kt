@@ -3,6 +3,8 @@ package com.episode6.meetingminder.alarm
 import android.util.Log
 import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
+import com.episode6.meetingminder.data.calendar.excludeOwnBlocks
+import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.AlarmState
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.DayPlanDao
@@ -39,15 +41,14 @@ private const val TAG = "MeetingMinderAlarms"
 data class AlarmMaintenance(
     /** Rows whose event moved: update the row (fresh `SCHEDULED` state) and re-arm it. */
     val retime: List<ScheduledAlarmEntity> = emptyList(),
-    /** Rows whose event is now cancelled or declined by me: disarm and mark `CANCELLED`. */
+    /** Rows whose event is gone from the calendar, cancelled or declined by me: disarm and mark `CANCELLED`. */
     val cancel: List<ScheduledAlarmEntity> = emptyList(),
     /** Rows that only need their denormalised copy refreshed, without touching the alarm. */
     val refresh: List<ScheduledAlarmEntity> = emptyList(),
     /**
-     * Selections whose meeting is now declined by me: deleted, with their time taken out of
-     * the day's busy blocks first (`BusyCalendarSyncer.trim`). (A `CANCELED` event counts
-     * too, but the repository filters those out, so an organizer's cancellation reads as
-     * absent and keeps its selection, like its alarm.)
+     * Selections whose meeting is gone from the calendar (deleted, or cancelled by its
+     * organizer, which the repository's query filters out) or now declined by me: deleted,
+     * with their time taken out of the day's busy blocks first (`BusyCalendarSyncer.trim`).
      */
     val drop: List<SelectedEventEntity> = emptyList(),
 ) {
@@ -58,11 +59,20 @@ data class AlarmMaintenance(
  * The narrower, automatic reconcile (TODO.md §4.4 `MaintainAlarms`): unlike "Set alarms" it
  * only ever touches rows that are already armed ([armed]), never arms a newly selected event
  * and never RSVPs. For each row, by the event now in [fresh] under its key:
- *  - absent: nothing. An event that vanished from the provider (including one the organizer
- *    cancelled, which the repository's query filters out) keeps its alarm until the day
- *    ends — a stale alarm after a sync hiccup is cheaper than a missed meeting, and the
- *    change banner still reports it. The explicit "Set alarms" tap is what cancels it
- *    (`reconcileAlarms`' `providerRead`);
+ *  - absent: cancel the alarm, as for a decline. An event gone from the provider was
+ *    deleted, or cancelled by its organizer (the repository's query filters `CANCELED`
+ *    occurrences out), and a cancelled meeting must never ring, whether or not the user saw
+ *    the change banner. The one exception is an event **replaced at identical times**: an
+ *    edit of "this and following events", or a delete-and-recreate, gives the occurrence a
+ *    new [EventKey] without moving it, which `monitor/ChangeDetector` reports as no change
+ *    at all. So a key that is absent while an event nobody picked sits at exactly the row's
+ *    begin and end is left alone, and its alarm still rings at the right time. (Two picks
+ *    gone from one slot with a single newcomer there are both kept: over-keeping is the
+ *    safe side.) [fresh] must be the provider's days from **every** calendar, with the day
+ *    either side — anything narrower reads a hidden calendar's or a moved meeting's pick as
+ *    gone — and without the app's own busy blocks (`excludeOwnBlocks`): a shared meeting's
+ *    block has exactly its times, so left in it would pass for the replacement and keep
+ *    every deleted meeting of a synced day ringing;
  *  - cancelled or declined by me: cancel the alarm. Its selection is dropped too (below),
  *    so the rest of the day still matches its armed set; only a row whose selection wasn't
  *    dropped (deselected already, or its busy blocks couldn't be trimmed) puts the day
@@ -77,13 +87,13 @@ data class AlarmMaintenance(
  *    copy is refreshed), as the "Set alarms" reconcile does.
  *
  * And for each of [selections] (armed or not) whose meeting hasn't ended, by the same
- * [fresh] read: one now declined by me is [dropped][AlarmMaintenance.drop]. A declined
- * chip can't be tapped, so without this nothing could deselect it, and its stored time
- * would keep going out in the share text and the busy-calendar sync. An absent event —
- * which is how an organizer's cancellation arrives, the repository filtering `CANCELED`
- * occurrences out — keeps its selection, as it keeps its alarm, until the "Set alarms"
- * reconcile drops it as vanished. The change banner still reports the decline: the
- * differ reads "selected" from the share's baseline, not from the selection.
+ * [fresh] read: one now declined by me, or gone from the calendar (under the same
+ * replaced-at-identical-times exception), is [dropped][AlarmMaintenance.drop]. A declined
+ * chip can't be tapped and a deleted meeting has no chip at all, so without this nothing
+ * could deselect it, and its stored time would keep going out in the share text and the
+ * busy-calendar sync. Nothing is re-shared from here: the change banner still reports the
+ * decline or cancellation (the differ reads "selected" from the share's baseline, not from
+ * the selection) and the user sends the update.
  *
  * Settings' test alarm and a schedule-change alert ([isSyntheticAlarmEvent]) are never touched.
  */
@@ -95,12 +105,22 @@ fun maintainAlarms(
     selections: List<SelectedEventEntity> = emptyList(),
 ): AlarmMaintenance {
     val nowMillis = now.toEpochMilli()
+    val picked = armed.mapTo(mutableSetOf()) { it.key }.apply { selections.mapTo(this) { it.key } }
+    // gone from the calendar, with no event nobody picked standing in its exact slot
+    fun gone(key: EventKey, beginMillis: Long, endMillis: Long): Boolean = key !in fresh && fresh.values.none {
+        it.key !in picked && !it.allDay && !it.notAttending &&
+            it.begin.toEpochMilli() == beginMillis && it.end.toEpochMilli() == endMillis
+    }
     val retime = mutableListOf<ScheduledAlarmEntity>()
     val cancel = mutableListOf<ScheduledAlarmEntity>()
     val refresh = mutableListOf<ScheduledAlarmEntity>()
     for (row in armed) {
         if (isSyntheticAlarmEvent(row.eventId) || !row.state.armed) continue
-        val event = fresh[row.key] ?: continue
+        val event = fresh[row.key]
+        if (event == null) {
+            if (row.endMillis > nowMillis && gone(row.key, row.beginMillis, row.endMillis)) cancel += row
+            continue
+        }
         val begin = event.begin.toEpochMilli()
         val end = event.end.toEpochMilli()
         when {
@@ -123,7 +143,8 @@ fun maintainAlarms(
         }
     }
     val drop = selections.filter { selection ->
-        selection.endMillis > nowMillis && fresh[selection.key]?.notAttending == true
+        selection.endMillis > nowMillis &&
+            (fresh[selection.key]?.notAttending ?: gone(selection.key, selection.beginMillis, selection.endMillis))
     }
     return AlarmMaintenance(retime = retime, cancel = cancel, refresh = refresh, drop = drop)
 }
@@ -140,12 +161,13 @@ private val CalendarEvent.notAttending: Boolean get() = status == EventStatus.CA
  * instances in the new zone (a floating-time event, a recurrence expanded in local time),
  * so the events are read fresh and any that moved are re-timed.
  *
- * Each armed row's day is read with the day either side of it — a zone change can move an
- * occurrence across midnight — from every calendar, whatever the Settings filter says: the
- * alarm was armed on purpose, and hiding its calendar later mustn't read as the event
- * vanishing. A day with selections but no armed row is read on its own: the decline check
- * doesn't need the neighbours (a pick whose meeting moved off its day just reads as absent
- * and is kept). Without calendar access nothing is read or changed. The reads can be
+ * Each armed row's and each selection's day is read with the day either side of it — a zone
+ * change can move an occurrence across midnight, and a meeting moved to the next day must
+ * not read as gone — from every calendar, whatever the Settings filter says: the alarm was
+ * armed on purpose, and hiding its calendar later mustn't read as the event vanishing.
+ * Without calendar access nothing is read or changed, and nothing is either while the
+ * provider lists no calendars at all: that is an account mid-removal or mid-resync, not a
+ * day of cancellations, and every pick would read as gone. The reads can be
  * cancelled; the writes can't, so a cancelled run never leaves a row re-timed in Room but
  * not in `AlarmManager` — and that includes the busy-block trim's provider reads and writes,
  * which run with the writes: a half-applied trim is worse than a late one, so once the
@@ -154,7 +176,7 @@ private val CalendarEvent.notAttending: Boolean get() = status == EventStatus.CA
  * both clear their day's `alarms_set_at`, so it goes back to "Set alarms", as the reconcile
  * does whenever the armed set stops matching the selection.
  *
- * A selection whose meeting was declined ([AlarmMaintenance.drop]) has its time taken out of
+ * A selection whose meeting was declined or is gone ([AlarmMaintenance.drop]) has its time taken out of
  * the day's busy blocks ([BusyCalendarSyncer.trim]) before it is deleted, so the partner's
  * calendar loses the meeting without the day being re-shared; the time cut is what the share
  * wrote for it, minus whatever the day's other selections still cover (see [trimBusyBlocks]).
@@ -173,6 +195,7 @@ class AlarmMaintainer(
     private val clock: Clock,
     private val changeSnapshotDao: ChangeSnapshotDao,
     private val busyCalendarSyncer: BusyCalendarSyncer,
+    private val busyBlockDao: BusyBlockDao,
 ) {
     private val mutex = Mutex()
 
@@ -185,10 +208,15 @@ class AlarmMaintainer(
         val selections = dayPlanDao.selectedEventsEndingAfter(nowMillis)
         if (armed.isEmpty() && selections.isEmpty()) return@withLock AlarmMaintenance()
         val fresh = try {
-            val everyCalendar = CalendarFilter.Only(repository.calendars().mapTo(mutableSetOf()) { it.id })
-            val days = armed.flatMapTo(sortedSetOf()) { listOf(it.date.minusDays(1), it.date, it.date.plusDays(1)) } +
-                selections.map { it.date }
-            days.sorted().flatMap { day -> repository.eventsOn(day, everyCalendar) }.associateBy { it.key }
+            val calendars = repository.calendars()
+            if (calendars.isEmpty()) return@withLock AlarmMaintenance()
+            val everyCalendar = CalendarFilter.Only(calendars.mapTo(mutableSetOf()) { it.id })
+            val days = (armed.map { it.date } + selections.map { it.date })
+                .flatMapTo(sortedSetOf()) { listOf(it.minusDays(1), it, it.plusDays(1)) }
+            // without the app's own busy blocks: a shared meeting's block sits at exactly its
+            // times on a calendar nobody picked from, and would stand in for it as a replacement
+            val ownBlocks = busyBlockDao.eventIds()
+            days.flatMap { day -> repository.eventsOn(day, everyCalendar) }.excludeOwnBlocks(ownBlocks).associateBy { it.key }
         } catch (e: SecurityException) {
             Log.w(TAG, "calendar access lost; alarms left as they are", e)
             return@withLock AlarmMaintenance()
@@ -266,7 +294,7 @@ class AlarmMaintainer(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "could not take $date's declined meetings out of the busy calendar; selections kept", e)
+            Log.w(TAG, "could not take $date's dropped meetings out of the busy calendar; selections kept", e)
             false
         }
     }

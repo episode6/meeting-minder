@@ -41,8 +41,9 @@ import java.time.LocalDate
  * paired one-to-one with a key new to the day at exactly the same begin and end, and the pair
  * is no change at all. Only like pairs with like (both [CalendarEvent.isMeeting] or both
  * not), so an event marked "free" deleted to make room for a meeting still reports the
- * meeting, and a selected row gets first pick of an arrival. The alarm agrees: `maintainAlarms` keeps the alarm of a key that
- * vanished, and it is still set for the right time.
+ * meeting, and a selected row gets first pick of an arrival. The alarm agrees: `maintainAlarms`,
+ * which drops any other vanished key, keeps the alarm of one replaced this way, and it is
+ * still set for the right time.
  */
 object ChangeDetector {
 
