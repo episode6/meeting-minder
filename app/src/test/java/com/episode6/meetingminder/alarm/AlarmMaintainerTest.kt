@@ -26,6 +26,7 @@ import com.episode6.meetingminder.data.settings.Settings
 import com.episode6.meetingminder.model.BusyRange
 import com.episode6.meetingminder.model.CalendarEvent
 import com.episode6.meetingminder.model.CalendarInfo
+import com.episode6.meetingminder.model.EventKey
 import com.episode6.meetingminder.model.EventStatus
 import com.episode6.meetingminder.model.SelfStatus
 import com.episode6.meetingminder.model.TEST_ALARM_EVENT_ID
@@ -78,6 +79,16 @@ class AlarmMaintainerTest {
     private fun noBusySync() = BusyCalendarSyncer(FakeCalendarRepository(), FakeBusyBlockDao(), FakeDayPlanDao(), FakeSettingsRepository(), clock)
 
     // --- the pure rule ---
+
+    /** The production rule with the fixtures' one calendar (id 1, [testCalendarEvent]'s default) listed. */
+    private fun maintainAlarms(
+        armed: List<ScheduledAlarmEntity>,
+        fresh: Map<EventKey, CalendarEvent>,
+        leadTime: Duration,
+        now: Instant,
+        selections: List<SelectedEventEntity> = emptyList(),
+        listedCalendars: Set<Long> = setOf(1L),
+    ) = com.episode6.meetingminder.alarm.maintainAlarms(armed, fresh, leadTime, now, listedCalendars, selections)
 
     @Test
     fun aDeclinedCancelledOrVanishedSelection_isDropped_armedOrNot_butNeverAnEndedOne() {
@@ -196,8 +207,8 @@ class AlarmMaintainerTest {
     }
 
     @Test
-    fun aVanishedEvent_whoseCalendarIsNoLongerListedOrSynced_keepsItsAlarm_andItsSelection() {
-        // an account removed, re-added (new calendar ids) or mid-resync: its picks say nothing about their meetings
+    fun aVanishedEvent_whoseCalendarIsNoLongerListed_keepsItsAlarm_andItsSelection() {
+        // an account that has been removed: its picks say nothing about their meetings
         val onRemoved = event(1, at(10))
         val onListed = event(2, at(11))
         val legacy = event(3, at(12))
@@ -209,7 +220,7 @@ class AlarmMaintainerTest {
 
         val plan = maintainAlarms(
             listOf(rowFor(onRemoved), rowFor(onListed), rowFor(legacy)), emptyMap(), lead, now,
-            selections = selections, syncedCalendars = setOf(1L),
+            selections = selections, listedCalendars = setOf(1L),
         )
 
         // the pick on a calendar still listed is gone, and so is the one whose calendar was never recorded
@@ -227,7 +238,7 @@ class AlarmMaintainerTest {
             listOf(rowFor(declined), rowFor(deselected)),
             mapOf(declined.key to declined.copy(selfStatus = SelfStatus.DECLINED)),
             lead, now,
-            selections = listOf(selection), syncedCalendars = setOf(1L),
+            selections = listOf(selection), listedCalendars = setOf(1L),
         )
 
         assertThat(plan.cancel).containsExactly(rowFor(declined), rowFor(deselected))
@@ -416,10 +427,10 @@ class AlarmMaintainerTest {
     }
 
     @Test
-    fun maintain_aPickWhoseAccountWasReAdded_keepsItsAlarm_whileAnotherCalendarsDeletedMeetingIsDropped() = runTest {
+    fun maintain_aPickWhoseCalendarIsGone_keepsItsAlarm_whileAnotherCalendarsDeletedMeetingIsDropped() = runTest {
         val standup = event(1, at(10))
         val review = event(2, at(11))
-        // the old calendar (id 4) is gone; the re-added account's calendar came back as id 9, its events not yet synced
+        // the pick's calendar (id 4) is no longer listed; another account's (id 9) is
         val readded = calendar.copy(id = 9)
         val repository = FakeCalendarRepository(calendars = listOf(calendar, readded))
         val alarms = FakeScheduledAlarmDao(listOf(rowFor(standup), rowFor(review)))
@@ -438,7 +449,8 @@ class AlarmMaintainerTest {
     }
 
     @Test
-    fun maintain_aPickOnACalendarWithSyncTurnedOff_keepsItsAlarm() = runTest {
+    fun maintain_aDeletedMeetingOnACalendarWithSyncOff_isStillDropped() = runTest {
+        // SYNC_EVENTS defaults to off and such a calendar still serves its events: listed is all that is asked
         val standup = event(1, at(10))
         val repository = FakeCalendarRepository(calendars = listOf(calendar.copy(syncEvents = false), calendar.copy(id = 2)))
         val alarms = FakeScheduledAlarmDao(listOf(rowFor(standup)))
@@ -447,8 +459,25 @@ class AlarmMaintainerTest {
 
         val plan = AlarmMaintainer(repository, alarms, plans, FakeAlarmScheduler(), FakeSettingsRepository(), FakeCalendarPermissionChecker(), clock, FakeChangeSnapshotDao(), noBusySync(), FakeBusyBlockDao()).maintain()
 
+        assertThat(plan.drop).containsExactly(selection)
+        assertThat(alarms.rows.getValue(1).state).isEqualTo(AlarmState.CANCELLED)
+        assertThat(plans.selectionsFlow.value).isEmpty()
+    }
+
+    @Test
+    fun maintain_aKeptPickOnASharedDay_keepsItsBusyBlock_andTheDayStaysAlarmsSet() = runTest {
+        val day = SharedDay()
+        // lunch was picked from a calendar the provider no longer lists, and its event is gone with it
+        day.plans.selectionsFlow.value = day.plans.selectionsFlow.value.map { if (it.key == day.lunch.key) it.copy(calendarId = 4) else it }
+        day.repository.events[today] = listOf(day.standup, day.review)
+
+        val plan = day.maintain()
+
         assertThat(plan.isEmpty).isTrue()
-        assertThat(plans.selectionsFlow.value).containsExactly(selection)
+        assertThat(day.plans.selectionsFlow.value.map { it.key }).containsExactly(day.standup.key, day.review.key, day.lunch.key)
+        assertThat(day.blocks.entries).containsExactly(block(901, at(10), at(11)), block(902, at(12), at(13)))
+        assertThat(day.repository.deletedEventIds).isEmpty()
+        assertThat(day.plans.plansFlow.value.single().alarmsSetAt).isEqualTo(1L)
     }
 
     @Test

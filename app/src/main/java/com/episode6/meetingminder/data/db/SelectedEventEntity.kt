@@ -14,8 +14,8 @@ import java.time.LocalDate
  * [RsvpState.NOT_APPLICABLE]/null until the same tap decides and writes the RSVP
  * (TODO.md §4.6). [rsvpState] is stored as its name (`TEXT`). [calendarId] is the
  * `Calendars._ID` the event was read from, which is what lets `alarm/AlarmMaintainer` tell a
- * deleted meeting from a calendar that has left the provider (an account removed, re-added
- * or re-syncing — a re-added calendar gets a new id). Null on a row picked before version 8
+ * deleted meeting from a calendar that has left the provider (an account removed; a partial
+ * guard, since the provider reuses calendar ids — see `maintainAlarms`). Null on a row picked before version 8
  * until a maintenance pass sees its event and fills it in ([DayPlanDao.backfillCalendarId]).
  */
 @Entity(

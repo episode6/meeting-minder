@@ -77,13 +77,18 @@ data class AlarmMaintenance(
  *    block has exactly its times, so left in it would pass for the replacement and keep
  *    every deleted meeting of a synced day ringing. And an absent event is only read as
  *    gone while the calendar its pick was read from (`selected_event.calendar_id`) is still
- *    in [syncedCalendars], the calendars the provider lists with sync on: an account that
- *    was removed, re-added (its calendars come back under new ids) or is having its storage
- *    rebuilt lists other calendars, or none of its events yet, and without this every pick
- *    on it read as deleted at once. Such a pick keeps its alarm, which still rings at the
- *    stored time. A row with no selection (deselected, waiting for "Clear alarms") or a
- *    pick whose calendar was never recorded has nothing to check and is taken at the
- *    read's word;
+ *    in [listedCalendars], every calendar the provider lists: while an account is removed
+ *    its calendars are gone with their events, and without this every pick on it read as
+ *    deleted at once. Such a pick keeps its alarm, which still rings at the stored time —
+ *    for as long as the calendar stays away, so an account removed on purpose leaves its
+ *    picks ringing until their days end (the known cost). `SYNC_EVENTS` is deliberately not
+ *    asked for: the flag defaults to off, a calendar with it off still serves its events,
+ *    and a meeting deleted there must still be dropped. This is a partial guard only. The
+ *    provider reuses `Calendars._ID` (it is not `AUTOINCREMENT`), so the phone's newest
+ *    account comes back from a remove-and-re-add under the same ids, listed before its
+ *    events arrive, and its picks read as gone exactly as if there were no guard. A row
+ *    with no selection (deselected, waiting for "Clear alarms") or a pick whose calendar
+ *    was never recorded has nothing to check and is taken at the read's word;
  *  - cancelled or declined by me: cancel the alarm. Its selection is dropped too (below),
  *    so the rest of the day still matches its armed set; only a row whose selection wasn't
  *    dropped (deselected already, or its busy blocks couldn't be trimmed) puts the day
@@ -113,16 +118,16 @@ fun maintainAlarms(
     fresh: Map<EventKey, CalendarEvent>,
     leadTime: Duration,
     now: Instant,
+    listedCalendars: Set<Long>,
     selections: List<SelectedEventEntity> = emptyList(),
-    syncedCalendars: Set<Long>? = null,
 ): AlarmMaintenance {
     val nowMillis = now.toEpochMilli()
     val calendarOf = selections.associate { (it.date to it.key) to it.calendarId }
-    // a pick whose own calendar the provider no longer lists (or no longer syncs) says nothing
-    // about its meeting; one with no known calendar can only be taken at the read's word
+    // a pick whose own calendar the provider no longer lists says nothing about its meeting;
+    // one with no known calendar can only be taken at the read's word
     fun readable(date: LocalDate, key: EventKey): Boolean {
         val calendarId = calendarOf[date to key] ?: return true
-        return syncedCalendars == null || calendarId in syncedCalendars
+        return calendarId in listedCalendars
     }
     val picked = armed.mapTo(mutableSetOf()) { it.key }.apply { selections.mapTo(this) { it.key } }
     // gone from the calendar, with no event nobody picked standing in its exact slot
@@ -190,8 +195,9 @@ private val CalendarEvent.notAttending: Boolean get() = status == EventStatus.CA
  * Without calendar access nothing is read or changed, and nothing is either while the
  * provider lists no calendars at all: that is an account mid-removal or mid-resync, not a
  * day of cancellations, and every pick would read as gone. With some calendars listed, a
- * pick is only ever dropped as gone while its own calendar is among them, sync on
- * (`maintainAlarms`' `syncedCalendars`). The reads can be
+ * pick is only ever dropped as gone while its own calendar is among them
+ * (`maintainAlarms`' `listedCalendars`, which has no default on purpose: a caller that
+ * forgot it would run with no guard). The reads can be
  * cancelled; the writes can't, so a cancelled run never leaves a row re-timed in Room but
  * not in `AlarmManager` — and that includes the busy-block trim's provider reads and writes,
  * which run with the writes: a half-applied trim is worse than a late one, so once the
@@ -231,11 +237,11 @@ class AlarmMaintainer(
         val armed = alarmDao.allScheduled().filter { !isSyntheticAlarmEvent(it.eventId) && it.endMillis > nowMillis }
         val selections = dayPlanDao.selectedEventsEndingAfter(nowMillis)
         if (armed.isEmpty() && selections.isEmpty()) return@withLock AlarmMaintenance()
-        var syncedCalendars = emptySet<Long>()
+        var listedCalendars = emptySet<Long>()
         val fresh = try {
             val calendars = repository.calendars()
             if (calendars.isEmpty()) return@withLock AlarmMaintenance()
-            syncedCalendars = calendars.filter { it.syncEvents }.mapTo(mutableSetOf()) { it.id }
+            listedCalendars = calendars.mapTo(mutableSetOf()) { it.id }
             val everyCalendar = CalendarFilter.Only(calendars.mapTo(mutableSetOf()) { it.id })
             val days = (armed.map { it.date } + selections.map { it.date })
                 .flatMapTo(sortedSetOf()) { listOf(it.minusDays(1), it, it.plusDays(1)) }
@@ -253,7 +259,7 @@ class AlarmMaintainer(
             val calendarId = fresh[selection.key]?.calendarId ?: continue
             dayPlanDao.backfillCalendarId(selection.date, selection.eventId, selection.instanceTime, calendarId)
         }
-        val plan = maintainAlarms(armed, fresh, settings.current().leadTime, now, selections, syncedCalendars)
+        val plan = maintainAlarms(armed, fresh, settings.current().leadTime, now, listedCalendars, selections)
         if (!plan.isEmpty) withContext(NonCancellable) { apply(plan, fresh) }
         plan
     }
