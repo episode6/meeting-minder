@@ -4,8 +4,8 @@ import android.util.Log
 import com.episode6.meetingminder.data.calendar.CalendarFilter
 import com.episode6.meetingminder.data.calendar.CalendarRepository
 import com.episode6.meetingminder.data.calendar.excludeOwnBlocks
-import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.AlarmState
+import com.episode6.meetingminder.data.db.BusyBlockDao
 import com.episode6.meetingminder.data.db.ChangeSnapshotDao
 import com.episode6.meetingminder.data.db.DayPlanDao
 import com.episode6.meetingminder.data.db.ScheduledAlarmDao
@@ -65,8 +65,11 @@ data class AlarmMaintenance(
  *    the change banner. The one exception is an event **replaced at identical times**: an
  *    edit of "this and following events", or a delete-and-recreate, gives the occurrence a
  *    new [EventKey] without moving it, which `monitor/ChangeDetector` reports as no change
- *    at all. So a key that is absent while an event nobody picked sits at exactly the row's
- *    begin and end is left alone, and its alarm still rings at the right time. (Two picks
+ *    at all. So a key that is absent while a meeting ([CalendarEvent.isMeeting], so never an
+ *    event marked "free") nobody picked sits at exactly the row's begin and end is left
+ *    alone, and its alarm still rings at the right time. This is deliberately a little wider
+ *    than the differ's pairing, which also needs the stand-in to be new since the share: the
+ *    same invite on a second calendar keeps the alarm here while the banner says Cancelled. (Two picks
  *    gone from one slot with a single newcomer there are both kept: over-keeping is the
  *    safe side.) [fresh] must be the provider's days from **every** calendar, with the day
  *    either side — anything narrower reads a hidden calendar's or a moved meeting's pick as
@@ -108,7 +111,7 @@ fun maintainAlarms(
     val picked = armed.mapTo(mutableSetOf()) { it.key }.apply { selections.mapTo(this) { it.key } }
     // gone from the calendar, with no event nobody picked standing in its exact slot
     fun gone(key: EventKey, beginMillis: Long, endMillis: Long): Boolean = key !in fresh && fresh.values.none {
-        it.key !in picked && !it.allDay && !it.notAttending &&
+        it.key !in picked && it.isMeeting && !it.notAttending &&
             it.begin.toEpochMilli() == beginMillis && it.end.toEpochMilli() == endMillis
     }
     val retime = mutableListOf<ScheduledAlarmEntity>()

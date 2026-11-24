@@ -212,10 +212,12 @@ class AlarmMaintainerTest {
         val picked = event(2, at(10))
         val declined = event(3, at(10)).copy(selfStatus = SelfStatus.DECLINED)
         val longer = event(4, at(10), at(11))
+        // like the differ's like-with-like rule: an event marked "free" never stands in for a meeting
+        val free = event(5, at(10)).copy(availability = com.episode6.meetingminder.model.Availability.FREE)
 
         val plan = maintainAlarms(
             listOf(rowFor(standup), rowFor(picked)),
-            listOf(picked, declined, longer).associateBy { it.key },
+            listOf(picked, declined, longer, free).associateBy { it.key },
             lead, now,
             selections = listOf(armedSelection(standup), armedSelection(picked)),
         )
