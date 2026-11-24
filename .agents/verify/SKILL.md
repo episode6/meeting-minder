@@ -275,6 +275,14 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   `content://com.android.calendar` trigger); `adb shell cmd jobscheduler run -f $PKG <jobId>`
   forces a check. Tapping "Share update" should open the chooser with `Update:` text, listing
   only the selected ranges that haven't ended yet ("No more meetings." when none are left).
+- A deleted (or declined) picked meeting: pick two meetings, set alarms, share with the
+  busy-calendar sync on, press Home, then `adb shell content delete --uri
+  content://com.android.calendar/events/<id>` for one of them. Within about 15 s its alarm
+  must be gone from `dumpsys alarm | grep "RTC_WAKEUP.*meetingminder"` and its `busy` row
+  from the Family calendar, with the "Cancelled: …" notification posted and no chooser
+  opened; back in the app the banner's "Sync & re-share" text must not list it. Do this
+  with the sync **on**: the meeting's own busy block has exactly its times, and a read that
+  let it through once kept every deleted meeting ringing.
 - The loud schedule-change alert: turn on Settings → Schedule changes → "Loud schedule-change
   alerts" (opt-in, off by default; with it off the same steps must only post the ordinary,
   audible `schedule_updates` notification), share today, press Home (nothing rings while `MainActivity`

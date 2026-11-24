@@ -73,7 +73,7 @@ interface DayPlanDao {
 
     /**
      * Every selection, on any day, whose stored end is after [afterMillis]: the ones
-     * `AlarmMaintainer` checks for a meeting declined or cancelled since it was picked.
+     * `AlarmMaintainer` checks for a meeting declined, cancelled or deleted since it was picked.
      */
     @Query("SELECT * FROM selected_event WHERE end_millis > :afterMillis")
     suspend fun selectedEventsEndingAfter(afterMillis: Long): List<SelectedEventEntity>

@@ -711,7 +711,8 @@ NB (PR-11), where the build settled things this section leaves open:
   to the day at exactly the same begin and end and reports neither. Only like pairs with like
   (both `isMeeting` or both not), so a "free" event deleted to make room for a new meeting still
   reports the meeting, and a selected row gets first pick of an arrival. `maintainAlarms`
-  already keeps the alarm of a vanished key, so the alarm still rings on time; the selection
+  keeps the alarm (and pick) of a key replaced this way, though it drops any other vanished
+  key (§4.4), so the alarm still rings on time; the selection
   is **not** re-keyed, so the replacement's chip shows unselected until tapped, and with the
   notification now silent nothing prompts that tap: a re-share before it leaves the range out.
 - **Notification**: tag `schedule_updates`, id = the day's epoch day. A check that finds the
@@ -851,10 +852,15 @@ temporary allowlist that permits starting a foreground service from the backgrou
   a moved event and **cancels** the alarm (state `CANCELLED`, selection row kept so the banner
   can explain) when the event is now `STATUS_CANCELED` or declined by me. It never arms a newly
   selected event and never RSVPs; that only happens on the explicit "Set alarms" tap, which is
-  the user's commitment moment (§2). An event that simply **vanishes** from the provider keeps
-  its alarm until the day ends: a stale alarm after a sync hiccup is a cheaper failure than a
-  missed meeting, and the change banner (§4.3) still reports it. The explicit "Set alarms" tap is
-  what cancels it: when that tap could read the provider, a selection whose event is gone from
+  the user's commitment moment (§2). An event that simply **vanishes** from the provider (deleted, or cancelled by its
+  organizer) loses its alarm and its selection on the next pass, with its time trimmed from a
+  shared day's busy blocks and nothing re-shared: a cancelled meeting must never ring, even
+  when the change banner (§4.3), which still reports it, went unnoticed. (Originally it kept
+  its alarm until the day ends as a hedge against a sync hiccup; that left a deleted meeting
+  ringing and in every re-share, with no chip to deselect and no "Set alarms" tap on offer.)
+  Two guards remain: a key replaced at identical times (§4.3) keeps its alarm and pick, and
+  nothing is touched while the provider lists no calendars. The explicit "Set alarms" tap
+  drops it too: when that tap could read the provider, a selection whose event is gone from
   the day (an organizer's cancellation, a deleted meeting, a series moved to new times — every
   occurrence gets a new key — all read as vanished, and the chip is no longer drawn, so
   deselecting isn't possible) lands in `AlarmReconciliation.vanished`: its row is cancelled and
@@ -881,8 +887,8 @@ temporary allowlist that permits starting a foreground service from the backgrou
   so that it is *already in progress*, which "Set alarms" would skip as past — a deliberate
   difference: a late nudge beats silence), except a `SNOOZED` row, which
   keeps its snooze as in the "Set alarms" reconcile; and since the repository never returns
-  `STATUS_CANCELED` occurrences, an organizer's cancellation reads as "vanished" and keeps its
-  alarm. A cancelled row clears its selection's alarm pointer and puts its day back to
+  `STATUS_CANCELED` occurrences, an organizer's cancellation reads as "vanished" and is
+  handled as one (above). A cancelled row clears its selection's alarm pointer and puts its day back to
   "Set alarms" (the armed set no longer matches the selection, so a later re-accept can be
   re-armed from the FAB); a re-time the OS refuses is marked `CANCELLED` and does the same.
   For that to rest, the explicit "Set alarms" reconcile follows the same rule: a selection
@@ -898,10 +904,9 @@ temporary allowlist that permits starting a foreground service from the backgrou
   yet ended — is **dropped** by `MaintainAlarms` (`AlarmMaintenance.drop`), so its alarm is
   cancelled, its time no longer reaches a share, and a picked-then-declined chip (which a tap
   can't deselect) doesn't sit on the day for good. To find them it also reads the day of every
-  running selection (`DayPlanDao.selectedEventsEndingAfter`) — alone, without the neighbours
-  an armed row's day gets. An organizer's cancellation reads as absent (the repository filters
-  `STATUS_CANCELED` out), so it keeps its pick and block, as it keeps its alarm, until the
-  "Set alarms" reconcile drops it as vanished. Before the delete, a shared day's busy blocks
+  running selection (`DayPlanDao.selectedEventsEndingAfter`), with the day either side like
+  an armed row's. A meeting gone from the calendar — deleted, or cancelled by its organizer,
+  which the repository filters out — is dropped the same way. Before the delete, a shared day's busy blocks
   lose the meeting's time (`BusyCalendarSyncer.trim`, §4.7) without the day being re-shared:
   only the share's own time for it is cut (the baseline's; none if it was picked after the
   share or appeared after it), never what the day's other picks still cover, and nothing is
