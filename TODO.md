@@ -865,7 +865,9 @@ temporary allowlist that permits starting a foreground service from the backgrou
   has been removed keeps its picks and alarms instead of losing them all at once. That last
   one is partial: the provider reuses calendar ids, so the newest account re-added comes
   back under the same ids before its events do and its picks are dropped all the same; and
-  an account removed on purpose leaves its picks ringing until their days end. The explicit "Set alarms" tap
+  an account removed on purpose leaves its picks ringing until their days end or "Set alarms"
+  is tapped on the day (that tap has no calendar guard, on purpose, though it too does
+  nothing while the provider lists no calendars at all). The explicit "Set alarms" tap
   drops it too: when that tap could read the provider, a selection whose event is gone from
   the day (an organizer's cancellation, a deleted meeting, a series moved to new times — every
   occurrence gets a new key — all read as vanished, and the chip is no longer drawn, so

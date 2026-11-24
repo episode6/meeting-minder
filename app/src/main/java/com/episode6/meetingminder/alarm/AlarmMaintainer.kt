@@ -81,7 +81,11 @@ data class AlarmMaintenance(
  *    its calendars are gone with their events, and without this every pick on it read as
  *    deleted at once. Such a pick keeps its alarm, which still rings at the stored time —
  *    for as long as the calendar stays away, so an account removed on purpose leaves its
- *    picks ringing until their days end (the known cost). `SYNC_EVENTS` is deliberately not
+ *    picks ringing until their days end or the day's "Set alarms" is tapped again (the
+ *    known cost; that reconcile has no such guard and drops them as vanished — it is
+ *    offered again once any chip on the day is toggled). The change banner disagrees
+ *    meanwhile: the differ only sees the event gone, so a shared day reports the kept pick
+ *    as Cancelled while its alarm stays armed and a re-share still sends its stored time. `SYNC_EVENTS` is deliberately not
  *    asked for: the flag defaults to off, a calendar with it off still serves its events,
  *    and a meeting deleted there must still be dropped. This is a partial guard only. The
  *    provider reuses `Calendars._ID` (it is not `AUTOINCREMENT`), so the phone's newest

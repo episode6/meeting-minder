@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
 import assertk.assertions.containsExactly
+import com.episode6.meetingminder.model.RsvpState
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.After
@@ -13,7 +14,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.File
-import com.episode6.meetingminder.model.RsvpState
 import java.time.LocalDate
 
 private const val DATABASE_NAME = "migration-test.db"
