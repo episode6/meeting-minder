@@ -371,6 +371,30 @@ class ScheduleAlarmsSideEffectsTest {
     }
 
     @Test
+    fun setAlarms_whileTheProviderListsNoCalendars_dropsNothing_andArmsFromTheLoadedWindow() = runTest {
+        // an account mid-removal: "every calendar" would be none, and the empty day would read every selection as gone
+        repository.calendars = emptyList()
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup)))
+
+        run(dayPlanDao)
+
+        assertThat(dayPlanDao.selectionsFlow.value.map { it.key }).containsExactly(standup.key)
+        assertThat(scheduler.armed.values.map { it.key }).containsExactly(standup.key)
+        assertThat(repository.eventQueries).isEmpty()
+    }
+
+    @Test
+    fun setAlarms_dropsAVanishedSelection_evenOneWhoseCalendarIsNoLongerListed() = runTest {
+        // the automatic maintenance keeps such a pick; this tap is the user's own way to clear it
+        val state = TestAppState.copy(eventsByDay = mapOf(today to DayEvents(today, listOf(designReview), Instant.EPOCH)))
+        val dayPlanDao = FakeDayPlanDao(selections = listOf(selection(standup).copy(calendarId = 4), selection(designReview)))
+
+        run(dayPlanDao, state)
+
+        assertThat(dayPlanDao.selectionsFlow.value.map { it.key }).containsExactly(designReview.key)
+    }
+
+    @Test
     fun setAlarms_keepsTheAlarmOfASelectionMissingFromTheLoadedWindow_whenTheProviderCannotBeRead() = runTest {
         // the fallback window isn't the provider's day, so an event missing from it isn't
         // known to be gone: the stored times stand, as before

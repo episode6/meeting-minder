@@ -75,7 +75,24 @@ data class AlarmMaintenance(
  *    either side — anything narrower reads a hidden calendar's or a moved meeting's pick as
  *    gone — and without the app's own busy blocks (`excludeOwnBlocks`): a shared meeting's
  *    block has exactly its times, so left in it would pass for the replacement and keep
- *    every deleted meeting of a synced day ringing;
+ *    every deleted meeting of a synced day ringing. And an absent event is only read as
+ *    gone while the calendar its pick was read from (`selected_event.calendar_id`) is still
+ *    in [listedCalendars], every calendar the provider lists: while an account is removed
+ *    its calendars are gone with their events, and without this every pick on it read as
+ *    deleted at once. Such a pick keeps its alarm, which still rings at the stored time —
+ *    for as long as the calendar stays away, so an account removed on purpose leaves its
+ *    picks ringing until their days end or the day's "Set alarms" is tapped again (the
+ *    known cost; that reconcile has no such guard and drops them as vanished — it is
+ *    offered again once any chip on the day is toggled). The change banner disagrees
+ *    meanwhile: the differ only sees the event gone, so a shared day reports the kept pick
+ *    as Cancelled while its alarm stays armed and a re-share still sends its stored time. `SYNC_EVENTS` is deliberately not
+ *    asked for: the flag defaults to off, a calendar with it off still serves its events,
+ *    and a meeting deleted there must still be dropped. This is a partial guard only. The
+ *    provider reuses `Calendars._ID` (it is not `AUTOINCREMENT`), so the phone's newest
+ *    account comes back from a remove-and-re-add under the same ids, listed before its
+ *    events arrive, and its picks read as gone exactly as if there were no guard. A row
+ *    with no selection (deselected, waiting for "Clear alarms") or a pick whose calendar
+ *    was never recorded has nothing to check and is taken at the read's word;
  *  - cancelled or declined by me: cancel the alarm. Its selection is dropped too (below),
  *    so the rest of the day still matches its armed set; only a row whose selection wasn't
  *    dropped (deselected already, or its busy blocks couldn't be trimmed) puts the day
@@ -105,9 +122,17 @@ fun maintainAlarms(
     fresh: Map<EventKey, CalendarEvent>,
     leadTime: Duration,
     now: Instant,
+    listedCalendars: Set<Long>,
     selections: List<SelectedEventEntity> = emptyList(),
 ): AlarmMaintenance {
     val nowMillis = now.toEpochMilli()
+    val calendarOf = selections.associate { (it.date to it.key) to it.calendarId }
+    // a pick whose own calendar the provider no longer lists says nothing about its meeting;
+    // one with no known calendar can only be taken at the read's word
+    fun readable(date: LocalDate, key: EventKey): Boolean {
+        val calendarId = calendarOf[date to key] ?: return true
+        return calendarId in listedCalendars
+    }
     val picked = armed.mapTo(mutableSetOf()) { it.key }.apply { selections.mapTo(this) { it.key } }
     // gone from the calendar, with no event nobody picked standing in its exact slot
     fun gone(key: EventKey, beginMillis: Long, endMillis: Long): Boolean = key !in fresh && fresh.values.none {
@@ -121,7 +146,7 @@ fun maintainAlarms(
         if (isSyntheticAlarmEvent(row.eventId) || !row.state.armed) continue
         val event = fresh[row.key]
         if (event == null) {
-            if (row.endMillis > nowMillis && gone(row.key, row.beginMillis, row.endMillis)) cancel += row
+            if (row.endMillis > nowMillis && readable(row.date, row.key) && gone(row.key, row.beginMillis, row.endMillis)) cancel += row
             continue
         }
         val begin = event.begin.toEpochMilli()
@@ -147,7 +172,10 @@ fun maintainAlarms(
     }
     val drop = selections.filter { selection ->
         selection.endMillis > nowMillis &&
-            (fresh[selection.key]?.notAttending ?: gone(selection.key, selection.beginMillis, selection.endMillis))
+            (
+                fresh[selection.key]?.notAttending
+                    ?: (readable(selection.date, selection.key) && gone(selection.key, selection.beginMillis, selection.endMillis))
+                )
     }
     return AlarmMaintenance(retime = retime, cancel = cancel, refresh = refresh, drop = drop)
 }
@@ -170,7 +198,10 @@ private val CalendarEvent.notAttending: Boolean get() = status == EventStatus.CA
  * armed on purpose, and hiding its calendar later mustn't read as the event vanishing.
  * Without calendar access nothing is read or changed, and nothing is either while the
  * provider lists no calendars at all: that is an account mid-removal or mid-resync, not a
- * day of cancellations, and every pick would read as gone. The reads can be
+ * day of cancellations, and every pick would read as gone. With some calendars listed, a
+ * pick is only ever dropped as gone while its own calendar is among them
+ * (`maintainAlarms`' `listedCalendars`, which has no default on purpose: a caller that
+ * forgot it would run with no guard). The reads can be
  * cancelled; the writes can't, so a cancelled run never leaves a row re-timed in Room but
  * not in `AlarmManager` — and that includes the busy-block trim's provider reads and writes,
  * which run with the writes: a half-applied trim is worse than a late one, so once the
@@ -210,9 +241,11 @@ class AlarmMaintainer(
         val armed = alarmDao.allScheduled().filter { !isSyntheticAlarmEvent(it.eventId) && it.endMillis > nowMillis }
         val selections = dayPlanDao.selectedEventsEndingAfter(nowMillis)
         if (armed.isEmpty() && selections.isEmpty()) return@withLock AlarmMaintenance()
+        var listedCalendars = emptySet<Long>()
         val fresh = try {
             val calendars = repository.calendars()
             if (calendars.isEmpty()) return@withLock AlarmMaintenance()
+            listedCalendars = calendars.mapTo(mutableSetOf()) { it.id }
             val everyCalendar = CalendarFilter.Only(calendars.mapTo(mutableSetOf()) { it.id })
             val days = (armed.map { it.date } + selections.map { it.date })
                 .flatMapTo(sortedSetOf()) { listOf(it.minusDays(1), it, it.plusDays(1)) }
@@ -224,7 +257,13 @@ class AlarmMaintainer(
             Log.w(TAG, "calendar access lost; alarms left as they are", e)
             return@withLock AlarmMaintenance()
         }
-        val plan = maintainAlarms(armed, fresh, settings.current().leadTime, now, selections)
+        // a pick from before `calendar_id` existed learns its calendar the first time its event is seen
+        for (selection in selections) {
+            if (selection.calendarId != null) continue
+            val calendarId = fresh[selection.key]?.calendarId ?: continue
+            dayPlanDao.backfillCalendarId(selection.date, selection.eventId, selection.instanceTime, calendarId)
+        }
+        val plan = maintainAlarms(armed, fresh, settings.current().leadTime, now, listedCalendars, selections)
         if (!plan.isEmpty) withContext(NonCancellable) { apply(plan, fresh) }
         plan
     }

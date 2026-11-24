@@ -282,7 +282,14 @@ same `meetingminder://alarm/{alarmId}` re-armed at the snooze time). Also worth 
   from the Family calendar, with the "Cancelled: …" notification posted and no chooser
   opened; back in the app the banner's "Sync & re-share" text must not list it. Do this
   with the sync **on**: the meeting's own busy block has exactly its times, and a read that
-  let it through once kept every deleted meeting ringing.
+  let it through once kept every deleted meeting ringing. The opposite check: with another
+  meeting picked and armed, delete its whole **calendar** (`content delete --uri
+  "content://com.android.calendar/calendars/<id>?caller_is_syncadapter=true&account_name=me@test.com&account_type=LOCAL"`,
+  which is what an account being removed looks like). Its alarm must stay in `dumpsys alarm`
+  and the pick in the app's `selected_event` table: a pick is only read as deleted while its
+  own calendar is still listed. (Re-inserting a calendar afterwards gets the **same** `_id`
+  back when the deleted one was the newest — the provider reuses ids — so this check says
+  nothing about an account that is re-added.)
 - The loud schedule-change alert: turn on Settings → Schedule changes → "Loud schedule-change
   alerts" (opt-in, off by default; with it off the same steps must only post the ordinary,
   audible `schedule_updates` notification), share today, press Home (nothing rings while `MainActivity`

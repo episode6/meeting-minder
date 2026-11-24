@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import assertk.assertThat
 import assertk.assertions.containsExactly
+import com.episode6.meetingminder.model.RsvpState
 import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.After
@@ -82,5 +83,27 @@ class MeetingMinderDatabaseMigrationTest {
         assertThat(blocks).containsExactly(
             BusyBlockEntity(eventId = 900, date = LocalDate.of(2026, 9, 14), calendarId = 7, beginMillis = 1000, endMillis = 2000, title = "busy"),
         )
+    }
+
+    @Test
+    fun from7To8_keepsEveryPick_withNoCalendarYet_andItsBusyBlocks() = runTest {
+        createDatabaseAt(7) { db ->
+            db.execSQL(
+                "INSERT INTO selected_event (date, event_id, instance_time, title, begin_millis, end_millis, alarm_id, alarm_at, rsvp_state, rsvp_event_id) " +
+                    "VALUES ('2026-09-14', 5, 0, 'Standup', 1000, 2000, 3, 700, 'SYNCED', 5)",
+            )
+            db.execSQL("INSERT INTO busy_block (event_id, date, calendar_id, begin_millis, end_millis, title) VALUES (900, '2026-09-14', 7, 1000, 2000, 'Geoff busy')")
+        }
+
+        val database = openCurrent()
+
+        // a pick (with its alarm pointer and RSVP tick) survives; its calendar is filled in by the next maintenance pass
+        assertThat(database.dayPlanDao().selectedEventsOn(LocalDate.of(2026, 9, 14))).containsExactly(
+            SelectedEventEntity(
+                date = LocalDate.of(2026, 9, 14), eventId = 5, instanceTime = 0, title = "Standup", beginMillis = 1000, endMillis = 2000,
+                alarmId = 3, alarmAt = 700, rsvpState = RsvpState.SYNCED, rsvpEventId = 5, calendarId = null,
+            ),
+        )
+        assertThat(database.busyBlockDao().blocksOn(LocalDate.of(2026, 9, 14)).map { it.title }).containsExactly("Geoff busy")
     }
 }

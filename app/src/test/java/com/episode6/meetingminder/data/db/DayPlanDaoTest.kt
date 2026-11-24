@@ -180,4 +180,22 @@ class DayPlanDaoTest {
 
         assertThat(dao.selectedEventsEndingAfter(1_500).sortedBy { it.date }).containsExactly(standup, tomorrows)
     }
+
+    @Test
+    fun backfillCalendarId_fillsOnlyANull_onOnlyTheMatchingDaysRow() = runTest {
+        val unknown = standup.copy(calendarId = null)
+        val known = standup.copy(eventId = 2, calendarId = 7)
+        val tomorrows = standup.copy(date = today.plusDays(1), calendarId = null)
+        dao.upsertSelectedEvent(unknown)
+        dao.upsertSelectedEvent(known)
+        dao.upsertSelectedEvent(tomorrows)
+
+        dao.backfillCalendarId(today, unknown.eventId, unknown.instanceTime, calendarId = 3)
+        // a pick that has its calendar is never re-homed
+        dao.backfillCalendarId(today, known.eventId, known.instanceTime, calendarId = 3)
+
+        assertThat(dao.selectedEventsOn(today).sortedBy { it.eventId }).containsExactly(unknown.copy(calendarId = 3), known)
+        // the same key on the next day's page is its own row
+        assertThat(dao.selectedEventsOn(today.plusDays(1))).containsExactly(tomorrows)
+    }
 }

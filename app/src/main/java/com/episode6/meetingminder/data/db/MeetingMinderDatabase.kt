@@ -17,6 +17,9 @@ import androidx.room.TypeConverters
  * Version 7 adds `busy_block.title` and is the first **real** migration (an [AutoMigration],
  * the new column defaulting to `busy`): dropping `busy_block` would orphan every block
  * already on the user's calendar, since the app only ever deletes ids it finds there.
+ * Version 8 adds the nullable `selected_event.calendar_id` (the calendar a pick was read
+ * from, which `AlarmMaintainer` needs before it may read an absent event as deleted), again
+ * an [AutoMigration]: existing picks keep their rows with a null calendar.
  */
 @Database(
     entities = [
@@ -26,9 +29,9 @@ import androidx.room.TypeConverters
         ChangeSnapshotEntity::class,
         BusyBlockEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 6, to = 7)],
+    autoMigrations = [AutoMigration(from = 6, to = 7), AutoMigration(from = 7, to = 8)],
 )
 @TypeConverters(Converters::class)
 abstract class MeetingMinderDatabase : RoomDatabase() {

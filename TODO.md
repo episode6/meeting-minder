@@ -382,6 +382,7 @@ selected_event      (date TEXT, event_id INTEGER, instance_time INTEGER /*EventK
                      alarm_id INTEGER?, alarm_at INTEGER?,
                      rsvp_state TEXT /*NOT_APPLICABLE|PENDING|ACCEPTED_LOCALLY|SYNCED|FAILED*/,
                      rsvp_event_id INTEGER? /*exception event id when we answered one instance*/,
+                     calendar_id INTEGER? /*Calendars._ID the pick was read from; null before v8 until backfilled*/,
                      PK(date, event_id, instance_time))
 scheduled_alarm     (alarm_id INTEGER PK autoincrement, date TEXT, event_id, instance_time, fire_at INTEGER,
                      title TEXT, begin_millis, end_millis, sound_index INTEGER,
@@ -858,8 +859,15 @@ temporary allowlist that permits starting a foreground service from the backgrou
   when the change banner (§4.3), which still reports it, went unnoticed. (Originally it kept
   its alarm until the day ends as a hedge against a sync hiccup; that left a deleted meeting
   ringing and in every re-share, with no chip to deselect and no "Set alarms" tap on offer.)
-  Two guards remain: a key replaced at identical times (§4.3) keeps its alarm and pick, and
-  nothing is touched while the provider lists no calendars. The explicit "Set alarms" tap
+  Three guards remain: a key replaced at identical times (§4.3) keeps its alarm and pick;
+  nothing is touched while the provider lists no calendars; and a pick is only read as gone
+  while its own calendar (`selected_event.calendar_id`) is still listed, so an account that
+  has been removed keeps its picks and alarms instead of losing them all at once. That last
+  one is partial: the provider reuses calendar ids, so the newest account re-added comes
+  back under the same ids before its events do and its picks are dropped all the same; and
+  an account removed on purpose leaves its picks ringing until their days end or "Set alarms"
+  is tapped on the day (that tap has no calendar guard, on purpose, though it too does
+  nothing while the provider lists no calendars at all). The explicit "Set alarms" tap
   drops it too: when that tap could read the provider, a selection whose event is gone from
   the day (an organizer's cancellation, a deleted meeting, a series moved to new times — every
   occurrence gets a new key — all read as vanished, and the chip is no longer drawn, so

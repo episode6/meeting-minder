@@ -155,12 +155,13 @@ class DayPlanMappingTest {
     }
 
     @Test
-    fun toSelectedEventEntity_copiesTheKeyTitleAndTimes_unarmedAndNotRsvpd() {
+    fun toSelectedEventEntity_copiesTheKeyTitleTimesAndCalendar_unarmedAndNotRsvpd() {
         val event: CalendarEvent = testCalendarEvent(
             id = 7,
             begin = Instant.ofEpochMilli(10_000),
             end = Instant.ofEpochMilli(20_000),
             title = "Design review",
+            calendarId = 4,
         )
 
         val entity = event.toSelectedEventEntity(today)
@@ -171,6 +172,7 @@ class DayPlanMappingTest {
                 eventId = event.key.eventId,
                 instanceTime = event.key.instanceTime,
                 title = "Design review",
+                calendarId = 4,
                 beginMillis = 10_000,
                 endMillis = 20_000,
             ),

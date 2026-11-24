@@ -121,10 +121,18 @@ interface ScheduleAlarmsSideEffects {
  * there, and hiding its calendar or "show declined" in Settings can't make a selected
  * event read as vanished. Null when the provider can't be read: the caller then falls back
  * to the loaded window (already filtered for display), and [reconcileAlarms] is told so,
- * since an event missing from that window isn't known to be gone.
+ * since an event missing from that window isn't known to be gone. A provider that lists no
+ * calendars at all counts as unreadable too (an account mid-removal, as in
+ * `AlarmMaintainer.maintain`): read as "the whole day", it would drop every selection.
+ *
+ * Unlike the automatic maintenance, this read does not look at a selection's
+ * `calendar_id`: a pick whose calendar has left the provider is dropped here as vanished,
+ * on purpose. The tap is the user's own, on the day they are looking at, and it is the one
+ * way to clear the picks of an account removed for good.
  */
 private suspend fun freshEventsFor(date: LocalDate, repository: CalendarRepository): List<CalendarEvent>? = try {
-    repository.eventsOn(date, CalendarFilter.Only(repository.calendars().mapTo(mutableSetOf()) { it.id }))
+    val calendars = repository.calendars()
+    if (calendars.isEmpty()) null else repository.eventsOn(date, CalendarFilter.Only(calendars.mapTo(mutableSetOf()) { it.id }))
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {
