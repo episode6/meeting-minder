@@ -1,6 +1,6 @@
 # Meeting Minder Changelog
 
-### v1.0.70 - Unreleased
+### v1.0.70 - 2026-11-24
 
 - Partly hardened the automatic removal of deleted meetings (below) against a calendar account being removed. With the account gone, every meeting you'd picked on it looked deleted at once: alarms cancelled, picks gone, busy blocks taken off the shared calendar. Each pick now remembers which calendar it came from (`selected_event.calendar_id`, database version 8, an automatic migration that keeps every existing pick), and a meeting is only treated as deleted while that calendar is still on the phone. Otherwise the pick and its alarm are left alone and still ring at the stored time. Picks made before this version learn their calendar the next time the app sees their meeting. Two limits. Android reuses calendar ids, so when the most recently added account is removed and re-added its calendars come back under the same ids before their meetings do, and its picks are still dropped in that window. And an account you remove on purpose leaves its picks and alarms in place until those days are over, or until you tap "Set alarms" on the day again (toggle any meeting to bring the button back), which clears them. "Set alarms" itself no longer drops every pick on a day when the phone lists no calendars at all.
 
